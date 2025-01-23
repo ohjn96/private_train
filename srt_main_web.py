@@ -6,8 +6,19 @@ from flask import Flask, request, render_template_string, redirect, url_for, ses
 from SRT.srt import SRT, SRTError, SRTNotLoggedInError
 from SRT.train import SRTTrain
 from SRT.constants import STATION_NAME
+import sys, os
 
-app = Flask(__name__, static_folder='static')  # static 폴더 지정
+if getattr(sys, 'frozen', False):
+    # PyInstaller로 패키징된 경우
+    application_path = os.path.dirname(sys.executable)
+else:
+    # 개발 환경
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+static_path = os.path.join(application_path, 'static')
+
+app = Flask(__name__, static_folder=static_path)
+
 app.secret_key = "YOUR_SECRET_KEY"
 
 STOP_MACRO = False

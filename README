@@ -4,4 +4,12 @@ python -m venv venv
 
 .\venv\Scripts\activate
 
+pip install -r requirements.txt
+
 python srt_main_web.py
+
+
+## How to make exe
+pyinstaller --onefile --add-data "static;static" --hidden-import=flask --hidden-import=flask.sessions --name=SRTReservationApp srt_main_web.py
+
+pyinstaller --onefile --add-data "static;static" --hidden-import=flask --hidden-import=flask.sessions --name=KTXReservationApp ktx_main_web.py
