@@ -1,0 +1,7 @@
+python 3.9
+
+python -m venv venv
+
+.\venv\Scripts\activate
+
+python srt_main_web.py
