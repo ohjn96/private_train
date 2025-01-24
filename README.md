@@ -1,5 +1,3 @@
-# Markdown content as a string
-markdown_content = """
 # Python 3.9 환경 설정 및 실행 가이드 (WSL - Ubuntu)
 
 이 문서는 WSL(Windows Subsystem for Linux)에서 Ubuntu를 사용하여 Python 3.9 환경을 설정하고 프로그램을 실행하는 방법을 설명합니다.
