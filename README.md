@@ -36,7 +36,7 @@ python3.9 -m venv venv
 
 ```
 
-## 4. 가상환경 활성화 및 패키지 설치치
+## 4. 가상환경 활성화 및 패키지 설치
 
 ```bash
 source venv/bin/activate
@@ -54,7 +54,7 @@ python ktx_main_web.py
 ```
 
 
-## APPENDIX exe 만들기기
+## APPENDIX exe 만들기
 
 ```bash
 
