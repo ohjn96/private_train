@@ -449,12 +449,42 @@ def start_reservation():
 
                 attempt_count += 1
                 try:
-                    seat = korail.reserve(train_obj,option="GENERAL_FIRST")
+                    # 열차 정보를 다시 검색하여 최신 상태 확인
+                    updated_trains = korail.search_train(
+                        dep=data['dep_name'],
+                        arr=data['arr_name'],
+                        date=data['dep_date'],
+                        time=data['dep_time'],
+                        include_no_seats=True
+                    )
+
+                    # 현재 열차의 상태 확인
+                    current_train = None
+                    for t in updated_trains:
+                        if (t.train_type == train_obj.train_type and
+                            t.train_no == train_obj.train_no and
+                            t.dep_time == train_obj.dep_time):
+                            current_train = t
+                            break
+
+                    if not current_train:
+                        yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 열차 정보 업데이트 실패, 재검색 중...\n\n"
+                        time.sleep(1)
+                        continue
+
+                    if not current_train.reserve_possible:
+                        yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 좌석 매진, 1초 후 재검색...\n\n"
+                        time.sleep(1)
+                        continue
+
+                    # 예약 시도
+                    seat = korail.reserve(current_train, option="GENERAL_FIRST")
                     tickets = korail.tickets()
                     yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 예약 성공!\n\n"
                     break
+
                 except SoldOutError:
-                    yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 매진, 1초 후 재시도\n\n"
+                    yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 매진, 1초 후 재검색\n\n"
                     time.sleep(1)
                 except NeedToLoginError:
                     yield "data: NeedToLoginError: 재로그인 필요\n\n"
@@ -462,6 +492,8 @@ def start_reservation():
                 except Exception as e:
                     yield f"data: 오류 발생: {str(e)}\n\n"
                     return
+
+        yield "data: 모든 열차 예약 시도 완료\n\n"
 
         yield "data: 모든 열차 예약 시도 완료\n\n"
 
