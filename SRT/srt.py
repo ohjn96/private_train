@@ -125,7 +125,7 @@ class SRT:
             "hmpgPwdCphd": srt_pw,
         }
 
-        r = self._session.post(url=url, data=data)
+        r = self._session.post(url=url, verify =False)
         self._log(r.text)
         if "존재하지않는 회원입니다" in r.text:
             self.is_login = False
@@ -152,7 +152,7 @@ class SRT:
 
         url = constants.API_ENDPOINTS["logout"]
 
-        r = self._session.post(url=url)
+        r = self._session.post(url=url, verify =False)
         self._log(r.text)
 
         if not r.ok:
@@ -267,7 +267,7 @@ class SRT:
             "netfunnelKey": netfunnelKey,
         }
 
-        r = self._session.post(url=url, data=data)
+        r = self._session.post(url=url, data=data, verify =False)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -305,7 +305,7 @@ class SRT:
             last_dep_time = datetime.strptime(trains[-1].dep_time, "%H%M%S")
             next_dep_time = last_dep_time + timedelta(seconds=1)
             data["dptTm"] = next_dep_time.strftime("%H%M%S")
-            r = self._session.post(url=url, data=data)
+            r = self._session.post(url=url, data=data, verify =False)
             try:
                 parser = SRTResponseData(r.text)
             except Exception as e:
@@ -488,7 +488,7 @@ class SRT:
             )
         )
 
-        r = self._session.post(url=url, data=data)
+        r = self._session.post(url=url, data=data, verify =False)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -547,7 +547,7 @@ class SRT:
             "telNo": telNo if isAgreeSMS else "",
         }
 
-        r = self._session.post(url=url, data=data)
+        r = self._session.post(url=url, data=data, verify =False)
 
         return r.status_code == 200
 
@@ -566,7 +566,7 @@ class SRT:
         url = constants.API_ENDPOINTS["tickets"]
         data = {"pageNo": "0"}
 
-        r = self._session.post(url=url, data=data)
+        r = self._session.post(url=url, data=data, verify =False)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -619,7 +619,7 @@ class SRT:
         url = constants.API_ENDPOINTS["ticket_info"]
         data = {"pnrNo": reservation, "jrnySqno": "1"}
 
-        r = self._session.post(url=url, data=data)
+        r = self._session.post(url=url, data=data, verify =False)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -657,7 +657,7 @@ class SRT:
         url = constants.API_ENDPOINTS["cancel"]
         data = {"pnrNo": reservation, "jrnyCnt": "1", "rsvChgTno": "0"}
 
-        r = self._session.post(url=url, data=data)
+        r = self._session.post(url=url, data=data, verify =False)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -738,7 +738,7 @@ class SRT:
             "pageUrl": "",  # 페이지URL (빈값 고정)
         }
 
-        r = self._session.post(url=url, data=data)
+        r = self._session.post(url=url, data=data, verify =False)
 
         parser = json.loads(r.text)
 

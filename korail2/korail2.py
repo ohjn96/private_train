@@ -573,7 +573,7 @@ class Korail(object):
             'code': "app.login.cphd"
         }
 
-        r = self._session.post(url, data=data)
+        r = self._session.post(url, data=data, verify =False)
         j = json.loads(r.text)
 
         if j['strResult'] == 'SUCC' and j.get('app.login.cphd') is not None:
@@ -650,7 +650,7 @@ When you want change ID using existing object,
             'idx': self._idx
         }
 
-        r = self._session.post(url, data=data)
+        r = self._session.post(url, data=data, verify =False)
         j = json.loads(r.text)
 
         if j['strResult'] == 'SUCC' and j.get('strMbCrdNo') is not None:
@@ -667,7 +667,7 @@ When you want change ID using existing object,
     def logout(self):
         """Logout from Korail server"""
         url = KORAIL_LOGOUT
-        self._session.get(url)
+        self._session.get(url, verify =False)
         self.logined = False
 
     def _result_check(self, j):
@@ -843,7 +843,7 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
         }
 
 
-        r = self._session.get(url, params=data)
+        r = self._session.get(url, params=data, verify =False)
         j = json.loads(r.text)
 
         if self._result_check(j):
@@ -992,7 +992,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             data.update(psg.get_dict(index))
             index += 1
 
-        r = self._session.get(url, params=data)
+        r = self._session.get(url, params=data, verify =False)
         j = json.loads(r.text)
         if self._result_check(j):
             rsv_id = j['h_pnr_no']
@@ -1014,7 +1014,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'h_abrd_dt_to': '',
         }
 
-        r = self._session.get(url, params=data)
+        r = self._session.get(url, params=data, verify =False)
         j = json.loads(r.text)
         try:
             if self._result_check(j):
@@ -1034,7 +1034,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
                         'h_orgtk_sale_sqno': ticket.sale_info3,
                         'h_orgtk_ret_pwd': ticket.sale_info4,
                     }
-                    r = self._session.get(url, params=data)
+                    r = self._session.get(url, params=data, verify =False)
                     j = json.loads(r.text)
                     if self._result_check(j):
                         seat = j['ticket_infos']['ticket_info'][0]['tk_seat_info'][0]
@@ -1055,7 +1055,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'Version': self._version,
             'Key': self._key,
         }
-        r = self._session.get(url, params=data)
+        r = self._session.get(url, params=data, verify =False)
         j = json.loads(r.text)
         try:
             if self._result_check(j):
@@ -1083,7 +1083,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'txtJrnyCnt': rsv.journey_cnt,
             'hidRsvChgNo': rsv.rsv_chg_no,
         }
-        r = self._session.get(url, data=data)
+        r = self._session.get(url, data=data, verify =False)
         j = json.loads(r.text)
         if self._result_check(j):
             return True
