@@ -386,7 +386,7 @@ def reserve_select():
     return "OK"
 
 @app.route("/start_reservation", methods=["GET"])
-def start_reservation():
+def start_reservation_route():
     """SSE 스트림으로 매크로 예약 진행"""
     global STOP_MACRO
     STOP_MACRO = False
@@ -397,105 +397,96 @@ def start_reservation():
     si_json = session.get("selected_indices")
 
     def sse_stream():
+        # 로그인 정보 확인
         if not user_id or not user_pw:
             yield "data: 로그인 정보가 없습니다.\n\n"
             return
 
         korail = Korail(user_id, user_pw, auto_login=False)
-        korail.login()
+        try:
+            korail.login()
+        except Exception as e:
+            yield f"data: 로그인 실패: {str(e)}\n\n"
+            return
 
+        # 예약할 열차 정보 확인
         if not sr_json or not si_json:
             yield "data: 예약할 열차 정보가 없습니다.\n\n"
             return
 
-        train_data_list = json.loads(sr_json)
-        selected_indices = json.loads(si_json)
+        try:
+            train_data_list = json.loads(sr_json)
+            selected_indices = json.loads(si_json)
+            # 문자열 인덱스를 정수로 변환
+            selected_indices_int = [int(ind) for ind in selected_indices]
+        except (json.JSONDecodeError, ValueError) as e:
+            yield f"data: 예약할 열차 정보 파싱 오류: {str(e)}\n\n"
+            return
 
-        for idx_str in selected_indices:
+        # train_data_list가 비어있는지 확인
+        if not train_data_list:
+            yield "data: 예약할 열차 정보가 비어 있습니다.\n\n"
+            return
+
+        attempt_count = 0
+
+        while True:
             if STOP_MACRO:
                 yield "data: 사용자에 의해 중단됨\n\n"
                 return
 
-            idx = int(idx_str)
-            data = train_data_list[idx]
-            fixed_data = {
-                'h_trn_clsf_cd': data['train_type'],
-                'h_trn_clsf_nm': data['train_type_name'],
-                'h_trn_gp_cd': data['train_group'],
-                'h_trn_no': data['train_no'],
-                'h_dpt_rs_stn_nm': data['dep_name'],
-                'h_dpt_rs_stn_cd': data['dep_code'],
-                'h_dpt_dt': data['dep_date'],
-                'h_dpt_tm': data['dep_time'],
-                'h_arv_rs_stn_nm': data['arr_name'],
-                'h_arv_rs_stn_cd': data['arr_code'],
-                'h_arv_dt': data['arr_date'],
-                'h_arv_tm': data['arr_time'],
-                'h_run_dt': data['run_date'],
+            attempt_count += 1
+            try:
+                data = train_data_list[0]
+                updated_trains = korail.search_train(
+                    dep=data['dep_name'],
+                    arr=data['arr_name'],
+                    date=data['dep_date'],
+                    time=data['dep_time'],
+                    include_no_seats=True
+                )
 
-                'h_rsv_psb_flg': data['reserve_possible'],
-                'h_rsv_psb_nm': data['reserve_possible_name'],
-                'h_spe_rsv_cd': data['special_seat'],
-                'h_gen_rsv_cd': data['general_seat'],
-            }
+                # 예약 가능한 열차 필터링
+                matching_trains = [updated_trains[i] for i in selected_indices_int if i < len(updated_trains)]
 
-            train_obj = Train(fixed_data)
-
-            attempt_count = 0
-            while True:
-                if STOP_MACRO:
-                    yield "data: 사용자에 의해 중단됨\n\n"
-                    return
-
-                attempt_count += 1
-                try:
-                    # 열차 정보를 다시 검색하여 최신 상태 확인
-                    updated_trains = korail.search_train(
-                        dep=data['dep_name'],
-                        arr=data['arr_name'],
-                        date=data['dep_date'],
-                        time=data['dep_time'],
-                        include_no_seats=True
-                    )
-
-                    # 현재 열차의 상태 확인
-                    current_train = None
-                    for t in updated_trains:
-                        if (t.train_type == train_obj.train_type and
-                            t.train_no == train_obj.train_no and
-                            t.dep_time == train_obj.dep_time):
-                            current_train = t
-                            break
-
-                    if not current_train:
-                        yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 열차 정보 업데이트 실패, 재검색 중...\n\n"
-                        time.sleep(1)
-                        continue
-
-                    if not current_train.reserve_possible:
-                        yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 좌석 매진, 1초 후 재검색...\n\n"
-                        time.sleep(1)
-                        continue
-
-                    # 예약 시도
-                    seat = korail.reserve(current_train, option="GENERAL_FIRST")
-                    tickets = korail.tickets()
-                    yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 예약 성공!\n\n"
-                    break
-
-                except SoldOutError:
-                    yield f"data: [{train_obj.dep_time}] (시도 {attempt_count}회) 매진, 1초 후 재검색\n\n"
+                if not matching_trains:
+                    yield f"data: (시도 {attempt_count}회) 열차 정보 업데이트 실패 또는 좌석 없음, 재검색 중...\n\n"
                     time.sleep(1)
-                except NeedToLoginError:
-                    yield "data: NeedToLoginError: 재로그인 필요\n\n"
-                    return
-                except Exception as e:
-                    yield f"data: 오류 발생: {str(e)}\n\n"
-                    return
+                    continue
 
-        yield "data: 모든 열차 예약 시도 완료\n\n"
+                # 선택된 열차 중 예약 가능한 열차 찾기
+                available_train = None
 
-        yield "data: 모든 열차 예약 시도 완료\n\n"
+                for train in matching_trains:
+                    if train.reserve_possible == 'N':
+                        yield f"data: (시도 {attempt_count}회) [{train.dep_time}] 열차 정보 업데이트 실패 또는 좌석 없음...\n\n"
+                    else:
+                        available_train = train
+                        break  # 예약 가능한 열차를 찾았으므로 루프 탈출
+
+                if available_train:
+                    try:
+                        # 예약 시도
+                        korail.reserve(available_train, option="GENERAL_FIRST")
+                        korail.tickets()
+                        yield f"data: [{available_train.dep_time}] (시도 {attempt_count}회) 예약 성공!\n\n"
+                        return  # 예약 성공 시 스트림 종료
+                    except SoldOutError:
+                        yield f"data: [{available_train.dep_time}] (시도 {attempt_count}회) 매진, 재검색 중...\n\n"
+                        continue  # 매진 시 재검색
+                    except NeedToLoginError:
+                        yield "data: NeedToLoginError: 재로그인 필요\n\n"
+                        return
+                    except Exception as e:
+                        yield f"data: 오류 발생: {str(e)}\n\n"
+                        return
+
+            except NeedToLoginError:
+                yield "data: NeedToLoginError: 재로그인 필요\n\n"
+                return
+            except Exception as e:
+                yield f"data: 오류 발생: {str(e)}\n\n"
+                return
 
     return Response(sse_stream(), mimetype="text/event-stream")
 
