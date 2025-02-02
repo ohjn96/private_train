@@ -2,7 +2,7 @@
 import time
 import json
 import os
-import logging
+# import logging  # 로깅 삭제
 from flask import Flask, request, render_template_string, redirect, url_for, session, Response
 
 from SRT.srt import SRT, SRTError, SRTNotLoggedInError
@@ -10,35 +10,26 @@ from SRT.train import SRTTrain
 from SRT.constants import STATION_NAME
 import sys
 
-# 로깅 설정 (로테이션 포함)
-from logging.handlers import RotatingFileHandler
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-logging.basicConfig(level=logging.DEBUG)
-handler = RotatingFileHandler('srt_app.log', maxBytes=1000000, backupCount=5)
-handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-handler.setFormatter(formatter)
-logging.getLogger().addHandler(handler)
-
+# PyInstaller 패키징 경로 설정
 if getattr(sys, 'frozen', False):
-    # PyInstaller로 패키징된 경우
     application_path = os.path.dirname(sys.executable)
 else:
-    # 개발 환경
     application_path = os.path.dirname(os.path.abspath(__file__))
 
 static_path = os.path.join(application_path, 'static')
 
 app = Flask(__name__, static_folder=static_path)
 
-# secret_key를 환경 변수에서 불러오기, 환경 변수가 설정되지 않은 경우 기본값 사용
+# secret_key 설정
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "default_secret_key")
 
 STOP_MACRO = False
 
 ##################
 # SRT 역 리스트 예시
-# 실제 SRT 역 목록(0551=수서 등), 질문에서 준 STATION_CODE를 참조
 ##################
 STATION_LIST = ["수서", "동탄", "지제", "대전", "오송", "부산", "광주송정", "목포"]
 
@@ -216,7 +207,7 @@ reserve_template = """
     const logSection = document.getElementById("logSection");
     const logContainer = document.getElementById("logContainer");
     const stopBtn = document.getElementById("stopBtn");
-    const successSound = document.getElementById("successSound"); // 오디오 요소 참조
+    const successSound = document.getElementById("successSound");
 
     let evtSource = null;
 
@@ -224,7 +215,6 @@ reserve_template = """
       startBtn.addEventListener("click", async function() {
         const checked = reserveForm.querySelectorAll('input[name="train_indices"]:checked');
         if (checked.length === 0) {
-          // 아무것도 체크 안 하면 무반응
           return;
         }
         const formData = new FormData();
@@ -250,9 +240,8 @@ reserve_template = """
           logContainer.appendChild(p);
           logContainer.scrollTop = logContainer.scrollHeight;
 
-          // 성공 메시지 감지 및 오디오 재생
           if (e.data.includes("예약 성공")) {
-            successSound.currentTime = 0; // 오디오의 시작점으로 되돌림
+            successSound.currentTime = 0;
             successSound.play();
           }
         };
@@ -280,27 +269,24 @@ reserve_template = """
 ###################################
 @app.route("/", methods=["GET", "POST"])
 def login():
-    """로그인 페이지"""
     error_message = None
     if request.method == "POST":
         srt_id = request.form.get("srt_id")
         srt_pw = request.form.get("srt_pw")
-        srt_client = SRT(srt_id, srt_pw, auto_login=False)
+        srt_client = SRT(srt_id, srt_pw, auto_login=False, verbose=True)
         try:
             srt_client.login(srt_id, srt_pw)
             session["srt_id"] = srt_id
             session["srt_pw"] = srt_pw
-            logging.info(f"SRT 사용자 {srt_id} 로그인 성공")
+            # 로그인 성공 후 스케줄 페이지로 이동
             return redirect(url_for("schedule"))
         except Exception as e:
             error_message = str(e)
-            logging.error(f"SRT 사용자 {srt_id} 로그인 실패: {str(e)}")
 
     return render_template_string(login_template, error_message=error_message)
 
 @app.route("/schedule", methods=["GET", "POST"])
 def schedule():
-    """스케줄 검색 페이지"""
     if "srt_id" not in session or "srt_pw" not in session:
         return redirect(url_for("login"))
 
@@ -325,7 +311,6 @@ def schedule():
                 raise SRTNotLoggedInError("로그인되지 않았습니다. 로그인 후 다시 시도하세요.")
 
             trains = srt_client.search_train(dep, arr, date=date_str, time=time_str, available_only=False)
-            # SRTTrain 리스트 → dict 변환 후 세션 저장
             train_list_for_session = []
             for t in trains:
                 train_list_for_session.append({
@@ -338,7 +323,7 @@ def schedule():
                     "dep_station_name": t.dep_station_name,
                     "arr_station_name": t.arr_station_name,
                     "seat_avaiable": "예약가능" if t.general_seat_available() else "매진",
-                    # 예약에 필요한 필드
+                    # 예약에 필요한 필드들
                     "train_number": t.train_number,
                     "run_date": t.dep_date, 
                     "dep_station_code": t.dep_station_code,
@@ -351,10 +336,7 @@ def schedule():
                     "general_seat_state": t.general_seat_state,
                 })
             session["search_results"] = json.dumps(train_list_for_session, ensure_ascii=False)
-            logging.info(f"SRT 사용자 {srt_id} 스케줄 검색 성공: {len(train_list_for_session)}개 열차 검색")
         except Exception as e:
-            print("검색 오류:", e)
-            logging.error(f"SRT 사용자 {srt_id} 스케줄 검색 오류: {str(e)}")
             session["search_results"] = "[]"
 
         return redirect(url_for("reserve_page"))
@@ -363,7 +345,6 @@ def schedule():
 
 @app.route("/reserve", methods=["GET"])
 def reserve_page():
-    """검색 결과 테이블 + 예약 페이지"""
     if "srt_id" not in session or "srt_pw" not in session:
         return redirect(url_for("login"))
 
@@ -376,7 +357,6 @@ def reserve_page():
         trains_with_index = list(zip(train_list, range(len(train_list))))
     except Exception as e:
         error_message = str(e)
-        logging.error(f"예약 페이지 로딩 오류: {str(e)}")
 
     return render_template_string(
         reserve_template,
@@ -386,15 +366,12 @@ def reserve_page():
 
 @app.route("/reserve_select", methods=["POST"])
 def reserve_select():
-    """자바스크립트에서 체크된 인덱스를 받아 세션에 저장"""
     selected_indices = request.form.getlist("train_indices")
     session["selected_indices"] = json.dumps(selected_indices)
-    logging.info(f"예약 선택 인덱스: {selected_indices}")
     return "OK"
 
 @app.route("/start_reservation", methods=["GET"])
 def start_reservation():
-    """SSE 스트림으로 매크로 예약 진행"""
     global STOP_MACRO
     STOP_MACRO = False
 
@@ -406,21 +383,17 @@ def start_reservation():
     def sse_stream():
         if not srt_id or not srt_pw:
             yield "data: 로그인 정보가 없습니다.\n\n"
-            logging.error("예약 시도: 로그인 정보가 없습니다.")
             return
 
         srt_client = SRT(srt_id, srt_pw, auto_login=False)
         try:
             srt_client.login(srt_id, srt_pw)
-            logging.info(f"SRT 사용자 {srt_id} 로그인 성공")
         except Exception as e:
             yield f"data: 로그인 실패: {str(e)}\n\n"
-            logging.error(f"SRT 사용자 {srt_id} 로그인 실패: {str(e)}")
             return
 
         if not search_json or not selected_json:
             yield "data: 예약할 열차 정보가 없습니다.\n\n"
-            logging.warning("예약 시도: 예약할 열차 정보가 없습니다.")
             return
 
         try:
@@ -428,38 +401,31 @@ def start_reservation():
             selected_indices = json.loads(selected_json)
         except json.JSONDecodeError as e:
             yield f"data: 예약할 열차 정보 파싱 오류: {str(e)}\n\n"
-            logging.error(f"예약 시도: 예약할 열차 정보 파싱 오류: {str(e)}")
             return
 
+        # 선택된 인덱스에 해당하는 열차 정보를 pending_trains 리스트에 저장 (라운드로빈 예약 시도)
+        pending_trains = []
         for idx_str in selected_indices:
-            if STOP_MACRO:
-                yield "data: 사용자에 의해 중단됨\n\n"
-                logging.info("예약 시도: 사용자가 예약을 중단함")
-                return
             try:
                 idx = int(idx_str)
                 data = train_data_list[idx]
             except (IndexError, ValueError) as e:
                 yield f"data: 잘못된 열차 인덱스: {str(e)}\n\n"
-                logging.error(f"예약 시도: 잘못된 열차 인덱스 {idx_str}: {str(e)}")
                 continue
 
-            # SRTTrain 객체 생성
             train_dict = {
                 "stlbTrnClsfCd": "17",  # SRT=17
-                "trnNo": data["train_number"],  # 열차 번호
-                "runDt": data["run_date"],  # 운행 날짜
-                "dptRsStnCd": data["dep_station_code"],  # 출발역 코드
-                "dptDt": data["dep_date"],  # 출발 날짜
-                "dptTm": data["dep_time"],  # 출발 시간
-                "arvRsStnCd": data["arr_station_code"],  # 도착역 코드
-                "arvDt": data["arr_date"],  # 도착 날짜
-                "arvTm": data["arr_time"],  # 도착 시간
-                # 좌석 상태
+                "trnNo": data["train_number"],
+                "runDt": data["run_date"],
+                "dptRsStnCd": data["dep_station_code"],
+                "dptDt": data["dep_date"],
+                "dptTm": data["dep_time"],
+                "arvRsStnCd": data["arr_station_code"],
+                "arvDt": data["arr_date"],
+                "arvTm": data["arr_time"],
                 "gnrmRsvPsbStr": "예약가능" if data.get("general_seat_available") else "매진",
                 "sprmRsvPsbStr": "예약가능" if data.get("special_seat_available") else "매진",
-                "rsvWaitPsbCd": "9" if data.get("reserve_standby_available") else "0",  # 예약대기 가능 여부
-                # 역 구성 및 운행 순서 (기본값 또는 제공된 값 사용)
+                "rsvWaitPsbCd": "9" if data.get("reserve_standby_available") else "0",
                 "arvStnRunOrdr": data.get("arr_station_run_order", "000"),
                 "arvStnConsOrdr": data.get("arr_station_constitution_order", "000"),
                 "dptStnRunOrdr": data.get("dep_station_run_order", "000"),
@@ -467,93 +433,88 @@ def start_reservation():
             }
 
             train_obj = SRTTrain(train_dict)
+            pending_trains.append({
+                "data": data,
+                "train_obj": train_obj,
+                "attempt_count": 0,
+                "reserved": False,
+            })
 
-            attempt_count = 0
-            while True:
-                if STOP_MACRO:
-                    yield "data: 사용자에 의해 중단됨\n\n"
-                    logging.info("예약 시도 중단됨")
-                    return
+        if not pending_trains:
+            yield "data: 선택된 예약 열차 정보가 없습니다.\n\n"
+            return
 
-                attempt_count += 1
+        # 모든 선택된 열차에 대해 라운드 로빈 방식으로 예약 시도
+        while any(not item["reserved"] for item in pending_trains):
+            if STOP_MACRO:
+                yield "data: 사용자에 의해 중단됨\n\n"
+                return
+
+            for item in pending_trains:
+                if item["reserved"]:
+                    continue
+
+                item["attempt_count"] += 1
                 try:
-                    # 열차 정보 재검색
                     updated_trains = srt_client.search_train(
-                        dep=data['dep_station_name'],
-                        arr=data['arr_station_name'],
-                        date=data['dep_date'],
-                        time=data['dep_time'],
+                        dep=item["data"]['dep_station_name'],
+                        arr=item["data"]['arr_station_name'],
+                        date=item["data"]['dep_date'],
+                        time=item["data"]['dep_time'],
                         available_only=False
                     )
 
-                    # 매칭 기준 강화: train_number, dep_time, run_date 등
                     matching_trains = [
                         t for t in updated_trains
-                        if (t.train_number == train_obj.trnNo and
-                            t.dep_time == train_obj.dptTm and
-                            t.run_date == train_obj.runDt)
+                        if (t.train_number == item["train_obj"].trnNo and
+                            t.dep_time == item["train_obj"].dptTm and
+                            t.run_date == item["train_obj"].runDt)
                     ]
 
                     if not matching_trains:
-                        yield f"data: [{train_obj.dptTm}] (시도 {attempt_count}회) 열차 정보 업데이트 실패, 2초 후 재검색...\n\n"
-                        logging.warning(f"열차 정보 업데이트 실패: {train_obj.trnNo}, {train_obj.dptTm}, {train_obj.runDt}")
-                        time.sleep(2)
+                        yield f"data: [{item['train_obj'].dptTm}] (시도 {item['attempt_count']}회) 열차 정보 업데이트 실패, 2초 후 재검색...\n\n"
                         continue
 
-                    # 매칭된 열차가 여러 개인 경우 첫 번째 열차 선택
                     current_train = matching_trains[0]
 
                     if len(matching_trains) > 1:
-                        logging.warning(f"매칭된 열차가 여러 개 있습니다: {len(matching_trains)}개. 첫 번째 열차로 예약 시도.")
-                        yield f"data: [{train_obj.dptTm}] 매칭된 열차가 여러 개 있습니다. 첫 번째 열차로 예약을 시도합니다.\n\n"
+                        yield f"data: [{item['train_obj'].dptTm}] 매칭된 열차가 여러 개 있습니다. 첫 번째 열차로 예약 시도합니다.\n\n"
 
                     if not current_train.general_seat_available():
-                        yield f"data: [{train_obj.dptTm}] (시도 {attempt_count}회) 일반 좌석 매진, 5초 후 재검색...\n\n"
-                        logging.info(f"열차 매진: {current_train.trnNo}, {current_train.dptTm}")
-                        time.sleep(5)
+                        yield f"data: [{item['train_obj'].dptTm}] (시도 {item['attempt_count']}회) 일반 좌석 매진, 2초 후 재검색...\n\n"
                         continue
 
                     # 예약 시도
                     reservation = srt_client.reserve(current_train)
-                    yield f"data: [{current_train.dptTm}] (시도 {attempt_count}회) 예약 성공!\n\n"
-                    logging.info(f"예약 성공: {current_train.trnNo}, {current_train.dptTm}")
-                    break
+                    yield f"data: [{current_train.dptTm}] (시도 {item['attempt_count']}회) 예약 성공!\n\n"
+                    item["reserved"] = True
 
                 except SRTError:
-                    yield f"data: [{train_obj.dptTm}] (시도 {attempt_count}회) 매진, 5초 후 재검색\n\n"
-                    logging.info(f"매진 상태: {current_train.trnNo}, {current_train.dptTm}")
-                    time.sleep(5)
+                    yield f"data: [{item['train_obj'].dptTm}] (시도 {item['attempt_count']}회) 매진, 5초 후 재검색\n\n"
                 except SRTNotLoggedInError:
                     yield "data: NeedToLoginError: 재로그인 필요\n\n"
-                    logging.error("재로그인 필요")
                     return
                 except Exception as e:
                     yield f"data: 오류 발생: {str(e)}\n\n"
-                    logging.error(f"예약 시도 중 오류 발생: {str(e)}")
                     return
+            time.sleep(2)
 
         yield "data: 모든 열차 예약 시도 완료\n\n"
-        logging.info("모든 열차 예약 시도 완료")
 
     return Response(sse_stream(), mimetype="text/event-stream")
 
 @app.route("/stop_macro", methods=["POST"])
 def stop_macro():
-    """멈춤"""
     global STOP_MACRO
     STOP_MACRO = True
-    logging.info("예약 중단 요청")
     return "STOP_OK"
 
 if __name__ == "__main__":
     import webbrowser
-
-    # Flask 서버를 백그라운드 스레드에서 실행하도록 수정
     from threading import Thread
 
     def open_browser():
         webbrowser.open("http://127.0.0.1:5001/")
 
     Thread(target=open_browser).start()
-
     app.run(debug=True, threaded=True, port=5001)

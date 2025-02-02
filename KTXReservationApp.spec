@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['ktx_main_web.py'],
+    ['srt_main_web.py'],
     pathex=[],
     binaries=[],
     datas=[('static', 'static')],

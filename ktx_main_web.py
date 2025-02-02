@@ -451,7 +451,7 @@ def start_reservation_route():
 
                 if not matching_trains:
                     yield f"data: (시도 {attempt_count}회) 열차 정보 업데이트 실패 또는 좌석 없음, 재검색 중...\n\n"
-                    time.sleep(1)
+                    time.sleep(2)
                     continue
 
                 # 선택된 열차 중 예약 가능한 열차 찾기
