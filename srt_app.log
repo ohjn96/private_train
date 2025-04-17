@@ -1,0 +1,27 @@
+2025-02-02 19:29:01,428 INFO [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5001
+2025-02-02 19:29:01,429 INFO [33mPress CTRL+C to quit[0m
+2025-02-02 19:29:01,432 INFO  * Restarting with stat
+2025-02-02 19:29:02,171 WARNING  * Debugger is active!
+2025-02-02 19:29:02,190 INFO  * Debugger PIN: 856-695-105
+2025-02-02 19:29:02,341 INFO 127.0.0.1 - - [02/Feb/2025 19:29:02] "GET / HTTP/1.1" 200 -
+2025-02-02 19:29:02,791 INFO 127.0.0.1 - - [02/Feb/2025 19:29:02] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-02-02 19:29:03,046 INFO 127.0.0.1 - - [02/Feb/2025 19:29:03] "GET / HTTP/1.1" 200 -
+2025-02-02 19:31:00,255 INFO  * Detected change in 'C:\\Users\\ohjn9\\OneDrive\\workspace\\Train_web\\srt_main_web.py', reloading
+2025-02-02 19:31:00,309 INFO  * Restarting with stat
+2025-02-02 19:31:00,843 WARNING  * Debugger is active!
+2025-02-02 19:31:00,856 INFO  * Debugger PIN: 856-695-105
+2025-02-02 19:31:01,390 INFO 127.0.0.1 - - [02/Feb/2025 19:31:01] "GET / HTTP/1.1" 200 -
+2025-02-02 19:31:23,299 INFO  * Detected change in 'C:\\Users\\ohjn9\\OneDrive\\workspace\\Train_web\\srt_main_web.py', reloading
+2025-02-02 19:31:23,341 INFO  * Restarting with stat
+2025-02-02 19:33:21,966 INFO  * Restarting with stat
+2025-02-02 19:34:11,783 INFO  * Restarting with stat
+2025-02-02 19:36:02,215 INFO  * Restarting with stat
+2025-02-02 19:36:10,435 INFO  * Restarting with stat
+2025-02-02 19:40:46,503 INFO  * Restarting with stat
+2025-02-02 19:41:01,828 INFO  * Restarting with stat
+2025-02-02 19:44:53,142 INFO  * Restarting with stat
+2025-02-02 19:46:24,260 INFO  * Restarting with stat
+2025-02-02 19:46:55,573 INFO  * Restarting with stat
+2025-02-02 19:48:32,938 INFO  * Restarting with stat
+2025-02-02 19:49:19,604 INFO  * Restarting with stat
