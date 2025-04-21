@@ -1,8 +1,6 @@
 import json
 import re
 from datetime import datetime, timedelta
-from typing import Union
-
 
 import requests  # type: ignore[import]
 
@@ -54,7 +52,7 @@ class SRT:
         srt_pw: str,
         auto_login: bool = True,
         verbose: bool = False,
-        netfunnel_helper: Union[NetFunnelHelper, None] = None,
+        netfunnel_helper: NetFunnelHelper | None = None,
     ) -> None:
         self._session = requests.session()
         self._session.headers.update(DEFAULT_HEADERS)
@@ -75,7 +73,7 @@ class SRT:
         if self.verbose:
             print("[*] " + msg)
 
-    def login(self, srt_id, srt_pw):
+    def login(self, srt_id: str | None = None, srt_pw: str | None = None):
         """SRT 서버에 로그인합니다.
 
         일반적인 경우에는 인스턴스가 생성될 때에 자동으로 로그인 되므로,
@@ -125,7 +123,7 @@ class SRT:
             "hmpgPwdCphd": srt_pw,
         }
 
-        r = self._session.post(url=url, verify =False)
+        r = self._session.post(url=url, data=data)
         self._log(r.text)
         if "존재하지않는 회원입니다" in r.text:
             self.is_login = False
@@ -152,7 +150,7 @@ class SRT:
 
         url = constants.API_ENDPOINTS["logout"]
 
-        r = self._session.post(url=url, verify =False)
+        r = self._session.post(url=url)
         self._log(r.text)
 
         if not r.ok:
@@ -167,9 +165,9 @@ class SRT:
         self,
         dep: str,
         arr: str,
-        date: Union[str, None] = None,
-        time: Union[str, None] = None,
-        time_limit: Union[str, None] = None,
+        date: str | None = None,
+        time: str | None = None,
+        time_limit: str | None = None,
         available_only: bool = True,
     ) -> list[SRTTrain]:
         """주어진 출발지에서 도착지로 향하는 SRT 열차를 검색합니다.
@@ -217,11 +215,11 @@ class SRT:
         self,
         dep: str,
         arr: str,
-        date: Union[str, None] = None,
-        time: Union[str, None] = None,
-        time_limit: Union[str, None] = None,
-        arr_code: Union[str, None] = None,
-        dep_code: Union[str, None] = None,
+        date: str | None = None,
+        time: str | None = None,
+        time_limit: str | None = None,
+        arr_code: str | None = None,
+        dep_code: str | None = None,
         available_only: bool = True,
         use_netfunnel_cache: bool = True,
     ) -> list[SRTTrain]:
@@ -267,7 +265,7 @@ class SRT:
             "netfunnelKey": netfunnelKey,
         }
 
-        r = self._session.post(url=url, data=data, verify =False)
+        r = self._session.post(url=url, data=data)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -302,10 +300,14 @@ class SRT:
         # Note: updated api returns subarray of all trains,
         #       therefore, to retrieve all trains, retry unless there are no more trains
         while trains:
+            # Break if the last train's departure time is over the time_limit
+            if time_limit and trains[-1].dep_time > time_limit:
+                break
+
             last_dep_time = datetime.strptime(trains[-1].dep_time, "%H%M%S")
             next_dep_time = last_dep_time + timedelta(seconds=1)
             data["dptTm"] = next_dep_time.strftime("%H%M%S")
-            r = self._session.post(url=url, data=data, verify =False)
+            r = self._session.post(url=url, data=data)
             try:
                 parser = SRTResponseData(r.text)
             except Exception as e:
@@ -334,9 +336,9 @@ class SRT:
     def reserve(
         self,
         train: SRTTrain,
-        passengers: Union[list[Passenger], None] = None,
+        passengers: list[Passenger] | None = None,
         special_seat: SeatType = SeatType.GENERAL_FIRST,
-        window_seat: Union[bool, None] = None,
+        window_seat: bool | None = None,
     ) -> SRTReservation:
         """열차를 예약합니다.
 
@@ -365,9 +367,9 @@ class SRT:
     def reserve_standby(
         self,
         train: SRTTrain,
-        passengers: Union[list[Passenger], None] = None,
+        passengers: list[Passenger] | None = None,
         special_seat: SeatType = SeatType.GENERAL_FIRST,
-        mblPhone: Union[str, None] = None,
+        mblPhone: str | None = None,
     ) -> SRTReservation:
         """예약대기 신청 합니다.
 
@@ -392,10 +394,10 @@ class SRT:
         self,
         jobid: str,
         train: SRTTrain,
-        passengers: Union[list[Passenger], None] = None,
+        passengers: list[Passenger] | None = None,
         special_seat: SeatType = SeatType.GENERAL_FIRST,
-        mblPhone: Union[str, None] = None,
-        window_seat: Union[bool,None] = None,
+        mblPhone: str | None = None,
+        window_seat: bool | None = None,
         use_netfunnel_cache: bool = True,
     ) -> SRTReservation:
         """예약 신청 요청 공통 함수
@@ -488,7 +490,7 @@ class SRT:
             )
         )
 
-        r = self._session.post(url=url, data=data, verify =False)
+        r = self._session.post(url=url, data=data)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -513,10 +515,10 @@ class SRT:
 
     def reserve_standby_option_settings(
         self,
-        reservation: Union[SRTReservation, int],
+        reservation: SRTReservation | int,
         isAgreeSMS: bool,
         isAgreeClassChange: bool,
-        telNo: Union[str, None] = None,
+        telNo: str | None = None,
     ) -> bool:
         """예약대기 옵션을 적용 합니다.
 
@@ -547,7 +549,7 @@ class SRT:
             "telNo": telNo if isAgreeSMS else "",
         }
 
-        r = self._session.post(url=url, data=data, verify =False)
+        r = self._session.post(url=url, data=data)
 
         return r.status_code == 200
 
@@ -566,7 +568,7 @@ class SRT:
         url = constants.API_ENDPOINTS["tickets"]
         data = {"pageNo": "0"}
 
-        r = self._session.post(url=url, data=data, verify =False)
+        r = self._session.post(url=url, data=data)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -593,7 +595,7 @@ class SRT:
 
         return reservations
 
-    def ticket_info(self, reservation: Union[SRTReservation, int]) -> list[SRTTicket]:
+    def ticket_info(self, reservation: SRTReservation | int) -> list[SRTTicket]:
         """예약에 포함된 티켓 정보를 반환합니다.
 
         >>> reservations = srt.get_reservations()
@@ -619,7 +621,7 @@ class SRT:
         url = constants.API_ENDPOINTS["ticket_info"]
         data = {"pnrNo": reservation, "jrnySqno": "1"}
 
-        r = self._session.post(url=url, data=data, verify =False)
+        r = self._session.post(url=url, data=data)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -634,7 +636,7 @@ class SRT:
 
         return tickets
 
-    def cancel(self, reservation: Union[SRTReservation, int]) -> bool:
+    def cancel(self, reservation: SRTReservation | int) -> bool:
         """예약을 취소합니다.
 
         >>> reservation = srt.reserve(train)
@@ -657,7 +659,7 @@ class SRT:
         url = constants.API_ENDPOINTS["cancel"]
         data = {"pnrNo": reservation, "jrnyCnt": "1", "rsvChgTno": "0"}
 
-        r = self._session.post(url=url, data=data, verify =False)
+        r = self._session.post(url=url, data=data)
         try:
             parser = SRTResponseData(r.text)
         except Exception as e:
@@ -738,7 +740,7 @@ class SRT:
             "pageUrl": "",  # 페이지URL (빈값 고정)
         }
 
-        r = self._session.post(url=url, data=data, verify =False)
+        r = self._session.post(url=url, data=data)
 
         parser = json.loads(r.text)
 
