@@ -1,0 +1,137 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ feature/android-apk ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build APK
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            build-essential \
+            git \
+            ffmpeg \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libportmidi-dev \
+            libswscale-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            zlib1g-dev \
+            libgstreamer1.0-dev \
+            gstreamer1.0-plugins-base \
+            libgstreamer-plugins-base1.0-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libtiff-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            libffi-dev \
+            libssl-dev \
+            cmake \
+            unzip \
+            openjdk-17-jdk
+
+      - name: Install Buildozer and dependencies
+        run: |
+          pip install --upgrade pip setuptools
+          pip install buildozer cython==3.0.10
+          pip install kivy==2.3.0
+
+      - name: Prepare build directory
+        run: |
+          # Create build directory with all source files
+          mkdir -p _apk_build
+
+          # Copy main Kivy entry point
+          cp mobile/main.py _apk_build/main.py
+
+          # Copy Flask app
+          cp -r app _apk_build/app
+
+          # Copy local packages
+          cp -r korail2 _apk_build/korail2
+          cp -r SRT _apk_build/SRT
+
+          # Copy buildozer spec
+          cp mobile/buildozer.spec _apk_build/buildozer.spec
+
+          # Copy static assets (if any audio files exist)
+          if [ -d "app/static" ]; then
+            echo "Static files already included via app/ copy"
+          fi
+
+          # Clean __pycache__ directories
+          find _apk_build -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+          find _apk_build -name "*.pyc" -delete 2>/dev/null || true
+
+          # List build directory contents
+          echo "=== Build directory structure ==="
+          find _apk_build -type f | head -100
+
+      - name: Build APK with Buildozer
+        working-directory: _apk_build
+        run: |
+          # Accept SDK licenses
+          yes | buildozer android debug 2>&1 | tail -100
+
+      - name: Find and rename APK
+        run: |
+          echo "=== Looking for APK files ==="
+          find _apk_build -name "*.apk" -type f
+
+          # Copy APK to output directory
+          mkdir -p output
+          find _apk_build -name "*.apk" -type f -exec cp {} output/ \;
+
+          # Rename to a friendly name
+          cd output
+          if ls *.apk 1>/dev/null 2>&1; then
+            for f in *.apk; do
+              mv "$f" "TrainReservation-v2.0.0.apk"
+              break
+            done
+            echo "APK built successfully!"
+            ls -la *.apk
+          else
+            echo "ERROR: No APK file found!"
+            exit 1
+          fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrainReservation-APK
+          path: output/TrainReservation-v2.0.0.apk
+          retention-days: 30
+
+      - name: Create Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: output/TrainReservation-v2.0.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
