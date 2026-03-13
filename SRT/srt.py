@@ -55,6 +55,7 @@ class SRT:
         netfunnel_helper: NetFunnelHelper | None = None,
     ) -> None:
         self._session = requests.session()
+        self._session.verify = False
         self._session.headers.update(DEFAULT_HEADERS)
         self.netfunnel_helper = (
             netfunnel_helper if netfunnel_helper is not None else NetFunnelHelper()

@@ -34,6 +34,7 @@ class NetFunnelHelper:
 
     def __init__(self):
         self.session = requests.session()
+        self.session.verify = False
         self.session.headers.update(self.DEFAULT_HEADERS)
         self._cached_key = None
 

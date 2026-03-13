@@ -163,10 +163,10 @@
         }
     });
 
-    // On form submit: strip dashes so server receives plain digits
+    // On form submit: ensure phone number has dashes (server requires 010-XXXX-XXXX format)
     input.closest('form').addEventListener('submit', function () {
         if (isPhone(input.value)) {
-            input.value = input.value.replace(/\D/g, '');
+            input.value = formatPhone(input.value);
         }
     });
 })();

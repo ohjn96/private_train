@@ -958,17 +958,20 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
+    const currentProvider = '{{ provider }}';
+
     function checkMacroStatus() {
         fetch('/api/telegram/status')
             .then(r => r.json())
             .then(data => {
-                if (data.macro_running) {
+                const macroActiveForThisProvider = data.macro_running && data.provider === currentProvider;
+                if (macroActiveForThisProvider) {
                     // Auto-connect to stream if not already connected
                     if (!eventSource && !macroStreamSource) {
                         connectMacroStream();
                     }
                 } else {
-                    // Macro is NOT running — ensure UI reflects idle state
+                    // Macro is NOT running for this provider — ensure UI reflects idle state
                     if (macroStreamSource) {
                         macroStreamSource.close();
                         macroStreamSource = null;
