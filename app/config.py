@@ -5,7 +5,7 @@ import os
 
 class Config:
     """Base configuration."""
-    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'train_reservation_secret_key_2024')
+    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY')
     DEBUG = False
     TESTING = False
 

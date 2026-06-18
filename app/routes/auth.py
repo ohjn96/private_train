@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Authentication routes with multi-provider support."""
-from flask import Blueprint, request, session, redirect, url_for, render_template
+from flask import Blueprint, request, session, redirect, url_for, render_template, current_app
 
 from app.services import ServiceManager
 from app.utils.session_helper import (
@@ -46,9 +46,15 @@ def login():
         set_current_provider(provider)
         return redirect(url_for('search.index'))
 
+    # .env에 저장된 기본값 폼에 채워주기
+    default_id = current_app.config.get(f'DEFAULT_{provider.upper()}_ID', '')
+    default_pw = current_app.config.get(f'DEFAULT_{provider.upper()}_PW', '')
+
     return render_template('login.html',
                            provider=provider,
-                           logged_in_providers=logged_in_providers)
+                           logged_in_providers=logged_in_providers,
+                           default_id=default_id,
+                           default_pw=default_pw)
 
 
 @bp.route('/logout', methods=['POST'])

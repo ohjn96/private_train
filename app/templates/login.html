@@ -80,6 +80,7 @@
                            id="user_id"
                            name="user_id"
                            required
+                           value="{{ default_id or '' }}"
                            placeholder="회원번호, 이메일, 또는 전화번호"
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2
                                   {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}
@@ -94,6 +95,7 @@
                            id="password"
                            name="password"
                            required
+                           value="{{ default_pw or '' }}"
                            placeholder="비밀번호를 입력하세요"
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2
                                   {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}

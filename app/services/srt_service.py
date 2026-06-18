@@ -102,7 +102,9 @@ class SRTService(BaseTrainService):
                 if next_dt.strftime("%Y%m%d") != date:
                     break
 
-            except Exception:
+            except Exception as e:
+                if not all_trains:
+                    raise
                 break
         
         return [self._to_train_info(t) for t in all_trains]

@@ -3,6 +3,9 @@ import re
 from datetime import datetime, timedelta
 
 import requests  # type: ignore[import]
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from . import constants
 from .constants import INVALID_NETFUNNEL_KEY, STATION_CODE, USER_AGENT
@@ -56,6 +59,7 @@ class SRT:
     ) -> None:
         self._session = requests.session()
         self._session.headers.update(DEFAULT_HEADERS)
+        self._session.verify = False
         self.netfunnel_helper = (
             netfunnel_helper if netfunnel_helper is not None else NetFunnelHelper()
         )
