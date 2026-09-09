@@ -17,6 +17,7 @@ from app.utils.session_helper import (
     set_selected_indices,
     get_credentials,
     set_auth_state,
+    get_card_settings,
 )
 
 # Import exception types for error detection
@@ -58,6 +59,7 @@ def _setup_telegram_callbacks():
             _credentials = get_credentials(_provider)
             if _credentials:
                 tg.store_web_session(_provider, _credentials)
+            tg.store_card_settings(get_card_settings(_provider))
     except Exception:
         pass  # May not be in request context
 
@@ -146,129 +148,13 @@ def _setup_telegram_callbacks():
                 "trains": trains,
             }
 
-            def run_macro():
-                global STOP_MACRO
-                STOP_MACRO = False
-
-                # Create a fresh service for the macro thread
-                macro_service, _ = tg.create_standalone_service()
-                if not macro_service:
-                    tg.send_message("❌ 서비스 로그인에 실패했습니다.")
-                    tg.push_log("error", "서비스 로그인에 실패했습니다.")
-                    return
-
-                tg.clear_logs()
-                trains_summary = ", ".join(
-                    f"{t['train_name']}({t['dep_time'][:2]}:{t['dep_time'][2:4]})"
-                    for t in selected_trains
-                )
-                tg.set_macro_state(
-                    True,
-                    {
-                        "trains": trains_summary,
-                        "dep": dep or selected_trains[0].get("dep_station", ""),
-                        "arr": arr or selected_trains[0].get("arr_station", ""),
-                        "date": date or selected_trains[0].get("dep_date", ""),
-                    },
-                )
-                tg.send_macro_started(len(selected_trains), trains_summary)
-                tg.push_log("log", f"예약 매크로를 시작합니다. 대상: {trains_summary}")
-
-                earliest_train = min(selected_trains, key=lambda t: t["dep_time"])
-                attempt = 0
-                seat_option = SeatOption.GENERAL_FIRST
-
-                while not STOP_MACRO:
-                    attempt += 1
-                    tg.update_attempt(attempt)
-                    timestamp = datetime.now().strftime("%H:%M:%S")
-                    try:
-                        tg.push_log(
-                            "log",
-                            f"[{timestamp}] 시도 #{attempt}: 열차 정보 조회 중...",
-                        )
-                        fresh_trains = macro_service.search(
-                            dep=earliest_train["dep_station"],
-                            arr=earliest_train["arr_station"],
-                            date=earliest_train["dep_date"],
-                            time=earliest_train["dep_time"],
-                            include_no_seats=True,
-                        )
-
-                        for train_info in selected_trains:
-                            if STOP_MACRO:
-                                break
-
-                            train_name = train_info["train_name"]
-                            dep_time_fmt = f"{train_info['dep_time'][:2]}:{train_info['dep_time'][2:4]}"
-
-                            matching_train = None
-                            for t in fresh_trains:
-                                if (
-                                    t.train_number == train_info["train_number"]
-                                    and t.dep_time == train_info["dep_time"]
-                                ):
-                                    matching_train = t
-                                    break
-
-                            if not matching_train or not matching_train.has_seat():
-                                tg.push_log(
-                                    "log",
-                                    f"[{timestamp}] {train_name} ({dep_time_fmt}): 좌석 없음",
-                                )
-                                continue
-
-                            tg.push_log(
-                                "log",
-                                f"[{timestamp}] {train_name} ({dep_time_fmt}): 좌석 있음! 예약 시도 중...",
-                            )
-                            try:
-                                result = macro_service.reserve(
-                                    matching_train, seat_option
-                                )
-                                if result.success:
-                                    success_msg = (
-                                        f"예약 성공! {train_name} ({dep_time_fmt})"
-                                    )
-                                    tg.push_log(
-                                        "success",
-                                        success_msg,
-                                        reservation_id=result.reservation_id or "",
-                                    )
-                                    tg.send_reservation_success(
-                                        train_name=train_name,
-                                        dep_time=dep_time_fmt,
-                                        dep_station=train_info.get("dep_station", ""),
-                                        arr_station=train_info.get("arr_station", ""),
-                                        reservation_id=result.reservation_id or "",
-                                    )
-                                    tg.set_macro_state(False)
-                                    STOP_MACRO = True
-                                    return
-                            except Exception:
-                                pass
-
-                        # Status update every 1000 attempts
-                        if attempt % 1000 == 0:
-                            tg.send_message(f"🔄 시도 #{attempt} 진행 중...")
-
-                    except Exception as e:
-                        err_msg = (
-                            f"[{timestamp}] 오류 발생 (시도 #{attempt}): {str(e)[:100]}"
-                        )
-                        tg.push_log("error", err_msg)
-                        if attempt % 1000 == 0:
-                            tg.send_message(f"⚠️ {err_msg}")
-                        time.sleep(1)
-
-                    time.sleep(random.uniform(1, 1.5))
-
-                tg.set_macro_state(False)
-                tg.send_macro_stopped()
-                tg.push_log("stopped", "예약이 중단되었습니다.")
+            card = tg.get_stored_card_settings()
 
             macro_thread = threading.Thread(
-                target=run_macro, daemon=True, name="tg-macro"
+                target=run_reservation_loop,
+                args=(service, provider, selected_trains, SeatOption.GENERAL_FIRST, card),
+                daemon=True,
+                name="tg-macro",
             )
             macro_thread.start()
             return {"success": True}
@@ -329,8 +215,17 @@ def reserve_select():
     selected_indices = request.form.getlist("train_indices[]")
     seat_option = request.form.get("seat_option", "GENERAL_FIRST")
 
+    try:
+        passenger_count = max(1, min(2, int(request.form.get("passenger_count", 1))))
+    except (TypeError, ValueError):
+        passenger_count = 1
+    sequential = request.form.get("sequential", "false") == "true"
+
     # Store for this provider
-    set_selected_indices(provider, [int(i) for i in selected_indices], seat_option)
+    set_selected_indices(
+        provider, [int(i) for i in selected_indices], seat_option,
+        passenger_count, sequential
+    )
 
     return jsonify({"success": True, "count": len(selected_indices)})
 
@@ -365,21 +260,268 @@ def attempt_recovery(provider: str, service) -> tuple[bool, str]:
         return False, f"리커버리 중 오류: {str(e)}"
 
 
+def run_reservation_loop(
+    service, provider: str, selected_trains: list, seat_option, card: dict | None,
+    passenger_count: int = 1, sequential: bool = False
+):
+    """Reservation retry loop, run on a background daemon thread.
+
+    Shared by the web "예약 시작" button and the Telegram /reserve macro. Running on a
+    thread (rather than tied to the lifetime of an SSE HTTP response) means the macro
+    keeps going even if the browser tab is closed or the page is refreshed - clients
+    just reconnect to /macro_stream, which replays the shared log buffer and reports
+    whether a macro is still running via TelegramService's state.
+
+    :param passenger_count: total adult seats wanted (1 or 2)
+    :param sequential: when passenger_count > 1, reserve one seat at a time instead of
+        both together in a single call - each success is paid immediately and the loop
+        keeps going for the remaining seat(s). Aimed at catching sporadic single-seat
+        cancellations, which show up far more often than two seats freeing up at once.
+    """
+    global STOP_MACRO
+    tg = TelegramService.get_instance()
+    STOP_MACRO = False
+
+    # Reservations already confirmed this run (only ever >1 entry in sequential mode -
+    # a one-shot multi-seat reservation is a single entry that already covers every seat)
+    secured_reservations: list = []
+    seats_secured = 0
+
+    tg.clear_logs()
+    earliest_train = min(selected_trains, key=lambda t: t["dep_time"])
+    trains_summary = ", ".join(
+        f"{t['train_name']}({t['dep_time'][:2]}:{t['dep_time'][2:4]})"
+        for t in selected_trains
+    )
+    tg.set_macro_state(
+        True,
+        {
+            "trains": trains_summary,
+            "dep": earliest_train.get("dep_station", ""),
+            "arr": earliest_train.get("arr_station", ""),
+            "date": earliest_train.get("dep_date", ""),
+        },
+    )
+    tg.send_macro_started(len(selected_trains), trains_summary)
+
+    mode_note = ""
+    if passenger_count > 1:
+        mode_note = " (1인씩 순차 예약)" if sequential else f" ({passenger_count}인 동시 예약)"
+    tg.push_log("log", f"예약 매크로를 시작합니다{mode_note}. 대상: {trains_summary}")
+
+    attempt = 0
+    consecutive_errors = 0
+    recovery_attempts = 0
+
+    while not STOP_MACRO:
+        attempt += 1
+        tg.update_attempt(attempt)
+        timestamp = datetime.now().strftime("%H:%M:%S")
+
+        try:
+            tg.set_macro_state(True, {"current_train": None, "current_time": None})
+            tg.push_log("log", f"[{timestamp}] 시도 #{attempt}: 열차 정보 조회 중...")
+
+            fresh_trains = service.search(
+                dep=earliest_train["dep_station"],
+                arr=earliest_train["arr_station"],
+                date=earliest_train["dep_date"],
+                time=earliest_train["dep_time"],
+                include_no_seats=True,
+            )
+            consecutive_errors = 0
+
+            for candidate_idx, train_info in enumerate(selected_trains):
+                if STOP_MACRO:
+                    break
+
+                train_name = train_info["train_name"]
+                dep_time = f"{train_info['dep_time'][:2]}:{train_info['dep_time'][2:4]}"
+
+                # Surface what's being checked right now (esp. useful with multiple
+                # candidate trains) so it's visible without opening the log drawer.
+                tg.set_macro_state(
+                    True,
+                    {
+                        "current_train": train_name,
+                        "current_time": dep_time,
+                        "current_index": candidate_idx + 1,
+                        "current_total": len(selected_trains),
+                    },
+                )
+
+                matching_train = None
+                for t in fresh_trains:
+                    if (
+                        t.train_number == train_info["train_number"]
+                        and t.dep_time == train_info["dep_time"]
+                    ):
+                        matching_train = t
+                        break
+
+                if not matching_train:
+                    tg.push_log("log", f"[{timestamp}] {train_name} ({dep_time}): 열차를 찾을 수 없음")
+                    continue
+
+                if not matching_train.has_seat():
+                    tg.push_log("log", f"[{timestamp}] {train_name} ({dep_time}): 좌석 없음")
+                    continue
+
+                tg.push_log("log", f"[{timestamp}] {train_name} ({dep_time}): 좌석 있음! 예약 시도 중...")
+
+                # In sequential mode each call only asks for the one remaining seat;
+                # in one-shot mode a single call asks for every requested seat at once.
+                remaining = passenger_count - seats_secured
+                reserve_count = 1 if sequential else remaining
+
+                try:
+                    result = service.reserve(matching_train, seat_option, passenger_count=reserve_count)
+
+                    if result.success:
+                        secured_reservations.append(result)
+                        seats_secured += reserve_count
+                        progress_note = (
+                            f" [{seats_secured}/{passenger_count}석]"
+                            if passenger_count > 1 else ""
+                        )
+                        msg = f"예약 성공! {train_name} ({dep_time}){progress_note}"
+                        tg.push_log("success", msg, reservation_id=result.reservation_id or "")
+                        tg.send_reservation_success(
+                            train_name=train_name,
+                            dep_time=dep_time,
+                            dep_station=train_info.get("dep_station", ""),
+                            arr_station=train_info.get("arr_station", ""),
+                            reservation_id=result.reservation_id or "",
+                        )
+
+                        # Pay for this reservation right away rather than waiting for the
+                        # remaining seat(s) - leaving it unpaid risks hitting the
+                        # duplicate-unpaid-reservation guard on the next attempt.
+                        if card and card.get("auto_pay", True):
+                            tg.push_log("log", "카드 자동결제 시도 중...")
+                            pay_success, pay_message = attempt_payment(service, card, result)
+                            if pay_success:
+                                pay_msg = f"결제 완료! {train_name} ({dep_time})"
+                                tg.push_log("success", pay_msg)
+                                tg.send_message(f"💳 {pay_msg}")
+                            else:
+                                pay_msg = f"결제 실패: {pay_message}"
+                                tg.push_log("error", pay_msg)
+                                tg.send_message(f"⚠️ {pay_msg}")
+
+                        if seats_secured >= passenger_count:
+                            # All requested seats secured - reservation is confirmed, so stop
+                            # the retry loop now (a bug further down must never cause a
+                            # duplicate attempt).
+                            STOP_MACRO = True
+                            if passenger_count > 1:
+                                tg.push_log("success", f"총 {passenger_count}석 모두 확보 완료!")
+                            tg.set_macro_state(False)
+                            return
+                        else:
+                            # Sequential mode, still need more seats - keep the loop going.
+                            tg.push_log(
+                                "log",
+                                f"{seats_secured}/{passenger_count}석 확보. 나머지 좌석 계속 시도 중...",
+                            )
+                            break
+                    else:
+                        tg.push_log("log", f"[{timestamp}] {train_name} ({dep_time}): {result.message}")
+
+                except Exception as reserve_error:
+                    error_msg = str(reserve_error)
+                    tg.push_log("log", f"[{timestamp}] {train_name} ({dep_time}): 예약 오류 - {error_msg}")
+                    if is_login_error(reserve_error, provider):
+                        consecutive_errors += 1
+
+            if attempt % 1000 == 0:
+                tg.send_message(f"🔄 시도 #{attempt} 진행 중...")
+
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            msg = f"[{timestamp}] 오류 ({error_type}): {error_msg}"
+            tg.push_log("error", msg)
+
+            if is_login_error(e, provider):
+                consecutive_errors += 1
+
+                if recovery_attempts < MAX_RECOVERY_ATTEMPTS:
+                    recovery_attempts += 1
+                    tg.push_log(
+                        "warning",
+                        f"[{timestamp}] 로그인 오류 감지 - 자동 복구 시도 중... ({recovery_attempts}/{MAX_RECOVERY_ATTEMPTS})",
+                    )
+                    success, recovery_msg = attempt_recovery(provider, service)
+
+                    if success:
+                        tg.push_log("success", f"[{timestamp}] {recovery_msg} - 예약 재시작")
+                        consecutive_errors = 0
+                        time.sleep(1)
+                        continue
+                    else:
+                        tg.push_log("error", f"[{timestamp}] {recovery_msg}")
+                        if recovery_attempts >= MAX_RECOVERY_ATTEMPTS:
+                            tg.push_log("error", f"[{timestamp}] 최대 복구 시도 횟수 초과. 예약을 중단합니다.")
+                            STOP_MACRO = True
+                            break
+            else:
+                tg.push_log("warning", f"[{timestamp}] 일시적 오류 - 재시도 중...")
+                if attempt % 1000 == 0:
+                    tg.send_message(f"⚠️ {msg}")
+                time.sleep(1)
+
+        time.sleep(random.uniform(1, 1.5))
+
+    tg.set_macro_state(False)
+    tg.send_macro_stopped()
+    if seats_secured and seats_secured < passenger_count:
+        tg.push_log(
+            "stopped",
+            f"{seats_secured}/{passenger_count}석 확보한 상태로 예약이 중단되었습니다.",
+        )
+    else:
+        tg.push_log("stopped", "예약이 중단되었습니다.")
+
+
+def attempt_payment(service, card: dict, result) -> tuple[bool, str]:
+    """Attempt card auto-payment for a just-succeeded reservation.
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        reservation_obj = result.details.get("reservation")
+        if reservation_obj is None:
+            return False, "예약 정보를 찾을 수 없어 결제를 시도할 수 없습니다."
+
+        pay_result = service.pay_with_card(
+            reservation_obj,
+            card["card_number"],
+            card["card_password"],
+            card["validation_number"],
+            card["card_expire"],
+            card.get("installment", 0),
+            card.get("card_type", "J"),
+        )
+        return pay_result.success, pay_result.message
+    except Exception as e:
+        return False, f"결제 중 오류: {str(e)}"
+
+
 @bp.route("/start_reservation")
 @login_required
 def start_reservation():
-    """SSE endpoint for reservation attempts."""
-    # Prevent concurrent macro execution (e.g. Telegram macro already running)
+    """Start the reservation macro on a background thread and return immediately.
+
+    The client watches progress via /macro_stream (the same mechanism used for
+    Telegram-triggered macros) instead of an SSE stream tied to this request, so
+    closing the tab or refreshing no longer stops the macro - it keeps running on
+    the server, and reconnecting just replays the shared log buffer.
+    """
     tg = TelegramService.get_instance()
     if tg._macro_running:
-
-        def error_stream():
-            yield f"data: {json.dumps({'type': 'error', 'message': '현재 텔레그램 매크로가 실행 중입니다. 텔레그램에서 /stop 후 다시 시도해주세요.'})}\n\n"
-
-        return Response(error_stream(), mimetype="text/event-stream")
-
-    global STOP_MACRO
-    STOP_MACRO = False
+        return jsonify({"success": False, "message": "이미 매크로가 실행 중입니다."})
 
     provider = get_current_provider()
     service = ServiceManager.get_service(provider)
@@ -389,6 +531,14 @@ def start_reservation():
     selected_indices = search_state.get("selected_indices", [])
     seat_option_str = search_state.get("seat_option", "GENERAL_FIRST")
     trains_data = search_state.get("trains", [])
+    passenger_count = max(1, min(2, search_state.get("passenger_count", 1)))
+    sequential = bool(search_state.get("sequential", False)) and passenger_count > 1
+
+    selected_trains = [
+        trains_data[idx] for idx in selected_indices if idx < len(trains_data)
+    ]
+    if not selected_trains:
+        return jsonify({"success": False, "message": "선택된 열차가 없습니다."})
 
     # Convert seat option
     seat_option_map = {
@@ -399,220 +549,27 @@ def start_reservation():
     }
     seat_option = seat_option_map.get(seat_option_str, SeatOption.GENERAL_FIRST)
 
-    # Setup telegram remote control callbacks
+    # Must read from Flask session here (request context) - the background thread
+    # below has no request context once this view function returns.
+    card = get_card_settings(provider)
+
+    # Setup telegram remote control callbacks (also captures session state needed
+    # by the thread, e.g. stored credentials/card settings for recovery/payment)
     _setup_telegram_callbacks()
-    tg = TelegramService.get_instance()
-    tg.clear_logs()
 
-    def generate():
-        global STOP_MACRO
-        attempt = 0
-        consecutive_errors = 0
-        recovery_attempts = 0
+    global STOP_MACRO
+    STOP_MACRO = False
 
-        # Collect selected trains info
-        selected_trains = []
-        for idx in selected_indices:
-            if idx < len(trains_data):
-                selected_trains.append(trains_data[idx])
-
-        if not selected_trains:
-            yield f"data: {json.dumps({'type': 'error', 'message': '선택된 열차가 없습니다.'})}\n\n"
-            return
-
-        # Get earliest train for search
-        earliest_train = min(selected_trains, key=lambda t: t["dep_time"])
-
-        # Notify Telegram that macro started
-        trains_summary = ", ".join(
-            f"{t['train_name']}({t['dep_time'][:2]}:{t['dep_time'][2:4]})"
-            for t in selected_trains
-        )
-        tg.set_macro_state(
-            True,
-            {
-                "trains": trains_summary,
-                "dep": earliest_train.get("dep_station", ""),
-                "arr": earliest_train.get("arr_station", ""),
-                "date": earliest_train.get("dep_date", ""),
-            },
-        )
-        tg.send_macro_started(len(selected_trains), trains_summary)
-
-        # Store params so /restart can re-use them
-        tg._last_reserve_params = {
-            "dep": earliest_train.get("dep_station", ""),
-            "arr": earliest_train.get("arr_station", ""),
-            "date": earliest_train.get("dep_date", ""),
-            "time": earliest_train.get("dep_time", ""),
-            "train_indices": list(range(len(selected_trains))),
-            "trains": selected_trains,
-        }
-
-        try:
-            while not STOP_MACRO:
-                attempt += 1
-                tg.update_attempt(attempt)
-                timestamp = datetime.now().strftime("%H:%M:%S")
-
-                try:
-                    # Single search to get all fresh train data
-                    msg = f"[{timestamp}] 시도 #{attempt}: 열차 정보 조회 중..."
-                    tg.push_log("log", msg)
-                    yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
-
-                    fresh_trains = service.search(
-                        dep=earliest_train["dep_station"],
-                        arr=earliest_train["arr_station"],
-                        date=earliest_train["dep_date"],
-                        time=earliest_train["dep_time"],
-                        include_no_seats=True,
-                    )
-
-                    # Reset error counter on successful query
-                    consecutive_errors = 0
-
-                    # Match selected trains with fresh data
-                    for train_info in selected_trains:
-                        if STOP_MACRO:
-                            msg = "예약이 중단되었습니다."
-                            tg.push_log("stopped", msg)
-                            yield f"data: {json.dumps({'type': 'stopped', 'message': msg})}\n\n"
-                            return
-
-                        train_name = train_info["train_name"]
-                        dep_time = f"{train_info['dep_time'][:2]}:{train_info['dep_time'][2:4]}"
-
-                        # Find matching train in fresh data
-                        matching_train = None
-                        for t in fresh_trains:
-                            if (
-                                t.train_number == train_info["train_number"]
-                                and t.dep_time == train_info["dep_time"]
-                            ):
-                                matching_train = t
-                                break
-
-                        if not matching_train:
-                            msg = f"[{timestamp}] {train_name} ({dep_time}): 열차를 찾을 수 없음"
-                            tg.push_log("log", msg)
-                            yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
-                            continue
-
-                        if not matching_train.has_seat():
-                            msg = f"[{timestamp}] {train_name} ({dep_time}): 좌석 없음"
-                            tg.push_log("log", msg)
-                            yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
-                            continue
-
-                        # Found a train with available seats - attempt reservation
-                        msg = f"[{timestamp}] {train_name} ({dep_time}): 좌석 있음! 예약 시도 중..."
-                        tg.push_log("log", msg)
-                        yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
-
-                        try:
-                            result = service.reserve(matching_train, seat_option)
-
-                            if result.success:
-                                msg = f"예약 성공! {train_name} ({dep_time})"
-                                tg.push_log(
-                                    "success",
-                                    msg,
-                                    reservation_id=result.reservation_id or "",
-                                )
-                                yield f"data: {json.dumps({'type': 'success', 'message': msg, 'reservation_id': result.reservation_id})}\n\n"
-                                # Send Telegram notification
-                                tg.send_reservation_success(
-                                    train_name=train_name,
-                                    dep_time=dep_time,
-                                    dep_station=train_info.get("dep_station", ""),
-                                    arr_station=train_info.get("arr_station", ""),
-                                    reservation_id=result.reservation_id or "",
-                                )
-                                tg.set_macro_state(False)
-                                STOP_MACRO = True
-                                return
-                            else:
-                                msg = f"[{timestamp}] {train_name} ({dep_time}): {result.message}"
-                                tg.push_log("log", msg)
-                                yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
-
-                        except Exception as reserve_error:
-                            error_msg = str(reserve_error)
-                            msg = f"[{timestamp}] {train_name} ({dep_time}): 예약 오류 - {error_msg}"
-                            tg.push_log("log", msg)
-                            yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
-
-                            # Check if it's a login-related error that needs recovery
-                            if is_login_error(reserve_error, provider):
-                                consecutive_errors += 1
-
-                except Exception as e:
-                    error_msg = str(e)
-                    error_type = type(e).__name__
-
-                    msg = f"[{timestamp}] 오류 ({error_type}): {error_msg}"
-                    tg.push_log("error", msg)
-                    yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
-
-                    # Only attempt recovery for login-related errors
-                    if is_login_error(e, provider):
-                        consecutive_errors += 1
-
-                        # Attempt auto-recovery after login error
-                        if recovery_attempts < MAX_RECOVERY_ATTEMPTS:
-                            recovery_attempts += 1
-                            msg = f"[{timestamp}] 로그인 오류 감지 - 자동 복구 시도 중... ({recovery_attempts}/{MAX_RECOVERY_ATTEMPTS})"
-                            tg.push_log("warning", msg)
-                            yield f"data: {json.dumps({'type': 'warning', 'message': msg})}\n\n"
-
-                            success, recovery_msg = attempt_recovery(provider, service)
-
-                            if success:
-                                msg = f"[{timestamp}] {recovery_msg} - 예약 재시작"
-                                tg.push_log("success", msg)
-                                yield f"data: {json.dumps({'type': 'success', 'message': msg})}\n\n"
-                                consecutive_errors = 0
-                                time.sleep(1)  # Brief pause before resuming
-                                continue
-                            else:
-                                msg = f"[{timestamp}] {recovery_msg}"
-                                tg.push_log("error", msg)
-                                yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
-
-                                # If max recovery attempts reached, stop
-                                if recovery_attempts >= MAX_RECOVERY_ATTEMPTS:
-                                    msg = f"[{timestamp}] 최대 복구 시도 횟수 초과. 예약을 중단합니다."
-                                    tg.push_log("error", msg)
-                                    yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
-                                    STOP_MACRO = True
-                                    return
-                    else:
-                        # For non-login errors, just log and continue without recovery
-                        msg = f"[{timestamp}] 일시적 오류 - 재시도 중..."
-                        tg.push_log("warning", msg)
-                        yield f"data: {json.dumps({'type': 'warning', 'message': msg})}\n\n"
-                        time.sleep(1)
-
-                # Wait before next attempt
-                time.sleep(random.uniform(1, 1.5))
-
-            tg.set_macro_state(False)
-            tg.send_macro_stopped()
-            msg = "예약이 중단되었습니다."
-            tg.push_log("stopped", msg)
-            yield f"data: {json.dumps({'type': 'stopped', 'message': msg})}\n\n"
-
-        finally:
-            # Ensure cleanup even if client disconnects (GeneratorExit)
-            STOP_MACRO = True
-            tg.set_macro_state(False)
-
-    return Response(
-        generate(),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    macro_thread = threading.Thread(
+        target=run_reservation_loop,
+        args=(service, provider, selected_trains, seat_option, card),
+        kwargs={"passenger_count": passenger_count, "sequential": sequential},
+        daemon=True,
+        name="web-macro",
     )
+    macro_thread.start()
+
+    return jsonify({"success": True})
 
 
 @bp.route("/macro_stream")

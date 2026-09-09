@@ -51,6 +51,7 @@ class TelegramService:
         # Stored web session for background thread usage
         self._stored_provider: Optional[str] = None
         self._stored_credentials: Optional[dict] = None
+        self._stored_card_settings: Optional[dict] = None
 
         # Shared log queue for web ↔ Telegram sync
         self._macro_logs: collections.deque = collections.deque(maxlen=500)
@@ -297,6 +298,14 @@ class TelegramService:
         self._stored_provider = provider
         self._stored_credentials = dict(credentials) if credentials else None
         logger.info(f"Web session stored for provider: {provider}")
+
+    def store_card_settings(self, card_settings: Optional[dict]):
+        """Store card auto-payment settings for use in background threads."""
+        self._stored_card_settings = dict(card_settings) if card_settings else None
+
+    def get_stored_card_settings(self) -> Optional[dict]:
+        """Return card auto-payment settings captured for the current standalone service."""
+        return self._stored_card_settings
 
     def create_standalone_service(self):
         """Create a standalone service instance using stored credentials.
@@ -857,5 +866,7 @@ class TelegramService:
             'macro_running': self._macro_running,
             'provider': self._stored_provider or '',
             'macro_attempt': self._macro_attempt,
-            'macro_info': self._macro_info
+            'macro_info': self._macro_info,
+            'macro_start_time': self._macro_start_time.isoformat() if self._macro_start_time else None,
+            'has_logs': bool(self._macro_logs),
         }

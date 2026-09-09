@@ -135,13 +135,15 @@ class BaseTrainService(ABC):
     def reserve(
         self,
         train: TrainInfo,
-        seat_option: SeatOption = SeatOption.GENERAL_FIRST
+        seat_option: SeatOption = SeatOption.GENERAL_FIRST,
+        passenger_count: int = 1
     ) -> ReservationResult:
         """Reserve a train ticket.
 
         Args:
             train: Train to reserve
             seat_option: Seat preference option
+            passenger_count: Number of adult passengers to reserve in this single call
 
         Returns:
             ReservationResult with success status and details
@@ -154,5 +156,33 @@ class BaseTrainService(ABC):
 
         Returns:
             List of station names
+        """
+        pass
+
+    @abstractmethod
+    def pay_with_card(
+        self,
+        reservation: Any,
+        card_number: str,
+        card_password: str,
+        validation_number: str,
+        card_expire: str,
+        installment: int = 0,
+        card_type: str = "J",
+    ) -> ReservationResult:
+        """Pay for a reservation with a credit card.
+
+        Args:
+            reservation: The provider-native reservation object
+                (e.g. ReservationResult.details['reservation'] from reserve())
+            card_number: Card number, no hyphens
+            card_password: First 2 digits of the card password
+            validation_number: Birth date YYMMDD (card_type='J') or business number (card_type='S')
+            card_expire: Card expiry date (YYMM)
+            installment: Number of installments (0 = lump sum)
+            card_type: 'J' (personal) or 'S' (corporate)
+
+        Returns:
+            ReservationResult with success status and message
         """
         pass
