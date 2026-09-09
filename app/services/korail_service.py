@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 # Add parent directory to path for korail2 module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from korail2 import Korail, KorailError, NeedToLoginError, SoldOutError, NoResultsError, ReserveOption
+from korail2 import Korail, KorailError, NeedToLoginError, SoldOutError, NoResultsError, ReserveOption, AdultPassenger
+from SRT.constants import STATION_NAME as SRT_STATION_NAME
 
 from app.services.base_service import (
     BaseTrainService,
@@ -17,15 +18,16 @@ from app.services.base_service import (
     SeatOption,
     ReservationResult
 )
+from app.services.stations import KORAIL_STATIONS, SRT_STATION_ALIASES
 
-# Korail station list
-KORAIL_STATIONS = [
-    "서울", "용산", "광명", "천안아산", "오송", "대전", "김천(구미)", "신경주",
-    "울산(통도사)", "부산", "공주", "익산", "정읍", "광주송정", "목포", "전주",
-    "남원", "순천", "여천", "여수엑스포", "청량리", "양평", "원주", "제천",
-    "단양", "풍기", "영주", "안동", "창원중앙", "창원", "마산", "진주", "홍성",
-    "군산", "강릉", "만종", "둔내", "평창", "진부", "포항", "태화강"
-]
+# Merged SRT+Korail station list, shown identically on both tabs (see srt_service.py
+# for the same union). Note: some stations are provider-exclusive (e.g. 수서/동탄 are
+# SRT-only, not served by KTX at all) - selecting one on the "wrong" tab will just
+# come back with no search results.
+ALL_STATIONS = sorted(
+    set(KORAIL_STATIONS)
+    | (set(SRT_STATION_NAME.values()) - set(SRT_STATION_ALIASES.values()))
+)
 
 
 class KorailService(BaseTrainService):
@@ -117,7 +119,8 @@ class KorailService(BaseTrainService):
     def reserve(
         self,
         train: TrainInfo,
-        seat_option: SeatOption = SeatOption.GENERAL_FIRST
+        seat_option: SeatOption = SeatOption.GENERAL_FIRST,
+        passenger_count: int = 1
     ) -> ReservationResult:
         """Reserve a Korail train."""
         if not self._client:
@@ -138,7 +141,8 @@ class KorailService(BaseTrainService):
                     message="열차 정보를 찾을 수 없습니다."
                 )
 
-            reservation = self._client.reserve(original_train, option=korail_option)
+            passengers = [AdultPassenger(count=passenger_count)]
+            reservation = self._client.reserve(original_train, passengers=passengers, option=korail_option)
 
             return ReservationResult(
                 success=True,
@@ -158,8 +162,38 @@ class KorailService(BaseTrainService):
             )
 
     def get_stations(self) -> list[str]:
-        """Get list of Korail stations."""
-        return sorted(KORAIL_STATIONS)
+        """Get merged SRT+Korail station list (see ALL_STATIONS note above)."""
+        return ALL_STATIONS
+
+    def pay_with_card(
+        self,
+        reservation,
+        card_number: str,
+        card_password: str,
+        validation_number: str,
+        card_expire: str,
+        installment: int = 0,
+        card_type: str = "J",
+    ) -> ReservationResult:
+        """Pay for a Korail reservation with a credit card."""
+        if not self._client:
+            return ReservationResult(success=False, message="로그인이 필요합니다.")
+
+        try:
+            success = self._client.pay_with_card(
+                reservation,
+                card_number,
+                card_password,
+                validation_number,
+                card_expire,
+                installment,
+                card_type,
+            )
+            if success:
+                return ReservationResult(success=True, message="결제 완료!")
+            return ReservationResult(success=False, message="결제에 실패했습니다.")
+        except KorailError as e:
+            return ReservationResult(success=False, message=str(e))
 
     def _to_train_info(self, train) -> TrainInfo:
         """Convert Korail train to TrainInfo."""

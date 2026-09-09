@@ -2,12 +2,16 @@
 """Search routes with multi-provider session support."""
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Blueprint, request, session, redirect, url_for, render_template, jsonify
+from flask import (
+    Blueprint, request, session, redirect, url_for, render_template, jsonify,
+    flash, get_flashed_messages
+)
 
 from app.services import ServiceManager
 from app.utils.session_helper import (
     get_current_provider, is_logged_in, get_logged_in_providers,
-    get_search_state, set_search_trains
+    get_search_state, set_search_trains,
+    get_card_settings, set_card_settings, clear_card_settings
 )
 
 bp = Blueprint('search', __name__)
@@ -109,6 +113,80 @@ def search_more():
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/api/card/status', methods=['GET'])
+@login_required
+def card_status():
+    """Return whether card auto-payment is configured for the current provider."""
+    provider = get_current_provider()
+    card = get_card_settings(provider)
+    if not card:
+        return jsonify({'configured': False})
+    number = card.get('card_number', '')
+    masked = ('*' * max(len(number) - 4, 0)) + number[-4:] if len(number) > 4 else number
+    return jsonify({
+        'configured': True,
+        'auto_pay': card.get('auto_pay', True),
+        'masked_number': masked,
+        'card_expire': card.get('card_expire', ''),
+        'installment': card.get('installment', 0),
+        'card_type': card.get('card_type', 'J'),
+    })
+
+
+@bp.route('/api/card/save', methods=['POST'])
+@login_required
+def card_save():
+    """Save card auto-payment settings for the current provider."""
+    provider = get_current_provider()
+    data = request.get_json(silent=True) or request.form
+
+    card_number = (data.get('card_number') or '').replace('-', '').strip()
+    card_password = (data.get('card_password') or '').strip()
+    validation_number = (data.get('validation_number') or '').strip()
+    card_expire = (data.get('card_expire') or '').strip()
+    card_type = (data.get('card_type') or 'J').strip()
+    auto_pay = bool(data.get('auto_pay', True))
+
+    try:
+        installment = int(data.get('installment', 0) or 0)
+    except (TypeError, ValueError):
+        installment = 0
+
+    if not all([card_number, card_password, validation_number, card_expire]):
+        return jsonify({'success': False, 'message': '카드 정보를 모두 입력해주세요.'}), 400
+
+    # card_expire arrives as YYMM (already converted client-side from the MM/YY the user sees)
+    if len(card_expire) != 4 or not card_expire.isdigit():
+        return jsonify({'success': False, 'message': '유효기간 형식이 올바르지 않습니다.'}), 400
+
+    expire_year = 2000 + int(card_expire[:2])
+    expire_month = int(card_expire[2:4])
+    if not (1 <= expire_month <= 12):
+        return jsonify({'success': False, 'message': '유효기간의 월이 올바르지 않습니다.'}), 400
+
+    now = datetime.now()
+    if (expire_year, expire_month) < (now.year, now.month):
+        return jsonify({
+            'success': False,
+            'message': f'카드 유효기간이 지났습니다 ({expire_month:02d}/{expire_year % 100:02d}).'
+        }), 400
+
+    set_card_settings(
+        provider, card_number, card_password, validation_number,
+        card_expire, installment, card_type, auto_pay
+    )
+    return jsonify({'success': True, 'message': '카드 정보가 저장되었습니다.'})
+
+
+@bp.route('/api/card/clear', methods=['POST'])
+@login_required
+def card_clear():
+    """Clear card auto-payment settings for the current provider."""
+    provider = get_current_provider()
+    clear_card_settings(provider)
+    return jsonify({'success': True, 'message': '카드 정보가 삭제되었습니다.'})
+
+
 @bp.route('/', methods=['GET', 'POST'])
 @login_required
 def index():
@@ -144,13 +222,23 @@ def index():
         }
 
     trains = []
+
+    # Error from a previous POST, carried across the redirect below (PRG pattern)
     error_message = None
+    for category, message in get_flashed_messages(with_categories=True):
+        if category == 'error':
+            error_message = message
+            break
 
     # On GET, restore saved trains if available
     if request.method == 'GET' and search_state.get('trains'):
         trains = search_state['trains']
 
     if request.method == 'POST' and 'search' in request.form:
+        # Always save the submitted form_data so the page shows the same inputs after redirect
+        search_state['form_data'] = form_data
+        session.modified = True
+
         try:
             # Convert date and time format
             date_str = form_data['date'].replace('-', '')
@@ -187,14 +275,11 @@ def index():
 
             set_search_trains(provider, trains_data)
 
-            # Save form_data for this provider (restore on switch back)
-            search_state['form_data'] = form_data
-            session.modified = True
-
-            trains = trains_data
-
         except Exception as e:
-            error_message = str(e)
+            flash(str(e), 'error')
+
+        # Post/Redirect/Get: avoids the browser's "form resubmission" prompt on refresh
+        return redirect(url_for('search.index'))
 
     return render_template('search.html',
                            provider=provider,

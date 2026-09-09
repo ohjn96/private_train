@@ -60,6 +60,10 @@ KORAIL_EVENT = "%s.common.event" % KORAIL_MOBILE
 KORAIL_PAYMENT = "%s/ebizmw/PrdPkgMainList.do" % KORAIL_DOMAIN
 KORAIL_PAYMENT_VOUCHER = "%s/ebizmw/PrdPkgBoucherView.do" % KORAIL_DOMAIN
 
+# 결제(카드) 관련: wct_no/좌석 정보 조회 및 실제 결제 요청
+KORAIL_TICKET_INFO = "%s.certification.ReservationList" % KORAIL_MOBILE
+KORAIL_PAY = "%s.payment.ReservationPayment" % KORAIL_MOBILE
+
 KORAIL_CODE = "%s.common.code.do" % KORAIL_MOBILE
 
 DEFAULT_USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 13; SM-S928N Build/UP1A.231005.007)"
@@ -421,6 +425,27 @@ class Ticket(Train):
         return "-".join(map(str, (self.sale_info1, self.sale_info2, self.sale_info3, self.sale_info4)))
 
 
+class Seat:
+    """예약된 좌석 정보 (결제 전 조회용)"""
+
+    def __init__(self, data):
+        self.car = _get_utf8(data, 'h_srcar_no')
+        self.seat = _get_utf8(data, 'h_seat_no')
+        self.seat_type = _get_utf8(data, 'h_psrm_cl_nm')
+        self.passenger_type = _get_utf8(data, 'h_psg_tp_dv_nm')
+        self.price = int(_get_utf8(data, 'h_rcvd_amt', 0))
+        self.original_price = int(_get_utf8(data, 'h_seat_prc', 0))
+        self.discount = int(_get_utf8(data, 'h_dcnt_amt', 0))
+        self.is_waiting = self.seat == ''
+
+    def __repr__(self):
+        if self.is_waiting:
+            return "예약대기 (%s) %s [%s원(%s원 할인)]" % (
+                self.seat_type, self.passenger_type, self.price, self.discount)
+        return "%s호차 %s (%s) %s [%s원(%s원 할인)]" % (
+            self.car, self.seat, self.seat_type, self.passenger_type, self.price, self.discount)
+
+
 class Passenger:
     """승객. Passenger List를 검색과 예약에 쓰도록 한다."""
     typecode = None  # txtPsgTpCd1    : '1',   #손님 종류 (어른 1, 어린이 3)
@@ -561,6 +586,12 @@ class Reservation(Train):
 
     #: 자리 번호 (Not implemented)
     seat_no_end = None  # h_seat_no_end
+
+    #: 결제 요청 번호. pay_with_card() 호출 전 ticket_info()로 채워져야 함
+    wct_no = None  # h_wct_no
+
+    #: 좌석 목록 (ticket_info() 호출 후 채워짐)
+    tickets = None
 
     def __init__(self, data):
         super(Reservation, self).__init__(data)
@@ -1171,6 +1202,30 @@ When the train allows waiting, enroll for the waiting list instead of failing in
         except NoResultsError:
             return []
 
+    def ticket_info(self, rsv_id=None):
+        """ 예약 건의 wct_no(결제 요청 번호)와 좌석 정보를 조회. 결제(pay_with_card) 전 필수 """
+        url = KORAIL_TICKET_INFO
+        data = {
+            'Device': self._device,
+            'Version': self._version,
+            'Key': self._key,
+            'hidPnrNo': rsv_id,
+        }
+        r = self._session.get(url, params=data, verify=False)
+        j = json.loads(r.text)
+        try:
+            if not self._result_check(j):
+                return [], None
+
+            wct_no = _get_utf8(j, 'h_wct_no')
+            jrny_info = j.get('jrny_infos', {}).get('jrny_info', [])
+            if jrny_info:
+                seat_info = jrny_info[0].get('seat_infos', {}).get('seat_info', [])
+                return [Seat(seat) for seat in seat_info], wct_no
+            return [], wct_no
+        except NoResultsError:
+            return [], None
+
     def reservations(self):
         """ Get My Reservations """
         url = KORAIL_MYRESERVATIONLIST
@@ -1189,10 +1244,59 @@ When the train allows waiting, enroll for the waiting list instead of failing in
 
                 for info in rsv_infos:
                     for tinfo in info['train_infos']['train_info']:
-                        reserves.append(Reservation(tinfo))
+                        reservation = Reservation(tinfo)
+                        reservation.tickets, reservation.wct_no = self.ticket_info(reservation.rsv_id)
+                        reserves.append(reservation)
                 return reserves
         except NoResultsError:
             return []
+
+    def pay_with_card(self, rsv, card_number, card_password, birthday, card_expire,
+                       installment=0, card_type='J'):
+        """예약 건을 카드로 결제.
+
+:param rsv: `reserve()` 또는 `reservations()`로 얻은 Reservation 인스턴스 (wct_no가 채워져 있어야 함)
+:param card_number: 카드 번호
+:param card_password: 카드 비밀번호 앞 2자리
+:param birthday: 생년월일(yymmdd) (card_type이 'J'인 경우) 또는 사업자번호 (card_type이 'S'인 경우)
+:param card_expire: 카드 유효기간(yymm)
+:param installment: 할부 개월 수 (0: 일시불)
+:param card_type: 'J'(개인) 또는 'S'(법인)
+"""
+        if not isinstance(rsv, Reservation):
+            raise TypeError("rsv must be a Reservation instance")
+
+        if not rsv.wct_no:
+            rsv.tickets, rsv.wct_no = self.ticket_info(rsv.rsv_id)
+
+        url = KORAIL_PAY
+        data = {
+            'Device': self._device,
+            'Version': self._version,
+            'Key': self._key,
+            'hidPnrNo': rsv.rsv_id,
+            'hidWctNo': rsv.wct_no,
+            'hidTmpJobSqno1': '000000',
+            'hidTmpJobSqno2': '000000',
+            'hidRsvChgNo': '000',
+            'hidInrecmnsGridcnt': '1',
+            'hidStlMnsSqno1': '1',
+            'hidStlMnsCd1': '02',
+            'hidMnsStlAmt1': str(rsv.price),
+            'hidCrdInpWayCd1': '@',
+            'hidStlCrCrdNo1': card_number,
+            'hidVanPwd1': card_password,
+            'hidCrdVlidTrm1': card_expire,
+            'hidIsmtMnthNum1': installment,
+            'hidAthnDvCd1': card_type,
+            'hidAthnVal1': birthday,
+            'hiduserYn': 'Y',
+        }
+        r = self._session.post(url, data=data, verify=False)
+        j = json.loads(r.text)
+        if self._result_check(j):
+            return True
+        return False
 
     def cancel(self, rsv):
         """ Cancel Reservation : Canceling is for reservation, for ticket would be Refunding """

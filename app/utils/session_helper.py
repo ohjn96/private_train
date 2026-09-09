@@ -12,6 +12,8 @@ def _init_session_structure() -> None:
         session['credentials'] = {}
     if 'search_state' not in session:
         session['search_state'] = {}
+    if 'cards' not in session:
+        session['cards'] = {}
 
 
 def get_current_provider() -> str:
@@ -52,6 +54,8 @@ def clear_auth_state(provider: str) -> None:
         del session['credentials'][provider]
     if provider in session['search_state']:
         del session['search_state'][provider]
+    if provider in session['cards']:
+        del session['cards'][provider]
     session.modified = True
 
 
@@ -98,11 +102,16 @@ def set_search_trains(provider: str, trains: List[Dict]) -> None:
     session.modified = True
 
 
-def set_selected_indices(provider: str, indices: List[int], seat_option: str) -> None:
-    """Store selected train indices for a provider."""
+def set_selected_indices(
+    provider: str, indices: List[int], seat_option: str,
+    passenger_count: int = 1, sequential: bool = False
+) -> None:
+    """Store selected train indices and reservation options for a provider."""
     state = get_search_state(provider)
     state['selected_indices'] = indices
     state['seat_option'] = seat_option
+    state['passenger_count'] = passenger_count
+    state['sequential'] = sequential
     session.modified = True
 
 
@@ -120,6 +129,44 @@ def set_credentials(provider: str, user_id: str, password: str) -> None:
         'password': password
     }
     session.modified = True
+
+
+def get_card_settings(provider: str) -> Optional[Dict[str, Any]]:
+    """Get stored card auto-payment settings for a provider."""
+    _init_session_structure()
+    return session['cards'].get(provider)
+
+
+def set_card_settings(
+    provider: str,
+    card_number: str,
+    card_password: str,
+    validation_number: str,
+    card_expire: str,
+    installment: int = 0,
+    card_type: str = 'J',
+    auto_pay: bool = True,
+) -> None:
+    """Store card auto-payment settings for a provider."""
+    _init_session_structure()
+    session['cards'][provider] = {
+        'card_number': card_number,
+        'card_password': card_password,
+        'validation_number': validation_number,
+        'card_expire': card_expire,
+        'installment': installment,
+        'card_type': card_type,
+        'auto_pay': auto_pay,
+    }
+    session.modified = True
+
+
+def clear_card_settings(provider: str) -> None:
+    """Remove stored card settings for a provider."""
+    _init_session_structure()
+    if provider in session['cards']:
+        del session['cards'][provider]
+        session.modified = True
 
 
 def clear_all_session() -> None:

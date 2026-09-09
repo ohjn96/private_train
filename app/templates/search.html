@@ -18,18 +18,11 @@
                     <div class="flex-1 relative">
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">출발역</label>
                         <div class="relative">
-                            <select name="dep" id="depStation" data-testid="search-from"
-                                    class="w-full pl-4 pr-10 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800 appearance-none
-                                           {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}">
-                                {% for station in stations %}
-                                <option value="{{ station }}" {% if form_data.dep == station %}selected{% endif %}>
-                                    {{ station }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                            <div class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </div>
+                            <input type="text" name="dep" id="depStation" data-testid="search-from"
+                                   list="stationDatalist" autocomplete="off" placeholder="역 검색 (예: 서울)"
+                                   value="{{ form_data.dep }}"
+                                   class="w-full pl-4 pr-4 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800
+                                          {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}">
                         </div>
                     </div>
 
@@ -45,20 +38,19 @@
                     <div class="flex-1 relative">
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">도착역</label>
                         <div class="relative">
-                            <select name="arr" id="arrStation" data-testid="search-to"
-                                    class="w-full pl-4 pr-10 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800 appearance-none
-                                           {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}">
-                                {% for station in stations %}
-                                <option value="{{ station }}" {% if form_data.arr == station %}selected{% endif %}>
-                                    {{ station }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                            <div class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </div>
+                            <input type="text" name="arr" id="arrStation" data-testid="search-to"
+                                   list="stationDatalist" autocomplete="off" placeholder="역 검색 (예: 부산)"
+                                   value="{{ form_data.arr }}"
+                                   class="w-full pl-4 pr-4 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800
+                                          {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}">
                         </div>
                     </div>
+
+                    <datalist id="stationDatalist">
+                        {% for station in stations %}
+                        <option value="{{ station }}">
+                        {% endfor %}
+                    </datalist>
                 </div>
 
                 <!-- Group 2: Schedule (Date & Time) -->
@@ -126,8 +118,22 @@
             <div class="flex justify-between items-center">
                 <h2 class="text-lg font-semibold text-gray-800">검색 결과 ({{ trains|length }}건)</h2>
 
-                <!-- Seat Option -->
+                <!-- Passenger Count / Seat Option -->
                 <div class="flex items-center space-x-4">
+                    <label class="text-sm text-gray-600">인원:</label>
+                    <select id="passengerCount" data-testid="passenger-count"
+                            class="px-3 py-1 border border-gray-300 rounded-lg text-sm"
+                            onchange="updatePassengerModeVisibility()">
+                        <option value="1" selected>1명</option>
+                        <option value="2">2명</option>
+                    </select>
+
+                    <select id="passengerMode" data-testid="passenger-mode"
+                            class="hidden px-3 py-1 border border-gray-300 rounded-lg text-sm">
+                        <option value="together" selected>2명 함께 예약</option>
+                        <option value="sequential">1명씩 순차 예약 (취소표 노림)</option>
+                    </select>
+
                     <label class="text-sm text-gray-600">좌석 옵션:</label>
                     <select id="seatOption" data-testid="seat-option" class="px-3 py-1 border border-gray-300 rounded-lg text-sm">
                         <option value="GENERAL_FIRST">일반실 우선</option>
@@ -399,10 +405,6 @@
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
                         연결 해제
                     </button>
-                    <label class="inline-flex items-center gap-2 ml-auto">
-                        <input type="checkbox" id="tgAutoConnect" onchange="saveAutoConnect()" class="rounded text-blue-500 focus:ring-blue-400">
-                        <span class="text-sm text-gray-600">자동 연결</span>
-                    </label>
                     <span id="tgMessage" class="text-sm text-gray-500 basis-full mt-1"></span>
                 </div>
 
@@ -452,6 +454,99 @@
             </div>
         </div>
     </div>
+
+    <!-- Card Auto-Payment Settings Card (always visible) -->
+    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+        <!-- Header / Toggle -->
+        <div class="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+             onclick="document.getElementById('cardBody').classList.toggle('hidden'); document.getElementById('cardChevron').classList.toggle('rotate-180');">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">카드 자동결제</h3>
+                    <p class="text-xs text-gray-500">예매 성공 시 등록된 카드로 즉시 결제</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div id="cardStatus" class="flex items-center gap-2">
+                    <span id="cardStatusDot" class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
+                    <span id="cardStatusText" class="text-sm text-gray-500">미등록</span>
+                </div>
+                <svg id="cardChevron" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Body (collapsible) -->
+        <div id="cardBody" class="hidden border-t">
+            <div class="p-6 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">카드 번호</label>
+                        <input type="text" id="cardNumber" placeholder="1234567890123456" inputmode="numeric" autocomplete="off"
+                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">유효기간 (MM/YY)</label>
+                        <input type="text" id="cardExpire" placeholder="09/30" maxlength="5" inputmode="numeric" autocomplete="off"
+                               oninput="formatCardExpireInput(this)"
+                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">비밀번호 앞 2자리</label>
+                        <input type="password" id="cardPassword" placeholder="12" maxlength="2" inputmode="numeric" autocomplete="off"
+                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">생년월일(YYMMDD) / 사업자번호</label>
+                        <input type="text" id="cardValidationNumber" placeholder="981204" inputmode="numeric" autocomplete="off"
+                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">카드 타입</label>
+                        <select id="cardType" class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm">
+                            <option value="J">개인</option>
+                            <option value="S">법인</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">할부</label>
+                        <select id="cardInstallment" class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm">
+                            <option value="0">일시불</option>
+                            {% for m in [2,3,4,5,6,7,8,9,10,11,12,24] %}
+                            <option value="{{ m }}">{{ m }}개월</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    <label class="inline-flex items-center gap-2">
+                        <input type="checkbox" id="cardAutoPay" checked class="rounded text-green-500 focus:ring-green-400">
+                        <span class="text-sm text-gray-600">예매 성공 시 자동으로 결제</span>
+                    </label>
+                    <button type="button" id="cardSaveBtn" onclick="saveCardSettings()"
+                            class="px-5 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors">
+                        저장
+                    </button>
+                    <button type="button" id="cardClearBtn" onclick="clearCardSettings()"
+                            class="px-5 py-2 rounded-lg bg-red-100 text-red-600 text-sm font-medium hover:bg-red-200 transition-colors">
+                        삭제
+                    </button>
+                    <span id="cardMessage" class="text-sm text-gray-500 basis-full mt-1"></span>
+                </div>
+
+                <p class="text-xs text-gray-400">
+                    카드 정보는 로그인 세션 쿠키에 저장되며 로그아웃 시 삭제됩니다. DB 등에 영구 저장되지 않지만, 브라우저에는 남으니 개인 기기에서만 사용해주세요.
+                </p>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Log Drawer (always rendered for both web and Telegram macro logs) -->
@@ -467,6 +562,8 @@
             <span class="text-sm font-medium">예약 로그</span>
             <span id="logSourceBadge" class="hidden text-xs px-1.5 py-0.5 rounded bg-blue-500 text-white">TG</span>
             <span id="selectedCount" class="text-xs text-gray-400 ml-2"></span>
+            <span id="macroElapsed" class="hidden text-xs text-gray-400 ml-2"></span>
+            <span id="currentAttempt" class="hidden text-xs text-yellow-300 ml-2 truncate max-w-[240px]" title=""></span>
         </div>
         <svg id="drawerIcon" class="w-5 h-5 transform rotate-180 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
@@ -479,8 +576,10 @@
     </div>
 </div>
 
-<!-- Minimal spacer for drawer handle -->
-<div class="h-14"></div>
+<!-- Spacer sized to the drawer's fully-open height (handle 48px + h-48 content 192px)
+     so the page can still scroll the last section (card settings) above the drawer
+     even while it's expanded. -->
+<div class="h-60"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -498,6 +597,13 @@ function toggleLogDrawer() {
         drawer.style.transform = 'translateY(0px)';
         icon.classList.remove('rotate-180');
     }
+}
+
+// Show the "함께 예약 / 순차 예약" mode picker only when 2 passengers are selected
+function updatePassengerModeVisibility() {
+    const count = document.getElementById('passengerCount')?.value;
+    const modeSelect = document.getElementById('passengerMode');
+    if (modeSelect) modeSelect.classList.toggle('hidden', count !== '2');
 }
 
 // Train selection toggle function
@@ -768,10 +874,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const logContainer = document.getElementById('logContainer');
     const successSound = document.getElementById('successSound');
 
-    let eventSource = null;
     let macroStreamSource = null;
     let macroCheckInterval = null;
     let soundRepeatId = null;
+    let elapsedTimerInterval = null;
 
     function log(message, type = 'info') {
         const colors = {
@@ -820,59 +926,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const seatOption = document.getElementById('seatOption').value;
+            const passengerCount = document.getElementById('passengerCount')?.value || '1';
+            const passengerMode = document.getElementById('passengerMode')?.value || 'together';
 
             // Send selected trains
             const formData = new FormData();
             selectedIndices.forEach(idx => formData.append('train_indices[]', idx));
             formData.append('seat_option', seatOption);
+            formData.append('passenger_count', passengerCount);
+            formData.append('sequential', passengerCount === '2' && passengerMode === 'sequential' ? 'true' : 'false');
 
             await fetch('/reserve_select', { method: 'POST', body: formData });
 
-            // Clear log
-            logContainer.innerHTML = '';
-            log('예약을 시작합니다...', 'info');
+            // Kick off the macro on the server - it now runs on a background thread,
+            // independent of this page/tab, so closing or refreshing won't stop it.
+            const resp = await fetch('/start_reservation');
+            const data = await resp.json();
+            if (!data.success) {
+                alert(data.message || '예약 시작에 실패했습니다.');
+                return;
+            }
 
-            // Start SSE
-            startBtn.classList.add('hidden');
-            stopBtn.classList.remove('hidden');
-
-            eventSource = new EventSource('/start_reservation');
-
-            eventSource.onmessage = function(e) {
-                const data = JSON.parse(e.data);
-
-                switch(data.type) {
-                    case 'log':
-                        log(data.message);
-                        break;
-                    case 'success':
-                        log(data.message, 'success');
-                        playSound();
-                        eventSource.close();
-                        eventSource = null;
-                        startBtn.classList.remove('hidden');
-                        stopBtn.classList.add('hidden');
-                        break;
-                    case 'error':
-                        log(data.message, 'error');
-                        break;
-                    case 'stopped':
-                        log(data.message, 'warning');
-                        eventSource.close();
-                        eventSource = null;
-                        startBtn.classList.remove('hidden');
-                        stopBtn.classList.add('hidden');
-                        break;
-                }
-            };
-
-            eventSource.onerror = function() {
-                log('연결이 끊어졌습니다.', 'error');
-                eventSource.close();
-                eventSource = null;
-                startBtn.classList.remove('hidden');
-                stopBtn.classList.add('hidden');
-            };
+            // Watch progress the same way a Telegram-triggered macro is watched -
+            // this is also what lets a refresh reconnect and replay the log history.
+            connectMacroStream(false);
         });
     }
 
@@ -883,30 +960,39 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ─── Telegram Macro Stream Auto-Connect ─────────────────
-    function connectMacroStream() {
+    // ─── Macro Log Stream (shared by web-triggered and Telegram-triggered macros) ───
+    // showBadge=true means "an already-running macro was detected" (page load/refresh,
+    // or a Telegram /reserve) rather than one this click just started.
+    // isLive=false is for replaying an already-FINISHED run's history (e.g. right after
+    // opening/refreshing the page) - nothing is actually running, so unlike a real live
+    // connection this must not play the success sound, force the drawer open, or swap
+    // the start/stop buttons (all of which would misleadingly look like a fresh macro
+    // just started on its own).
+    function connectMacroStream(showBadge = true, isLive = true) {
         if (macroStreamSource) return;  // already connected
-        if (eventSource) return;  // web SSE is active, skip
 
         const badge = document.getElementById('logSourceBadge');
         const dot = document.getElementById('logStatusDot');
 
         logContainer.innerHTML = '';
-        log('📡 텔레그램 매크로 스트림 연결...', 'info');
+        log(isLive ? '📡 매크로 로그에 연결 중...' : '📋 마지막 예약 기록을 불러옵니다...', 'info');
 
-        // Show TG badge
-        if (badge) badge.classList.remove('hidden');
-        if (dot) dot.className = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse';
+        if (showBadge && isLive && badge) {
+            badge.textContent = '진행중';
+            badge.classList.remove('hidden');
+        }
+        if (isLive && dot) dot.className = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse';
 
-        // Open log drawer
-        const drawer = document.getElementById('logDrawer');
-        if (drawer) drawer.style.transform = 'translateY(0px)';
-        const icon = document.getElementById('drawerIcon');
-        if (icon) icon.classList.remove('rotate-180');
+        if (isLive) {
+            // Only an actually-active run should grab the user's attention like this.
+            const drawer = document.getElementById('logDrawer');
+            if (drawer) drawer.style.transform = 'translateY(0px)';
+            const icon = document.getElementById('drawerIcon');
+            if (icon) icon.classList.remove('rotate-180');
 
-        // Show stop button if available
-        if (startBtn) startBtn.classList.add('hidden');
-        if (stopBtn) stopBtn.classList.remove('hidden');
+            if (startBtn) startBtn.classList.add('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
+        }
 
         macroStreamSource = new EventSource('/macro_stream');
         macroStreamSource.onmessage = function(e) {
@@ -917,8 +1003,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 macroStreamSource = null;
                 if (badge) badge.classList.add('hidden');
                 if (dot) dot.className = 'w-2 h-2 rounded-full bg-green-400 animate-pulse';
-                if (startBtn) startBtn.classList.remove('hidden');
-                if (stopBtn) stopBtn.classList.add('hidden');
+                if (isLive) {
+                    if (startBtn) startBtn.classList.remove('hidden');
+                    if (stopBtn) stopBtn.classList.add('hidden');
+                }
                 return;
             }
 
@@ -927,13 +1015,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     log(data.message);
                     break;
                 case 'success':
+                    // Reservation (and possibly payment) succeeded - keep the
+                    // stream open until 'stream_end' so payment log lines still arrive.
                     log(data.message, 'success');
-                    playSound();
-                    macroStreamSource.close();
-                    macroStreamSource = null;
-                    if (badge) badge.classList.add('hidden');
-                    if (startBtn) startBtn.classList.remove('hidden');
-                    if (stopBtn) stopBtn.classList.add('hidden');
+                    if (isLive) playSound();
                     break;
                 case 'error':
                     log(data.message, 'error');
@@ -946,8 +1031,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     macroStreamSource.close();
                     macroStreamSource = null;
                     if (badge) badge.classList.add('hidden');
-                    if (startBtn) startBtn.classList.remove('hidden');
-                    if (stopBtn) stopBtn.classList.add('hidden');
+                    if (isLive) {
+                        if (startBtn) startBtn.classList.remove('hidden');
+                        if (stopBtn) stopBtn.classList.add('hidden');
+                    }
                     break;
             }
         };
@@ -960,26 +1047,107 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const currentProvider = '{{ provider }}';
 
+    // ─── Elapsed running time ("N시간 M분째 실행 중") ─────────────
+    function formatElapsed(ms) {
+        const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        if (hours > 0) return `⏱ ${hours}시간 ${minutes}분째 실행 중`;
+        if (minutes > 0) return `⏱ ${minutes}분 ${seconds}초째 실행 중`;
+        return `⏱ ${seconds}초째 실행 중`;
+    }
+
+    function startElapsedTimer(startTimeIso) {
+        const elapsedEl = document.getElementById('macroElapsed');
+        if (!elapsedEl) return;
+        const startTime = new Date(startTimeIso);
+
+        const tick = () => {
+            elapsedEl.textContent = formatElapsed(Date.now() - startTime.getTime());
+            elapsedEl.classList.remove('hidden');
+        };
+        tick();
+        if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
+        elapsedTimerInterval = setInterval(tick, 1000);
+    }
+
+    function stopElapsedTimer() {
+        if (elapsedTimerInterval) {
+            clearInterval(elapsedTimerInterval);
+            elapsedTimerInterval = null;
+        }
+        const elapsedEl = document.getElementById('macroElapsed');
+        if (elapsedEl) elapsedEl.classList.add('hidden');
+    }
+
+    // Always-visible "what's it doing right now" indicator (esp. useful with multiple
+    // candidate trains selected) - hover it to see the full run context (route/date/
+    // full candidate list), even without opening the log drawer.
+    function updateCurrentAttempt(info) {
+        const el = document.getElementById('currentAttempt');
+        if (!el) return;
+        if (!info) {
+            el.classList.add('hidden');
+            return;
+        }
+
+        const tooltipParts = [];
+        if (info.dep && info.arr) tooltipParts.push(`${info.dep} → ${info.arr}`);
+        if (info.date) tooltipParts.push(info.date);
+        if (info.trains) tooltipParts.push(`대상: ${info.trains}`);
+        el.title = tooltipParts.join(' | ');
+
+        if (info.current_train && info.current_time) {
+            const idx = (info.current_index && info.current_total)
+                ? ` (${info.current_index}/${info.current_total})` : '';
+            el.textContent = `🎯 ${info.current_train} ${info.current_time} 확인 중${idx}`;
+            el.classList.remove('hidden');
+        } else if (info.trains) {
+            el.textContent = `🔍 조회 중 (${info.trains})`;
+            el.classList.remove('hidden');
+        } else {
+            el.classList.add('hidden');
+        }
+    }
+
+    // Once we've shown a finished run's log history (or watched one live), don't
+    // keep re-replaying it every poll tick - only a genuinely new run (macro_running
+    // flips true again) should trigger another connect.
+    let historyReplayed = false;
+
     function checkMacroStatus() {
         fetch('/api/telegram/status')
             .then(r => r.json())
             .then(data => {
-                const macroActiveForThisProvider = data.macro_running && data.provider === currentProvider;
+                const forThisProvider = data.provider === currentProvider;
+                const macroActiveForThisProvider = data.macro_running && forThisProvider;
+
                 if (macroActiveForThisProvider) {
-                    // Auto-connect to stream if not already connected
-                    if (!eventSource && !macroStreamSource) {
+                    historyReplayed = true;
+                    // Auto-connect to stream if not already connected - this is what makes a
+                    // refresh (or reopening the tab) pick the running macro back up instead
+                    // of losing it.
+                    if (!macroStreamSource) {
                         connectMacroStream();
                     }
-                } else {
-                    // Macro is NOT running for this provider — ensure UI reflects idle state
-                    if (macroStreamSource) {
-                        macroStreamSource.close();
-                        macroStreamSource = null;
-                        const badge = document.getElementById('logSourceBadge');
-                        if (badge) badge.classList.add('hidden');
+                    if (data.macro_start_time) {
+                        startElapsedTimer(data.macro_start_time);
                     }
-                    // Fix button state if stop button is still showing without active web SSE
-                    if (stopBtn && !stopBtn.classList.contains('hidden') && !eventSource) {
+                    updateCurrentAttempt(data.macro_info);
+                } else {
+                    updateCurrentAttempt(null);
+                    // Nothing running right now - but if the last run's log is still in the
+                    // buffer and we haven't shown it yet (e.g. just loaded/refreshed the page
+                    // after a reservation finished), replay it once instead of leaving the
+                    // drawer on its static "대기 중..." placeholder.
+                    if (forThisProvider && data.has_logs && !historyReplayed && !macroStreamSource) {
+                        historyReplayed = true;
+                        connectMacroStream(false, false);
+                    }
+                    stopElapsedTimer();
+                    // Fix button state if stop button is still showing without an active stream
+                    if (stopBtn && !stopBtn.classList.contains('hidden') && !macroStreamSource) {
                         if (startBtn) startBtn.classList.remove('hidden');
                         stopBtn.classList.add('hidden');
                     }
@@ -988,7 +1156,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(() => {});
     }
 
-    // Poll for Telegram macro every 3 seconds
+    // Poll for macro status every 3 seconds (also drives the elapsed-time display)
     macroCheckInterval = setInterval(checkMacroStatus, 3000);
     // Check immediately on load
     checkMacroStatus();
@@ -996,6 +1164,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load telegram status on page load
     loadTelegramSettings();
     checkTelegramStatus();
+
+    // Load card auto-payment status on page load
+    loadCardStatus();
 });
 
 // ─── Telegram Functions ─────────────────────────────────────
@@ -1006,31 +1177,26 @@ const TG_STORAGE_KEY = 'tg_settings';
 function saveTelegramSettings() {
     const token = document.getElementById('tgBotToken')?.value.trim() || '';
     const chatId = document.getElementById('tgChatId')?.value.trim() || '';
-    const autoConnect = document.getElementById('tgAutoConnect')?.checked || false;
-    localStorage.setItem(TG_STORAGE_KEY, JSON.stringify({token, chatId, autoConnect}));
+    localStorage.setItem(TG_STORAGE_KEY, JSON.stringify({token, chatId}));
 }
 
 function loadTelegramSettings() {
     try {
         const raw = localStorage.getItem(TG_STORAGE_KEY);
         if (!raw) return;
-        const {token, chatId, autoConnect} = JSON.parse(raw);
+        const {token, chatId} = JSON.parse(raw);
         const tokenInput = document.getElementById('tgBotToken');
         const chatIdInput = document.getElementById('tgChatId');
-        const autoCheckbox = document.getElementById('tgAutoConnect');
         if (tokenInput && token) tokenInput.value = token;
         if (chatIdInput && chatId) chatIdInput.value = chatId;
-        if (autoCheckbox) autoCheckbox.checked = !!autoConnect;
 
-        // Auto-connect if enabled
-        if (autoConnect && token) {
+        // The bot token/chat id are remembered in this browser - reconnect
+        // automatically on load (server-side connection state resets on every
+        // server restart, but the browser-saved settings should not).
+        if (token) {
             setTimeout(() => connectTelegram(true), 500);
         }
     } catch(e) {}
-}
-
-function saveAutoConnect() {
-    saveTelegramSettings();
 }
 
 function toggleTokenVisibility() {
@@ -1161,6 +1327,137 @@ async function disconnectTelegram() {
         checkTelegramStatus();
     } catch(e) {
         msgEl.textContent = '연결 해제 오류';
+        msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+    }
+}
+
+// ─── Card Auto-Payment Functions ─────────────────────────────
+
+// Auto-insert "/" as the user types MM/YY (e.g. "0930" -> "09/30")
+function formatCardExpireInput(input) {
+    const digits = input.value.replace(/\D/g, '').slice(0, 4);
+    input.value = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+}
+
+// The card shows MM/YY, but the reservation API expects YYMM - convert on save
+function expireToApiFormat(mmYY) {
+    const digits = (mmYY || '').replace(/\D/g, '');
+    if (digits.length !== 4) return digits;
+    return digits.slice(2, 4) + digits.slice(0, 2);
+}
+
+// Convert the API's YYMM back to MM/YY for display in the input
+function expireToDisplayFormat(yyMM) {
+    const digits = (yyMM || '').replace(/\D/g, '');
+    if (digits.length !== 4) return yyMM || '';
+    return `${digits.slice(2, 4)}/${digits.slice(0, 2)}`;
+}
+
+async function loadCardStatus() {
+    try {
+        const resp = await fetch('/api/card/status');
+        const data = await resp.json();
+        updateCardUI(data);
+    } catch (e) {
+        // ignore - not logged in yet, etc.
+    }
+}
+
+function updateCardUI(status) {
+    const dot = document.getElementById('cardStatusDot');
+    const text = document.getElementById('cardStatusText');
+    if (!dot) return;
+
+    if (status.configured) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-green-500';
+        text.textContent = `등록됨 (${status.masked_number})${status.auto_pay ? '' : ' · 자동결제 꺼짐'}`;
+        text.className = 'text-sm text-green-600 font-medium';
+
+        const expireInput = document.getElementById('cardExpire');
+        const typeSelect = document.getElementById('cardType');
+        const installmentSelect = document.getElementById('cardInstallment');
+        const autoPayCheckbox = document.getElementById('cardAutoPay');
+        if (expireInput && status.card_expire) expireInput.value = expireToDisplayFormat(status.card_expire);
+        if (typeSelect && status.card_type) typeSelect.value = status.card_type;
+        if (installmentSelect && status.installment !== undefined) installmentSelect.value = String(status.installment);
+        if (autoPayCheckbox) autoPayCheckbox.checked = !!status.auto_pay;
+    } else {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-gray-300';
+        text.textContent = '미등록';
+        text.className = 'text-sm text-gray-500';
+    }
+}
+
+async function saveCardSettings() {
+    const msgEl = document.getElementById('cardMessage');
+    const expireDisplay = document.getElementById('cardExpire')?.value.trim() || '';
+    const expireApi = expireToApiFormat(expireDisplay);
+    const month = parseInt(expireDisplay.replace(/\D/g, '').slice(0, 2), 10);
+
+    if (expireDisplay && (expireApi.length !== 4 || month < 1 || month > 12)) {
+        msgEl.textContent = '유효기간은 MM/YY 형식으로 입력해주세요. 예: 09/30';
+        msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+        return;
+    }
+
+    if (expireDisplay) {
+        const expireYear = 2000 + parseInt(expireDisplay.replace(/\D/g, '').slice(2, 4), 10);
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1; // 1-12
+        if (expireYear < currentYear || (expireYear === currentYear && month < currentMonth)) {
+            msgEl.textContent = `카드 유효기간이 지났습니다 (${expireDisplay}). 카드를 확인해주세요.`;
+            msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+            return;
+        }
+    }
+
+    const payload = {
+        card_number: document.getElementById('cardNumber')?.value.trim() || '',
+        card_password: document.getElementById('cardPassword')?.value.trim() || '',
+        validation_number: document.getElementById('cardValidationNumber')?.value.trim() || '',
+        card_expire: expireApi,
+        card_type: document.getElementById('cardType')?.value || 'J',
+        installment: parseInt(document.getElementById('cardInstallment')?.value || '0', 10),
+        auto_pay: document.getElementById('cardAutoPay')?.checked ?? true,
+    };
+
+    msgEl.textContent = '저장 중...';
+    msgEl.className = 'text-sm text-blue-500 basis-full mt-1';
+
+    try {
+        const resp = await fetch('/api/card/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        msgEl.textContent = data.message;
+        msgEl.className = data.success ? 'text-sm text-green-600 basis-full mt-1' : 'text-sm text-red-500 basis-full mt-1';
+
+        if (data.success) {
+            // Clear sensitive fields from the DOM after saving
+            document.getElementById('cardNumber').value = '';
+            document.getElementById('cardPassword').value = '';
+            document.getElementById('cardValidationNumber').value = '';
+            loadCardStatus();
+        }
+    } catch (e) {
+        msgEl.textContent = '저장 중 오류가 발생했습니다.';
+        msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+    }
+}
+
+async function clearCardSettings() {
+    const msgEl = document.getElementById('cardMessage');
+    try {
+        const resp = await fetch('/api/card/clear', {method: 'POST'});
+        const data = await resp.json();
+        msgEl.textContent = data.message;
+        msgEl.className = 'text-sm text-gray-600 basis-full mt-1';
+        loadCardStatus();
+    } catch (e) {
+        msgEl.textContent = '삭제 중 오류가 발생했습니다.';
         msgEl.className = 'text-sm text-red-500 basis-full mt-1';
     }
 }

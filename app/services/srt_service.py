@@ -13,6 +13,7 @@ sys.path.insert(
 from SRT import SRT, SRTError, SRTNotLoggedInError
 from SRT.constants import STATION_NAME
 from SRT.seat_type import SeatType
+from SRT.passenger import Adult
 
 from app.services.base_service import (
     BaseTrainService,
@@ -20,6 +21,16 @@ from app.services.base_service import (
     TrainProvider,
     SeatOption,
     ReservationResult,
+)
+from app.services.stations import KORAIL_STATIONS, SRT_STATION_ALIASES
+
+# Merged SRT+Korail station list, shown identically on both tabs (see korail_service.py
+# for the same union). Note: some stations are provider-exclusive (e.g. 수서/동탄 are
+# SRT-only, not served by KTX at all) - selecting one on the "wrong" tab will just
+# come back with no search results.
+ALL_STATIONS = sorted(
+    set(KORAIL_STATIONS)
+    | (set(STATION_NAME.values()) - set(SRT_STATION_ALIASES.values()))
 )
 
 
@@ -65,6 +76,11 @@ class SRTService(BaseTrainService):
         if not self._client:
             raise SRTNotLoggedInError()
 
+        # The dep/arr station list shown to the user is merged with Korail's, so
+        # normalize any station spelled differently in SRT's own station database.
+        dep = SRT_STATION_ALIASES.get(dep, dep)
+        arr = SRT_STATION_ALIASES.get(arr, arr)
+
         all_trains = []
         current_time = time
 
@@ -109,7 +125,8 @@ class SRTService(BaseTrainService):
         return [self._to_train_info(t) for t in all_trains]
 
     def reserve(
-        self, train: TrainInfo, seat_option: SeatOption = SeatOption.GENERAL_FIRST
+        self, train: TrainInfo, seat_option: SeatOption = SeatOption.GENERAL_FIRST,
+        passenger_count: int = 1
     ) -> ReservationResult:
         """Reserve an SRT train."""
         if not self._client:
@@ -127,7 +144,8 @@ class SRTService(BaseTrainService):
                 )
 
             reservation = self._client.reserve(
-                original_train, special_seat=srt_seat_type
+                original_train, passengers=[Adult(count=passenger_count)],
+                special_seat=srt_seat_type
             )
 
             return ReservationResult(
@@ -140,8 +158,38 @@ class SRTService(BaseTrainService):
             return ReservationResult(success=False, message=str(e))
 
     def get_stations(self) -> list[str]:
-        """Get list of SRT stations."""
-        return sorted(STATION_NAME.values())
+        """Get merged SRT+Korail station list (see ALL_STATIONS note above)."""
+        return ALL_STATIONS
+
+    def pay_with_card(
+        self,
+        reservation,
+        card_number: str,
+        card_password: str,
+        validation_number: str,
+        card_expire: str,
+        installment: int = 0,
+        card_type: str = "J",
+    ) -> ReservationResult:
+        """Pay for an SRT reservation with a credit card."""
+        if not self._client:
+            return ReservationResult(success=False, message="로그인이 필요합니다.")
+
+        try:
+            success = self._client.pay_with_card(
+                reservation,
+                card_number,
+                card_password,
+                validation_number,
+                card_expire,
+                installment,
+                card_type,
+            )
+            if success:
+                return ReservationResult(success=True, message="결제 완료!")
+            return ReservationResult(success=False, message="결제에 실패했습니다.")
+        except SRTError as e:
+            return ReservationResult(success=False, message=str(e))
 
     def _to_train_info(self, train) -> TrainInfo:
         """Convert SRT train to TrainInfo."""
