@@ -42,6 +42,10 @@ class TelegramService:
         self._on_trains_callback: Optional[Callable[[], str]] = None
 
         # Macro state tracking
+        # 매크로는 한 번에 하나만 돈다. 웹 '예약 시작' 버튼(연타/탭 여러 개)과
+        # 텔레그램 /reserve 가 동시에 들어와도 두 개가 뜨지 않도록 이 락으로
+        # 검사와 점유를 한 번에 처리한다.
+        self._macro_state_lock = threading.Lock()
         self._macro_running = False
         self._macro_info: dict = {}
         self._macro_start_time: Optional[datetime] = None
@@ -194,7 +198,7 @@ class TelegramService:
         Send a formatted reservation success notification.
         
         Args:
-            train_name: Name of the train (e.g., 'SRT 301')
+            train_name: Name of the train (e.g., 'KTX 101')
             dep_time: Departure time formatted
             dep_station: Departure station name
             arr_station: Arrival station name  
@@ -262,19 +266,36 @@ class TelegramService:
         self._on_reserve_callback = on_reserve
         self._on_trains_callback = on_trains
 
+    def try_start_macro(self) -> bool:
+        """매크로 실행 슬롯을 원자적으로 점유한다.
+
+        이미 실행 중이면 False 를 돌려주고 아무것도 바꾸지 않는다. True 를 받은
+        쪽만 매크로 스레드를 띄워야 하며, 스레드가 끝날 때 반드시
+        `set_macro_state(False)` 로 슬롯을 돌려줘야 한다.
+        """
+        with self._macro_state_lock:
+            if self._macro_running:
+                return False
+            self._macro_running = True
+            self._macro_info = {}
+            self._macro_start_time = datetime.now()
+            self._macro_attempt = 0
+            return True
+
     def set_macro_state(self, running: bool, info: dict = None):
         """Update macro running state for status reporting."""
-        self._macro_running = running
-        if running:
-            if info:
-                self._macro_info.update(info)
-            if not self._macro_start_time:
-                self._macro_start_time = datetime.now()
+        with self._macro_state_lock:
+            self._macro_running = running
+            if running:
+                if info:
+                    self._macro_info.update(info)
+                if not self._macro_start_time:
+                    self._macro_start_time = datetime.now()
+                    self._macro_attempt = 0
+            else:
+                self._macro_info = {}
+                self._macro_start_time = None
                 self._macro_attempt = 0
-        else:
-            self._macro_info = {}
-            self._macro_start_time = None
-            self._macro_attempt = 0
 
     def update_attempt(self, attempt: int):
         """Update current macro attempt count."""
@@ -316,16 +337,12 @@ class TelegramService:
         if not self._stored_provider or not self._stored_credentials:
             return None, None
 
-        from app.services.srt_service import SRTService
         from app.services.korail_service import KorailService
 
         provider = self._stored_provider
-        if provider == 'srt':
-            service = SRTService()
-        elif provider == 'korail':
-            service = KorailService()
-        else:
+        if provider != 'korail':
             return None, None
+        service = KorailService()
 
         try:
             success = service.login(
@@ -710,8 +727,7 @@ class TelegramService:
 
         # Provider info
         if self._stored_provider:
-            provider_name = 'SRT' if self._stored_provider == 'srt' else 'KTX(코레일)'
-            msg += f"🚄 서비스: {provider_name}\n"
+            msg += "🚄 서비스: KTX(코레일)\n"
 
         # Connection info
         msg += f"📡 텔레그램: {'연결됨 ✅' if self.is_connected else '미연결 ❌'}\n"

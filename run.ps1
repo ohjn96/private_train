@@ -17,7 +17,7 @@ Write-Host "✓ Activating virtual environment..." -ForegroundColor Yellow
 
 # Clear Python cache (실행 시 최신 코드 보장)
 Write-Host "✓ Clearing Python cache..." -ForegroundColor Yellow
-Get-ChildItem -Recurse -Path app,korail2,SRT -Include *.pyc,__pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -Path app,korail2 -Include *.pyc,__pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "🚄 Starting application..." -ForegroundColor Green

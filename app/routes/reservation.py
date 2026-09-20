@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Reservation routes with SSE support and multi-provider session."""
+"""Reservation routes with SSE support."""
 import json
 import random
 import threading
@@ -25,12 +25,6 @@ try:
     from korail2 import NeedToLoginError as KorailLoginError
 except ImportError:
     KorailLoginError = None
-
-try:
-    from SRT.errors import SRTNotLoggedInError, SRTLoginError
-except ImportError:
-    SRTNotLoggedInError = None
-    SRTLoginError = None
 
 bp = Blueprint("reservation", __name__)
 
@@ -128,6 +122,7 @@ def _setup_telegram_callbacks():
                     "message": "현재 매크로가 실행 중입니다. /stop 후 다시 시도해주세요.",
                 }
 
+
             # Start reservation macro in background thread
             trains = kwargs.get("trains", [])
             train_indices = kwargs.get("train_indices", [])
@@ -149,6 +144,12 @@ def _setup_telegram_callbacks():
             }
 
             card = tg.get_stored_card_settings()
+
+            if not tg.try_start_macro():
+                return {
+                    "success": False,
+                    "message": "현재 매크로가 실행 중입니다. /stop 후 다시 시도해주세요.",
+                }
 
             macro_thread = threading.Thread(
                 target=run_reservation_loop,
@@ -187,11 +188,7 @@ def _setup_telegram_callbacks():
 def is_login_error(error: Exception, provider: str) -> bool:
     """Check if the error is a login-related error that can be recovered."""
     if provider == "korail":
-        return KorailLoginError and isinstance(error, KorailLoginError)
-    elif provider == "srt":
-        return (SRTNotLoggedInError and isinstance(error, SRTNotLoggedInError)) or (
-            SRTLoginError and isinstance(error, SRTLoginError)
-        )
+        return bool(KorailLoginError and isinstance(error, KorailLoginError))
     return False
 
 
@@ -221,13 +218,22 @@ def reserve_select():
         passenger_count = 1
     sequential = request.form.get("sequential", "false") == "true"
 
-    # Store for this provider
-    set_selected_indices(
-        provider, [int(i) for i in selected_indices], seat_option,
-        passenger_count, sequential
-    )
+    # 같은 열차가 두 번 넘어오면(데스크톱 행과 모바일 카드가 둘 다 DOM 에 있어서
+    # 창 크기를 바꾸며 고르면 생길 수 있다) 같은 열차에 예약을 두 번 걸게 되므로
+    # 순서를 지키면서 중복을 제거한다.
+    indices: list[int] = []
+    for raw in selected_indices:
+        try:
+            idx = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if idx not in indices:
+            indices.append(idx)
 
-    return jsonify({"success": True, "count": len(selected_indices)})
+    # Store for this provider
+    set_selected_indices(provider, indices, seat_option, passenger_count, sequential)
+
+    return jsonify({"success": True, "count": len(indices)})
 
 
 def attempt_recovery(provider: str, service) -> tuple[bool, str]:
@@ -260,7 +266,20 @@ def attempt_recovery(provider: str, service) -> tuple[bool, str]:
         return False, f"리커버리 중 오류: {str(e)}"
 
 
-def run_reservation_loop(
+def run_reservation_loop(*args, **kwargs):
+    """Run the reservation loop and always hand the macro slot back.
+
+    스레드 본체에서 예상 못 한 예외가 나도 실행 슬롯(_macro_running)이 True 로
+    남아 다시는 매크로를 시작하지 못하는 일이 없도록 해제를 보장한다.
+    """
+    tg = TelegramService.get_instance()
+    try:
+        _run_reservation_loop(*args, **kwargs)
+    finally:
+        tg.set_macro_state(False)
+
+
+def _run_reservation_loop(
     service, provider: str, selected_trains: list, seat_option, card: dict | None,
     passenger_count: int = 1, sequential: bool = False
 ):
@@ -288,7 +307,11 @@ def run_reservation_loop(
     seats_secured = 0
 
     tg.clear_logs()
+    # 선택한 열차는 모두 같은 구간/날짜다 (한 번의 검색 결과에서 고른 것들이므로).
+    # 그래서 조회는 시도마다 딱 한 번, 가장 이른 열차 시각부터 가장 늦은 열차 시각까지
+    # 한 번에 훑고, 개별 열차는 그 결과 안에서 메모리로 대조한다.
     earliest_train = min(selected_trains, key=lambda t: t["dep_time"])
+    latest_train = max(selected_trains, key=lambda t: t["dep_time"])
     trains_summary = ", ".join(
         f"{t['train_name']}({t['dep_time'][:2]}:{t['dep_time'][2:4]})"
         for t in selected_trains
@@ -322,12 +345,15 @@ def run_reservation_loop(
             tg.set_macro_state(True, {"current_train": None, "current_time": None})
             tg.push_log("log", f"[{timestamp}] 시도 #{attempt}: 열차 정보 조회 중...")
 
+            # 선택한 열차 중 가장 늦은 것까지 포함될 때까지만 페이지를 넘긴다.
+            # (열차를 하나만 골랐으면 API 호출 1번으로 끝난다)
             fresh_trains = service.search(
                 dep=earliest_train["dep_station"],
                 arr=earliest_train["arr_station"],
                 date=earliest_train["dep_date"],
                 time=earliest_train["dep_time"],
                 include_no_seats=True,
+                until_time=latest_train["dep_time"],
             )
             consecutive_errors = 0
 
@@ -471,6 +497,8 @@ def run_reservation_loop(
                     tg.send_message(f"⚠️ {msg}")
                 time.sleep(1)
 
+        # 시도 사이의 간격. API 호출 간 최소 간격 자체는 korail_api 게이트가
+        # 따로 보장하므로, 여기 sleep 은 재시도 주기를 조절하는 용도다.
         time.sleep(random.uniform(1, 1.5))
 
     tg.set_macro_state(False)
@@ -520,9 +548,6 @@ def start_reservation():
     the server, and reconnecting just replays the shared log buffer.
     """
     tg = TelegramService.get_instance()
-    if tg._macro_running:
-        return jsonify({"success": False, "message": "이미 매크로가 실행 중입니다."})
-
     provider = get_current_provider()
     service = ServiceManager.get_service(provider)
 
@@ -556,6 +581,11 @@ def start_reservation():
     # Setup telegram remote control callbacks (also captures session state needed
     # by the thread, e.g. stored credentials/card settings for recovery/payment)
     _setup_telegram_callbacks()
+
+    # 검사와 점유를 원자적으로. 버튼 연타나 탭 여러 개에서 동시에 들어와도
+    # 매크로가 두 개 뜨지 않는다 (두 개가 뜨면 같은 열차를 중복 예약하게 된다).
+    if not tg.try_start_macro():
+        return jsonify({"success": False, "message": "이미 매크로가 실행 중입니다."})
 
     global STOP_MACRO
     STOP_MACRO = False

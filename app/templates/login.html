@@ -9,57 +9,13 @@
             <!-- Logo & Title -->
             <div class="text-center mb-8">
                 <h1 class="text-3xl font-bold mb-2">
-                    {% if provider == 'srt' %}
-                    <span class="text-srt-primary">SRT</span>
-                    {% else %}
-                    <span class="text-ktx-primary">KTX/코레일</span>
-                    {% endif %}
+                    <span class="text-ktx-primary">KTX/SRT</span>
                     예약
                 </h1>
-                <p class="text-gray-500">로그인하여 시작하세요</p>
+                <p class="text-gray-500">코레일 계정으로 로그인하세요 (SRT 열차도 함께 조회됩니다)</p>
             </div>
 
-            <!-- Currently logged in notice -->
-            {% if logged_in_providers %}
-            <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p class="text-sm text-blue-700">
-                    <span class="font-medium">현재 로그인:</span>
-                    {% for p in logged_in_providers %}
-                        <a href="{{ url_for('auth.switch_provider', provider=p) }}"
-                           class="inline-flex items-center px-2 py-0.5 mx-1 rounded-full text-xs font-medium
-                                  {% if p == 'srt' %}bg-purple-100 text-purple-700{% else %}bg-red-100 text-red-700{% endif %}
-                                  hover:underline">
-                            {{ 'SRT' if p == 'srt' else 'KTX' }}
-                        </a>
-                    {% endfor %}
-                </p>
-                <p class="text-xs text-blue-600 mt-1">
-                    다른 서비스에 추가 로그인하거나 위 버튼을 눌러 전환하세요.
-                </p>
-            </div>
-            {% endif %}
 
-            <!-- Provider Tabs -->
-            <div class="flex mb-6 bg-gray-100 rounded-lg p-1">
-                {% set srt_logged_in = 'srt' in (logged_in_providers or []) %}
-                {% set korail_logged_in = 'korail' in (logged_in_providers or []) %}
-                <a href="{{ url_for('auth.login', provider='srt') }}"
-                   class="flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors relative
-                          {% if provider == 'srt' %}bg-srt-primary text-white shadow{% else %}text-gray-600 hover:text-gray-900{% endif %}">
-                    SRT
-                    {% if srt_logged_in %}
-                    <span class="absolute top-0 right-2 w-2 h-2 bg-green-500 rounded-full"></span>
-                    {% endif %}
-                </a>
-                <a href="{{ url_for('auth.login', provider='korail') }}"
-                   class="flex-1 py-2 text-center rounded-md text-sm font-medium transition-colors relative
-                          {% if provider == 'korail' %}bg-ktx-primary text-white shadow{% else %}text-gray-600 hover:text-gray-900{% endif %}">
-                    KTX/코레일
-                    {% if korail_logged_in %}
-                    <span class="absolute top-0 right-2 w-2 h-2 bg-green-500 rounded-full"></span>
-                    {% endif %}
-                </a>
-            </div>
 
             <!-- Error Message -->
             {% if error %}
@@ -84,7 +40,7 @@
                            inputmode="text"
                            autocomplete="username"
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2
-                                  {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}
+                                  focus:ring-ktx-primary
                                   focus:border-transparent transition-colors">
                     <p id="user_id_hint" class="mt-1 text-xs text-gray-400 hidden">전화번호: 010-0000-0000 형식</p>
                 </div>
@@ -99,13 +55,13 @@
                            required
                            placeholder="비밀번호를 입력하세요"
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2
-                                  {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}
+                                  focus:ring-ktx-primary
                                   focus:border-transparent transition-colors">
                 </div>
 
                 <button type="submit"
                         class="w-full py-3 px-4 rounded-lg text-white font-medium transition-colors
-                               {% if provider == 'srt' %}bg-srt-primary hover:bg-srt-secondary{% else %}bg-ktx-primary hover:bg-ktx-secondary{% endif %}">
+                               bg-ktx-primary hover:bg-ktx-secondary">
                     로그인
                 </button>
             </form>
@@ -113,11 +69,7 @@
             <!-- Help Text -->
             <div class="mt-6 text-center">
                 <p class="text-xs text-gray-400">
-                    {% if provider == 'srt' %}
-                    SRT 회원 아이디로 로그인하세요
-                    {% else %}
                     코레일 회원 아이디로 로그인하세요
-                    {% endif %}
                 </p>
             </div>
         </div>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}열차 검색 - {{ 'SRT' if provider == 'srt' else 'KTX' }} 예약{% endblock %}
+{% block title %}열차 검색 - KTX/SRT 예약{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
@@ -19,10 +19,19 @@
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">출발역</label>
                         <div class="relative">
                             <input type="text" name="dep" id="depStation" data-testid="search-from"
-                                   list="stationDatalist" autocomplete="off" placeholder="역 검색 (예: 서울)"
+                                   autocomplete="off" placeholder="역 검색 (예: 서울)"
                                    value="{{ form_data.dep }}"
-                                   class="w-full pl-4 pr-4 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800
-                                          {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}">
+                                   class="w-full pl-4 pr-10 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800
+                                          focus:ring-ktx-primary">
+                            <div class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
+                            <ul id="depStationList" data-for="depStation"
+                                class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg py-1">
+                                {% for station in stations %}
+                                <li data-value="{{ station }}" class="station-option px-4 py-2.5 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100">{{ station }}</li>
+                                {% endfor %}
+                            </ul>
                         </div>
                     </div>
 
@@ -39,18 +48,22 @@
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">도착역</label>
                         <div class="relative">
                             <input type="text" name="arr" id="arrStation" data-testid="search-to"
-                                   list="stationDatalist" autocomplete="off" placeholder="역 검색 (예: 부산)"
+                                   autocomplete="off" placeholder="역 검색 (예: 부산)"
                                    value="{{ form_data.arr }}"
-                                   class="w-full pl-4 pr-4 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800
-                                          {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}">
+                                   class="w-full pl-4 pr-10 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800
+                                          focus:ring-ktx-primary">
+                            <div class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
+                            <ul id="arrStationList" data-for="arrStation"
+                                class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg py-1">
+                                {% for station in stations %}
+                                <li data-value="{{ station }}" class="station-option px-4 py-2.5 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100">{{ station }}</li>
+                                {% endfor %}
+                            </ul>
                         </div>
                     </div>
 
-                    <datalist id="stationDatalist">
-                        {% for station in stations %}
-                        <option value="{{ station }}">
-                        {% endfor %}
-                    </datalist>
                 </div>
 
                 <!-- Group 2: Schedule (Date & Time) -->
@@ -61,7 +74,7 @@
                             <input type="text" name="date" id="dateInput" data-testid="date-picker" value="{{ form_data.date }}"
                                    placeholder="날짜 선택"
                                    class="w-full pl-10 pr-4 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800 cursor-pointer
-                                          {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}">
+                                          focus:ring-ktx-primary">
                             <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                             </div>
@@ -73,7 +86,7 @@
                         <div class="relative">
                             <select name="time" data-testid="time-picker"
                                     class="w-full pl-10 pr-10 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800 appearance-none
-                                           {% if provider == 'srt' %}focus:ring-srt-primary{% else %}focus:ring-ktx-primary{% endif %}">
+                                           focus:ring-ktx-primary">
                                 {% for h in range(24) %}
                                 {% set hh = "%02d:00"|format(h) %}
                                 <option value="{{ hh }}" {% if form_data.time == hh %}selected{% endif %}>
@@ -95,7 +108,7 @@
                 <div class="col-span-1 lg:col-span-2 flex items-end">
                     <button type="submit" data-testid="search-submit"
                             class="w-full py-3.5 rounded-xl text-white font-bold shadow-md hover:shadow-lg transform active:scale-95 transition-all duration-200 flex items-center justify-center gap-2
-                                   {% if provider == 'srt' %}bg-srt-primary hover:bg-srt-secondary shadow-purple-200{% else %}bg-ktx-primary hover:bg-ktx-secondary shadow-red-200{% endif %}">
+                                   bg-ktx-primary hover:bg-ktx-secondary shadow-red-200">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                         검색
                     </button>
@@ -166,10 +179,10 @@
                         <!-- Train Info with Type Badge -->
                         <td class="px-6 py-5">
                             <div class="flex items-center gap-3">
-                                {% if 'SRT' in train.train_name %}
-                                <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-purple-100 text-purple-700">SRT</span>
-                                {% else %}
+                                {% if 'KTX' in train.train_name %}
                                 <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-red-100 text-red-700">KTX</span>
+                                {% else %}
+                                <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-gray-100 text-gray-600">일반</span>
                                 {% endif %}
                                 <div>
                                     <div class="font-semibold text-gray-900">{{ train.train_name }}</div>
@@ -235,10 +248,10 @@
                 <!-- Top: Train Info + Time -->
                 <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center gap-2">
-                        {% if 'SRT' in train.train_name %}
-                        <span class="px-2 py-1 text-xs font-bold rounded bg-purple-100 text-purple-700">SRT</span>
-                        {% else %}
+                        {% if 'KTX' in train.train_name %}
                         <span class="px-2 py-1 text-xs font-bold rounded bg-red-100 text-red-700">KTX</span>
+                        {% else %}
+                        <span class="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-600">일반</span>
                         {% endif %}
                         <span class="font-semibold text-gray-900">{{ train.train_name }}</span>
                         <span class="text-xs text-gray-500">#{{ train.train_number }}</span>
@@ -307,12 +320,12 @@
                     <span class="text-sm text-gray-600">예약 성공 시:</span>
                     <label class="inline-flex items-center">
                         <input type="radio" name="sound_option" value="once" checked data-testid="sound-option-once"
-                               class="{% if provider == 'srt' %}text-srt-primary{% else %}text-ktx-primary{% endif %}">
+                               class="text-ktx-primary">
                         <span class="ml-2 text-sm text-gray-700">1회 알림</span>
                     </label>
                     <label class="inline-flex items-center">
                         <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat"
-                               class="{% if provider == 'srt' %}text-srt-primary{% else %}text-ktx-primary{% endif %}">
+                               class="text-ktx-primary">
                         <span class="ml-2 text-sm text-gray-700">10초 반복</span>
                     </label>
                     <button type="button" id="ackBtn" data-testid="ack-button" class="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded transition-colors">
@@ -324,7 +337,7 @@
                 <div class="flex space-x-3">
                     <button type="button" id="startBtn" data-testid="reserve-start"
                             class="px-6 py-2 rounded-lg text-white font-medium transition-colors
-                                   {% if provider == 'srt' %}bg-srt-primary hover:bg-srt-secondary{% else %}bg-ktx-primary hover:bg-ktx-secondary{% endif %}">
+                                   bg-ktx-primary hover:bg-ktx-secondary">
                         예약 시작
                     </button>
                     <button type="button" id="stopBtn" data-testid="reserve-stop"
@@ -654,6 +667,89 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Searchable station dropdown: shows the full list on click/focus, filters as you type
+    function initStationDropdown(input) {
+        const list = document.querySelector('[data-for="' + input.id + '"]');
+        if (!list) return;
+        const options = Array.from(list.querySelectorAll('.station-option'));
+        let activeIndex = -1;
+
+        const visibleOptions = () => options.filter(o => !o.classList.contains('hidden'));
+        const isOpen = () => !list.classList.contains('hidden');
+
+        function setActive(idx) {
+            const vis = visibleOptions();
+            vis.forEach(o => o.classList.remove('bg-gray-100'));
+            activeIndex = idx;
+            if (idx >= 0 && idx < vis.length) {
+                vis[idx].classList.add('bg-gray-100');
+                vis[idx].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function filter(query) {
+            const q = (query || '').trim().toLowerCase();
+            options.forEach(o => {
+                const match = !q || o.dataset.value.toLowerCase().includes(q);
+                o.classList.toggle('hidden', !match);
+            });
+        }
+
+        function open() {
+            filter('');
+            list.classList.remove('hidden');
+            setActive(visibleOptions().findIndex(o => o.dataset.value === input.value));
+        }
+
+        function close() {
+            list.classList.add('hidden');
+            setActive(-1);
+        }
+
+        function choose(option) {
+            input.value = option.dataset.value;
+            close();
+        }
+
+        input.addEventListener('focus', open);
+        input.addEventListener('click', open);
+        input.addEventListener('input', function() {
+            filter(input.value);
+            list.classList.remove('hidden');
+            setActive(-1);
+        });
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!isOpen()) { open(); return; }
+                setActive(Math.min(activeIndex + 1, visibleOptions().length - 1));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActive(Math.max(activeIndex - 1, 0));
+            } else if (e.key === 'Enter') {
+                if (isOpen() && activeIndex >= 0) {
+                    e.preventDefault();
+                    choose(visibleOptions()[activeIndex]);
+                }
+            } else if (e.key === 'Escape') {
+                close();
+            }
+        });
+        // mousedown (not click) so the option is picked before the input loses focus
+        list.addEventListener('mousedown', function(e) {
+            const opt = e.target.closest('.station-option');
+            if (opt) {
+                e.preventDefault();
+                choose(opt);
+            }
+        });
+        document.addEventListener('click', function(e) {
+            if (!input.contains(e.target) && !list.contains(e.target)) close();
+        });
+    }
+
+    [depStation, arrStation].forEach(function(el) { if (el) initStationDropdown(el); });
+
     // Load More Functionality
     const loadMoreBtn = document.getElementById('loadMoreBtn');
     let isLoading = false; // Prevent multiple fetch calls
@@ -773,8 +869,10 @@ document.addEventListener('DOMContentLoaded', function() {
             row.dataset.time = train.dep_time;
             row.onclick = function() { toggleTrainSelection(this); };
             
-            const badgeClass = train.train_name.includes('SRT') ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700';
-            const badgeText = train.train_name.includes('SRT') ? 'SRT' : 'KTX';
+            // 코레일 API가 SRT 열차도 'KTX-산천' 등으로 내려주므로 KTX 계열 여부만 구분한다
+            const isKtx = train.train_name.includes('KTX');
+            const badgeClass = isKtx ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600';
+            const badgeText = isKtx ? 'KTX' : '일반';
             
             row.innerHTML = `
                 <td class="px-6 py-5">

@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Session management utilities for multi-provider support."""
+"""Session management utilities (코레일 단일 서비스)."""
 from flask import session
 from typing import Optional, Dict, Any, List
+
+#: 유일한 서비스 제공자. SRT 열차도 코레일 API로 함께 조회된다.
+PROVIDER = 'korail'
 
 
 def _init_session_structure() -> None:
@@ -18,12 +21,12 @@ def _init_session_structure() -> None:
 
 def get_current_provider() -> str:
     """Get the currently active provider."""
-    return session.get('current_provider', 'srt')
+    return session.get('current_provider', PROVIDER)
 
 
 def set_current_provider(provider: str) -> None:
     """Set the currently active provider."""
-    if provider not in ['srt', 'korail']:
+    if provider != PROVIDER:
         raise ValueError(f"Invalid provider: {provider}")
     session['current_provider'] = provider
     session.modified = True
@@ -68,12 +71,12 @@ def is_logged_in(provider: str = None) -> bool:
 
 def get_logged_in_providers() -> List[str]:
     """Get list of all logged-in providers."""
-    return [p for p in ['srt', 'korail'] if is_logged_in(p)]
+    return [p for p in [PROVIDER] if is_logged_in(p)]
 
 
 def get_any_logged_in_provider() -> Optional[str]:
     """Return any provider that is logged in, or None."""
-    for p in ['srt', 'korail']:
+    for p in [PROVIDER]:
         if is_logged_in(p):
             return p
     return None

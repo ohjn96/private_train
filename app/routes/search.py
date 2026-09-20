@@ -9,7 +9,7 @@ from flask import (
 
 from app.services import ServiceManager
 from app.utils.session_helper import (
-    get_current_provider, is_logged_in, get_logged_in_providers,
+    get_current_provider, is_logged_in,
     get_search_state, set_search_trains,
     get_card_settings, set_card_settings, clear_card_settings
 )
@@ -23,15 +23,10 @@ def get_service(provider: str):
 
 
 def login_required(f):
-    """Decorator to require login for current provider."""
+    """Decorator to require login."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        provider = get_current_provider()
-        if not is_logged_in(provider):
-            # Check if logged in to any other provider
-            logged_in = get_logged_in_providers()
-            if logged_in:
-                return redirect(url_for('auth.switch_provider', provider=logged_in[0]))
+        if not is_logged_in(get_current_provider()):
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -208,14 +203,14 @@ def index():
     # Form data - POST data takes priority, then saved data, then defaults
     if request.method == 'POST':
         form_data = {
-            'dep': request.form.get('dep', '수서' if provider == 'srt' else '용산'),
+            'dep': request.form.get('dep', '용산'),
             'arr': request.form.get('arr', '순천'),
             'date': request.form.get('date', default_date),
             'time': request.form.get('time', default_time)
         }
     else:
         form_data = {
-            'dep': saved_form.get('dep', '수서' if provider == 'srt' else '용산'),
+            'dep': saved_form.get('dep', '용산'),
             'arr': saved_form.get('arr', '순천'),
             'date': saved_form.get('date', default_date),
             'time': saved_form.get('time', default_time)
@@ -287,5 +282,4 @@ def index():
                            form_data=form_data,
                            default_date=default_date,
                            trains=trains,
-                           error_message=error_message,
-                           logged_in_providers=get_logged_in_providers())
+                           error_message=error_message)

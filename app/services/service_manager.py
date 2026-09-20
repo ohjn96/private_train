@@ -3,7 +3,6 @@
 from flask import g
 from typing import Optional
 
-from app.services.srt_service import SRTService
 from app.services.korail_service import KorailService
 from app.services.base_service import BaseTrainService
 from app.utils.session_helper import (
@@ -41,12 +40,9 @@ class ServiceManager:
             return getattr(g, key)
 
         # Create new instance
-        if provider == "srt":
-            service = SRTService()
-        elif provider == "korail":
-            service = KorailService()
-        else:
+        if provider != "korail":
             return None
+        service = KorailService()
 
         # Try to restore login from session credentials
         if is_logged_in(provider):
@@ -107,7 +103,7 @@ class ServiceManager:
     @classmethod
     def logout_all(cls) -> None:
         """Logout from all providers and clear entire session."""
-        for provider in ["srt", "korail"]:
+        for provider in ["korail"]:
             key = cls._get_service_key(provider)
             if hasattr(g, key):
                 service = getattr(g, key)

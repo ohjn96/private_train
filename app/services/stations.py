@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Shared Korail station list.
+"""Station list for train search.
 
-Kept in its own module (no imports) so both korail_service.py and srt_service.py
-can build the same merged SRT+Korail station list without importing each other.
+코레일 API가 SRT 노선(수서/동탄/평택지제 출발 등)까지 함께 조회해 주기 때문에
+코레일 역과 SRT 역을 합친 하나의 목록만 사용한다. SRT 전용 패키지를 제거하면서
+예전에 SRT.constants 에서 가져오던 역 이름을 여기에 그대로 옮겨 두었다.
 """
 
+# 코레일 노선 역
 KORAIL_STATIONS = [
     "서울", "용산", "광명", "천안아산", "오송", "대전", "김천(구미)", "신경주",
     "울산(통도사)", "부산", "공주", "익산", "정읍", "광주송정", "목포", "전주",
@@ -13,10 +15,11 @@ KORAIL_STATIONS = [
     "군산", "강릉", "만종", "둔내", "평창", "진부", "포항", "태화강"
 ]
 
-# A handful of stations are spelled differently in Korail's station database than in
-# SRT's - same physical station, different label (Korail spelling -> SRT spelling).
-# Used both to de-duplicate the merged station list and to normalize a station name
-# before calling SRT's API, which requires an exact match.
-SRT_STATION_ALIASES = {
-    "여수엑스포": "여수EXPO",
-}
+# 위 목록에 없던 SRT 노선 역 (수서/동탄/평택지제는 SRT 전용, 나머지는 공용)
+SRT_ONLY_STATIONS = [
+    "경주", "곡성", "구례구", "나주", "동대구", "동탄", "밀양",
+    "서대구", "수서", "진영", "평택지제"
+]
+
+# 검색 화면에 노출되는 전체 역 목록
+ALL_STATIONS = sorted(set(KORAIL_STATIONS) | set(SRT_ONLY_STATIONS))

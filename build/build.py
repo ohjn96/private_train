@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Cross-platform build script for KTX/SRT Train Reservation App.
+Cross-platform build script for the KTX/SRT Train Reservation App.
 """
 import os
 import sys
@@ -26,15 +26,9 @@ BUILD_CONFIG = {
         ],
         'hidden_imports': [
             'flask', 'flask.sessions',
-            'SRT', 'korail2',
+            'korail2',
             'requests', 'pycryptodome',
         ]
-    },
-    'srt': {
-        'script': 'srt_main_web.py',
-        'name': 'SRTReservationApp',
-        'data': [f'static{DATA_SEP}static'],
-        'hidden_imports': ['flask', 'flask.sessions'],
     },
     'ktx': {
         'script': 'ktx_main_web.py',

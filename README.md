@@ -6,11 +6,12 @@
 
 ## 개요
 
-SRT와 KTX(코레일) 열차를 통합하여 예약할 수 있는 웹 애플리케이션입니다.
+코레일 계정 하나로 KTX와 SRT 열차를 함께 조회/예약하는 웹 애플리케이션입니다.
+코레일 API가 SRT 노선(수서·동탄·평택지제 등)까지 함께 조회해 주므로 SRT 전용 로그인은 필요하지 않습니다.
 
 ### 주요 기능
 
-- SRT / KTX 통합 예약
+- KTX + SRT 통합 조회/예약 (코레일 계정 하나)
 - 실시간 좌석 검색
 - 자동 예약 시도 (매크로)
 - 예약 성공 시 알림음
@@ -98,6 +99,26 @@ python main.py
 ```
 
 브라우저에서 `http://localhost:5050` 접속
+
+---
+
+## 테스트
+
+코레일 서버에 붙지 않는 회귀 테스트입니다. 가짜 클라이언트를 꽂아 예약 플로우의
+호출 순서·횟수·간격만 검사하므로 계정 없이 언제든 돌릴 수 있습니다.
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+검사하는 것:
+
+- 조회 페이징 (선택한 열차가 전부 조회 범위에 들어오는지)
+- API 호출 간격 1.5초 유지, 단 좌석을 찾은 직후의 예약만 즉시 실행
+- 여러 열차를 선택해도 시도당 조회는 한 번, 좌석 있는 열차만 예약
+- 2인 동시 예약 / 2인 순차 예약
+- 매크로 이중 실행 차단, 예외로 죽어도 실행 슬롯 반납
+- 같은 열차 중복 선택 제거
 
 ---
 
@@ -194,9 +215,9 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 사용자: /reserve 수서 부산 2026-03-01 06:00
   봇: 🔍 열차 검색 중...
   봇: 🚄 검색 결과 (10건)
-      1. SRT 301 06:00→08:40 🔴일반 🔴특실
-      2. SRT 303 06:30→09:10 🟢일반 🔴특실
-      3. SRT 305 07:00→09:40 🔴일반 🔴특실
+      1. KTX 101 06:00→08:40 🔴일반 🔴특실
+      2. KTX-산천 303 06:30→09:10 🟢일반 🔴특실
+      3. KTX 105 07:00→09:40 🔴일반 🔴특실
       📌 예약할 열차 번호를 입력하세요
 
 사용자: 1,2,3
@@ -206,7 +227,7 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
   ... (자동 반복 시도) ...
 
   봇: 🎉 예약 성공!
-      🚄 SRT 303 / 🕐 06:30
+      🚄 KTX-산천 303 / 🕐 06:30
       📍 수서 → 부산
 ```
 
@@ -219,7 +240,7 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 ```
 
 ### 1. 이 앱에서 할 수 있는 것
-- 로그인 (SRT/KTX 계정)
+- 로그인 (코레일 계정)
 - 열차 검색
 - 자동 예약 시도 (매크로)
 
@@ -228,8 +249,7 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 | 서비스 | 확인 방법 |
 |--------|----------|
-| **KTX** | 코레일톡 앱 → 마이 → 예약내역 |
-| **SRT** | SRT 앱 → 승차권 확인 → 결제 |
+| **KTX / SRT** | 코레일톡 앱 → 마이 → 예약내역 |
 
 ### 3. 주의사항
 - 예약 후 **결제 기한**(20분~1시간) 내 결제 필수
@@ -243,11 +263,11 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 private_train/
 ├── app/                        # Flask 앱
 │   ├── routes/                 # 라우트 (auth, search, reservation, telegram)
-│   ├── services/               # 서비스 레이어 (SRT, Korail, Telegram)
+│   ├── services/               # 서비스 레이어 (Korail, Telegram)
 │   ├── templates/              # Jinja2 템플릿
 │   └── static/                 # 정적 파일
-├── SRT/                        # SRT API 모듈
 ├── korail2/                    # Korail API 모듈
+├── tests/                      # 회귀 테스트 (네트워크 불필요)
 ├── build/                      # 빌드 스크립트
 ├── main.py                     # 진입점
 └── requirements.txt            # 의존성

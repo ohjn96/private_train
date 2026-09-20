@@ -8,8 +8,10 @@ from typing import Any
 
 
 class TrainProvider(Enum):
-    """Train service provider enum."""
-    SRT = "srt"
+    """Train service provider enum.
+
+    SRT는 코레일 API로 함께 조회되므로 별도 provider를 두지 않는다.
+    """
     KORAIL = "korail"
 
 
@@ -115,7 +117,8 @@ class BaseTrainService(ABC):
         arr: str,
         date: str,
         time: str,
-        include_no_seats: bool = False
+        include_no_seats: bool = False,
+        until_time: str | None = None,
     ) -> list[TrainInfo]:
         """Search for available trains.
 
@@ -125,6 +128,9 @@ class BaseTrainService(ABC):
             date: Departure date (YYYYMMDD)
             time: Departure time (HHMMSS)
             include_no_seats: Include sold-out trains
+            until_time: Keep paging until a train departing at/after this time
+                (HHMMSS) shows up. None fetches a single page. Each page costs
+                one API call.
 
         Returns:
             List of TrainInfo objects

@@ -2,14 +2,12 @@
 """Korail train service implementation."""
 import sys
 import os
-import time
 from datetime import datetime, timedelta
 
 # Add parent directory to path for korail2 module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from korail2 import Korail, KorailError, NeedToLoginError, SoldOutError, NoResultsError, ReserveOption, AdultPassenger
-from SRT.constants import STATION_NAME as SRT_STATION_NAME
 
 from app.services.base_service import (
     BaseTrainService,
@@ -18,16 +16,12 @@ from app.services.base_service import (
     SeatOption,
     ReservationResult
 )
-from app.services.stations import KORAIL_STATIONS, SRT_STATION_ALIASES
+from app.services.stations import ALL_STATIONS
+from app.services.rate_limit import korail_api
 
-# Merged SRT+Korail station list, shown identically on both tabs (see srt_service.py
-# for the same union). Note: some stations are provider-exclusive (e.g. 수서/동탄 are
-# SRT-only, not served by KTX at all) - selecting one on the "wrong" tab will just
-# come back with no search results.
-ALL_STATIONS = sorted(
-    set(KORAIL_STATIONS)
-    | (set(SRT_STATION_NAME.values()) - set(SRT_STATION_ALIASES.values()))
-)
+
+#: 한 번의 search() 가 넘길 수 있는 최대 페이지 수 (= 최대 API 호출 횟수)
+MAX_SEARCH_PAGES = 5
 
 
 class KorailService(BaseTrainService):
@@ -41,6 +35,7 @@ class KorailService(BaseTrainService):
     def login(self, user_id: str, password: str) -> bool:
         """Login to Korail."""
         try:
+            korail_api.wait()
             self._client = Korail(user_id, password, auto_login=True, want_feedback=False)
             self._user_id = user_id
             self._password = password
@@ -51,6 +46,7 @@ class KorailService(BaseTrainService):
     def logout(self) -> None:
         """Logout from Korail."""
         if self._client:
+            korail_api.wait()
             self._client.logout()
         self._client = None
         self._user_id = None
@@ -66,22 +62,29 @@ class KorailService(BaseTrainService):
         arr: str,
         date: str,
         time: str,
-        include_no_seats: bool = False
+        include_no_seats: bool = False,
+        until_time: str | None = None,
+        max_pages: int = MAX_SEARCH_PAGES,
     ) -> list[TrainInfo]:
-        """
-        Search for Korail trains with pagination-like logic.
-        Fetches approx 20 trains by default (2 pages).
+        """Search Korail trains, paging forward from `time`.
+
+        코레일은 한 번에 10건 정도만 돌려주므로 필요한 만큼만 페이지를 더 넘긴다.
+        호출 간격은 korail_api 게이트가 강제하므로 여기서 따로 sleep 하지 않는다.
+
+        :param until_time: 이 시각(HHMMSS)의 열차까지 나올 때까지만 페이지를 넘긴다.
+            None 이면 한 페이지만 가져온다. 페이지 한 장이 API 호출 한 번이다.
+        :param max_pages: 안전장치. 이 장수를 넘겨 호출하지 않는다.
         """
         if not self._client:
             raise NeedToLoginError()
 
         all_trains = []
         current_time = time
-        
-        # Fetch up to 2 pages (approx 20 trains)
-        # Korail returns ~10 trains per call
-        for _ in range(2):
+        pages = max(1, min(max_pages, MAX_SEARCH_PAGES))
+
+        for _ in range(pages):
             try:
+                korail_api.wait()
                 trains = self._client.search_train(
                     dep=dep,
                     arr=arr,
@@ -89,30 +92,28 @@ class KorailService(BaseTrainService):
                     time=current_time,
                     include_no_seats=include_no_seats
                 )
-                
-                if not trains:
-                    break
-                    
-                all_trains.extend(trains)
-                
-                # Add 1.5 second delay to avoid rate limiting (max 40 API calls per minute)
-                time.sleep(1.5)
-                
-                # Update time for next page
-                # Parse last train time and add 1 minute
-                last_train = trains[-1]
-                last_dt = datetime.strptime(f"{last_train.dep_date}{last_train.dep_time}", "%Y%m%d%H%M%S")
-                next_dt = last_dt + timedelta(minutes=1)
-                current_time = next_dt.strftime("%H%M%S")
-                
-                # If next page query time goes to next day, stop
-                if next_dt.strftime("%Y%m%d") != date:
-                    break
-                    
             except NoResultsError:
                 break
             except Exception:
                 break
+
+            if not trains:
+                break
+
+            all_trains.extend(trains)
+
+            last_train = trains[-1]
+
+            # 원하는 시각까지 이미 커버했으면 더 부르지 않는다
+            if until_time is None or last_train.dep_time >= until_time:
+                break
+
+            # 다음 페이지는 마지막 열차 1분 뒤부터
+            last_dt = datetime.strptime(f"{last_train.dep_date}{last_train.dep_time}", "%Y%m%d%H%M%S")
+            next_dt = last_dt + timedelta(minutes=1)
+            if next_dt.strftime("%Y%m%d") != date:
+                break
+            current_time = next_dt.strftime("%H%M%S")
 
         return [self._to_train_info(t) for t in all_trains]
 
@@ -142,6 +143,9 @@ class KorailService(BaseTrainService):
                 )
 
             passengers = [AdultPassenger(count=passenger_count)]
+            # 좌석을 발견한 직후이므로 간격을 기다리지 않고 바로 예약을 건다.
+            # (기다리는 사이 좌석이 사라진다) 대신 호출 시각은 게이트에 기록한다.
+            korail_api.note_call()
             reservation = self._client.reserve(original_train, passengers=passengers, option=korail_option)
 
             return ReservationResult(
@@ -162,7 +166,7 @@ class KorailService(BaseTrainService):
             )
 
     def get_stations(self) -> list[str]:
-        """Get merged SRT+Korail station list (see ALL_STATIONS note above)."""
+        """Get the full station list (코레일 + SRT 노선)."""
         return ALL_STATIONS
 
     def pay_with_card(
@@ -180,6 +184,7 @@ class KorailService(BaseTrainService):
             return ReservationResult(success=False, message="로그인이 필요합니다.")
 
         try:
+            korail_api.wait()
             success = self._client.pay_with_card(
                 reservation,
                 card_number,
