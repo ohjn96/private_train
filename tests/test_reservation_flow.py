@@ -389,5 +389,70 @@ class SelectionTest(unittest.TestCase):
         self.assertEqual(state['passenger_count'], 2)
 
 
+class ServiceReuseTest(unittest.TestCase):
+    """페이지를 열 때마다 코레일에 로그인하면 안 된다."""
+
+    def setUp(self):
+        from unittest import mock
+        from app import create_app
+        from app.services import ServiceManager
+
+        self.ServiceManager = ServiceManager
+        ServiceManager._services.clear()
+        self.logins = []
+
+        def fake_login(svc, user_id, password):
+            self.logins.append(user_id)
+            svc._user_id, svc._password = user_id, password
+            svc._client = type('C', (), {'logined': True})()
+            return True
+
+        def fake_logout(svc):
+            svc._client = None
+            svc._user_id = None
+
+        self.patches = [
+            mock.patch.object(KorailService, 'login', fake_login),
+            mock.patch.object(KorailService, 'logout', fake_logout),
+            mock.patch.object(KorailService, 'is_logged_in',
+                              lambda svc: svc._client is not None),
+        ]
+        [p.start() for p in self.patches]
+        self.client = create_app().test_client()
+
+    def tearDown(self):
+        [p.stop() for p in self.patches]
+        self.ServiceManager._services.clear()
+
+    def sign_in(self, user_id='tester'):
+        with self.client.session_transaction() as sess:
+            sess['auth'] = {'korail': {'logged_in': True, 'user_id': user_id}}
+            sess['credentials'] = {'korail': {'user_id': user_id, 'password': 'pw'}}
+            sess['current_provider'] = 'korail'
+            sess['search_state'] = {'korail': {
+                'trains': [], 'selected_indices': [],
+                'seat_option': 'GENERAL_FIRST', 'form_data': {}}}
+
+    def test_login_happens_once_across_requests(self):
+        self.sign_in()
+        for _ in range(5):
+            self.client.get('/')
+        self.assertEqual(len(self.logins), 1,
+                         '페이지 로드마다 로그인하고 있다: %s' % self.logins)
+
+    def test_relogin_when_the_account_changes(self):
+        self.sign_in('first')
+        self.client.get('/')
+        self.sign_in('second')
+        self.client.get('/')
+        self.assertEqual(self.logins, ['first', 'second'])
+
+    def test_logout_drops_the_cached_service(self):
+        self.sign_in()
+        self.client.get('/')
+        self.client.post('/logout')
+        self.assertEqual(self.ServiceManager._services, {})
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

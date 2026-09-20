@@ -12,6 +12,13 @@ def create_app(config_name: str = 'default') -> Flask:
 
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", "train_reservation_secret_key_2024")
 
+    # 모든 템플릿에서 버전을 쓸 수 있게 (단일 출처는 루트 VERSION 파일)
+    from app.version import get_version
+
+    @app.context_processor
+    def inject_version():
+        return {'app_version': get_version()}
+
     # Register blueprints
     from app.routes import auth, search, reservation, telegram
     app.register_blueprint(auth.bp)
