@@ -306,6 +306,10 @@ def _run_reservation_loop(
     secured_reservations: list = []
     seats_secured = 0
 
+    # 순차 예약에서 첫 좌석을 잡은 열차. 일행이 서로 다른 열차에 타는 일이 없도록
+    # 두 번째 좌석부터는 이 열차만 노린다.
+    locked_train: dict | None = None
+
     tg.clear_logs()
     # 선택한 열차는 모두 같은 구간/날짜다 (한 번의 검색 결과에서 고른 것들이므로).
     # 그래서 조회는 시도마다 딱 한 번, 가장 이른 열차 시각부터 가장 늦은 열차 시각까지
@@ -346,18 +350,22 @@ def _run_reservation_loop(
             tg.push_log("log", f"[{timestamp}] 시도 #{attempt}: 열차 정보 조회 중...")
 
             # 선택한 열차 중 가장 늦은 것까지 포함될 때까지만 페이지를 넘긴다.
-            # (열차를 하나만 골랐으면 API 호출 1번으로 끝난다)
+            # (열차를 하나만 골랐거나 열차가 고정됐으면 API 호출 1번으로 끝난다)
+            search_from = locked_train or earliest_train
+            search_until = (locked_train or latest_train)["dep_time"]
             fresh_trains = service.search(
                 dep=earliest_train["dep_station"],
                 arr=earliest_train["arr_station"],
                 date=earliest_train["dep_date"],
-                time=earliest_train["dep_time"],
+                time=search_from["dep_time"],
                 include_no_seats=True,
-                until_time=latest_train["dep_time"],
+                until_time=search_until,
             )
             consecutive_errors = 0
 
-            for candidate_idx, train_info in enumerate(selected_trains):
+            candidates = [locked_train] if locked_train else selected_trains
+
+            for candidate_idx, train_info in enumerate(candidates):
                 if STOP_MACRO:
                     break
 
@@ -372,7 +380,7 @@ def _run_reservation_loop(
                         "current_train": train_name,
                         "current_time": dep_time,
                         "current_index": candidate_idx + 1,
-                        "current_total": len(selected_trains),
+                        "current_total": len(candidates),
                     },
                 )
 
@@ -406,6 +414,10 @@ def _run_reservation_loop(
                     if result.success:
                         secured_reservations.append(result)
                         seats_secured += reserve_count
+
+                        # 순차 예약이면 남은 좌석도 반드시 같은 열차에서 잡는다.
+                        if sequential and locked_train is None:
+                            locked_train = train_info
                         progress_note = (
                             f" [{seats_secured}/{passenger_count}석]"
                             if passenger_count > 1 else ""
@@ -448,7 +460,8 @@ def _run_reservation_loop(
                             # Sequential mode, still need more seats - keep the loop going.
                             tg.push_log(
                                 "log",
-                                f"{seats_secured}/{passenger_count}석 확보. 나머지 좌석 계속 시도 중...",
+                                f"{seats_secured}/{passenger_count}석 확보. 나머지 좌석은 "
+                                f"{train_name} ({dep_time}) 에서만 계속 시도합니다...",
                             )
                             break
                     else:

@@ -274,6 +274,36 @@ class MultiTrainReservationTest(unittest.TestCase):
         self.assertEqual(len(reserves), 2, '1석씩 두 번 예약해야 한다')
         self.assertEqual([r[2] for r in reserves], [1, 1])
 
+    def test_sequential_sticks_to_the_first_booked_train(self):
+        """순차 예약에서 일행이 서로 다른 열차에 타면 안 된다.
+
+        1회차에 A 열차 1석을 잡고, 그 사이 A 가 매진되고 B 에 좌석이 생겨도
+        B 로 갈아타지 않고 A 를 계속 노려야 한다.
+        """
+        state = {'searches': 0}
+        train_a, train_b = FakeTrain(0), FakeTrain(1)
+
+        class Shifting(FakeClient):
+            def search_train(self, **kw):
+                state['searches'] += 1
+                # 1회차 조회에서만 A 에 좌석, 그 뒤로는 B 에만 좌석
+                train_a._has_seat = state['searches'] <= 1
+                train_b._has_seat = state['searches'] > 1
+                self.calls.append(('search', kw['time'], None, time.monotonic()))
+                return [train_a, train_b]
+
+        svc = KorailService()
+        svc._client = Shifting([train_a, train_b])
+        selected = [as_selected(train_a, 0), as_selected(train_b, 1)]
+        with FastRateLimit():
+            run_macro(svc, selected, timeout=4, passenger_count=2, sequential=True)
+
+        booked = [r[1] for r in svc._client.kinds('reserve')]
+        self.assertTrue(booked, '최소 한 번은 예약했어야 한다')
+        self.assertEqual(booked[0], train_a.train_no)
+        self.assertEqual(set(booked), {train_a.train_no},
+                         '첫 좌석을 잡은 열차 외의 열차를 예약했다: %s' % booked)
+
     def test_stops_after_success(self):
         trains = [FakeTrain(0, has_seat=True)]
         svc = make_service(trains)
