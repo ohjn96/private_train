@@ -1,0 +1,97 @@
+name: 라이선스 검사 켜고 끄기
+
+# Actions 탭에서 클릭 한 번으로 정책을 바꾼다. 로컬 터미널이 필요 없다.
+# (GitHub 모바일 앱에서도 실행 가능)
+#
+# 이슈 댓글 "/policy licensed" 로도 같은 일을 할 수 있다 — license-approve.yml 참조.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '검사 상태'
+        type: choice
+        required: true
+        default: open
+        options:
+          - open       # 검사 안 함. 누구나 사용
+          - licensed   # 라이선스 필요
+          - blocked    # 전면 차단
+      message:
+        description: '차단 화면에 띄울 안내 (blocked 일 때만 의미 있음)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read     # 산출물은 배포 저장소에 쓴다
+
+env:
+  DIST_REPO: ohjn96/train-reservation
+  LICENSE_DIST_DIR: dist
+
+concurrency:
+  group: license-write
+  cancel-in-progress: false
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 배포 저장소 체크아웃
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.DIST_REPO }}
+          token: ${{ secrets.DIST_RELEASE_TOKEN }}
+          path: dist
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: 의존성 설치
+        run: pip install --quiet pycryptodome==3.20.0
+
+      - name: 서명 개인키 준비
+        env:
+          SIGNING_KEY: ${{ secrets.LICENSE_SIGNING_KEY }}
+        run: |
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::LICENSE_SIGNING_KEY 시크릿이 없습니다."
+            exit 1
+          fi
+          mkdir -p "$HOME/.config/private_train"
+          printf '%s\n' "$SIGNING_KEY" > "$HOME/.config/private_train/license_signing_key.pem"
+          chmod 600 "$HOME/.config/private_train/license_signing_key.pem"
+
+      - name: 정책 서명
+        env:
+          MODE: ${{ inputs.mode }}
+          MESSAGE: ${{ inputs.message }}
+        run: python scripts/license_admin.py policy --mode "$MODE" --message "$MESSAGE"
+
+      - name: 커밋 & 푸시
+        env:
+          MODE: ${{ inputs.mode }}
+        working-directory: dist
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add license-policy.json
+          if git diff --cached --quiet; then
+            echo "바뀐 게 없습니다."
+            exit 0
+          fi
+          git commit -m "라이선스 검사: $MODE"
+          git push || (git pull --rebase && git push)
+
+      - name: 요약
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          {
+            echo "### 라이선스 검사 → \`$MODE\`"
+            echo ""
+            echo "- 앱은 6시간마다, 그리고 로그인할 때마다 확인"
+            echo "- CDN 캐시로 반영까지 최대 5분"
+          } >> "$GITHUB_STEP_SUMMARY"

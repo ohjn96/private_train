@@ -317,8 +317,26 @@ python scripts/bake_policy.py --mode licensed  # 정책을 못 받으면 잠기�
 
 빌드는 이 모드를 유지한 채 seq 만 배포 저장소의 현재 정책에 맞춥니다.
 
-> 발급·승인·철회·정책 스위치는 전부 배포 저장소에서 합니다.
-> 운영 문서: [train-reservation/docs/LICENSING.md](https://github.com/ohjn96/train-reservation/blob/release/docs/LICENSING.md)
+### 발급·승인은 전부 여기서
+
+공개 저장소에는 결과물과 현황판만 둡니다. 판단·서명·발급은 이 저장소의
+워크플로가 합니다.
+
+| 워크플로 | 하는 일 |
+|---|---|
+| `license-approve.yml` | 공개 이슈에서 넘어온 `/approve` 등을 처리 |
+| `license-renew.yml` | 매일 08:30 자동 갱신 |
+| `license-expiry.yml` | 매일 09:00 만료 알림 |
+| `license-policy.yml` | 검사 ON/OFF (Actions 에서 클릭) |
+
+산출물은 배포 저장소를 체크아웃한 자리(`LICENSE_DIST_DIR`)에 씁니다.
+
+```bash
+git clone https://github.com/ohjn96/train-reservation.git dist
+LICENSE_DIST_DIR=dist python scripts/license_admin.py list
+```
+
+운영 문서: [docs/LICENSING.md](docs/LICENSING.md)
 
 ---
 
