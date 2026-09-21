@@ -53,12 +53,40 @@ GitHub CDN 캐시 때문에 푸시 후 최대 5분쯤 더 걸립니다.
   다시 들이밀어 잠금을 푸는 것도 안 됩니다.
 - 되돌리려면 `--mode open` 을 다시 발행하면 됩니다 (seq 가 자동으로 올라갑니다).
 
-### 한계
+### 오프라인 기본값 — 네트워크를 막아 피하지 못하게
 
-- **한 번도 정책을 받아본 적 없는 새 설치는 `open` 으로 시작합니다.** 인터넷을 막은 채
-  처음 실행하면 검사를 건너뜁니다. 처음부터 잠그고 싶으면 정책을 켠 뒤에 exe 를 빌드해
-  배포하세요 (그 빌드는 첫 실행에서 정책을 받아옵니다).
+원격 정책을 **한 번도** 받아보지 못한 설치는 기준이 없습니다. 그래서 빌드할 때의
+기본값을 exe 에 박아둡니다 (`app/licensing/built_in_policy.py`).
+
+```bash
+python scripts/license_admin.py bake                    # 현재 상태 보기
+python scripts/license_admin.py bake --mode licensed    # 정책을 못 받으면 잠기게
+python scripts/license_admin.py bake --mode open        # 못 받으면 그냥 열리게
+```
+
+이 값과 공개 정책은 **따로 놉니다.** `policy --mode open` 으로 풀어도 박힌 값은
+안 내려갑니다 (엄격해지는 방향으로만 자동으로 따라갑니다). 일부러 내리려면
+`bake --mode open` 을 직접 쳐야 합니다.
+
+권장 조합은 이렇습니다.
+
+| | 값 | 효과 |
+|---|---|---|
+| 박힌 값 | `licensed` | 정책을 못 받는 설치는 잠김 |
+| 공개 정책 | `open` | 인터넷 되는 정상 사용자는 제약 없음 |
+
+이 앱은 코레일 API 를 쓰므로 어차피 인터넷이 필요합니다. 그래서 fail-closed 로 가도
+정상 사용자가 잃는 건 없고, GitHub 만 골라 막아 검사를 피하는 길이 닫힙니다.
+정책을 못 받아 잠긴 경우에는 "라이선스가 없습니다" 가 아니라
+**"정책을 확인하지 못했습니다"** 라고 안내해서 원인을 구분할 수 있게 했습니다.
+
+빌드(`build/build.py`)는 매번 박힌 모드를 유지한 채 seq 만 현재 정책에 맞춥니다.
+
+### 남은 한계
+
 - 공개 저장소이므로, 소스에서 검사 코드를 지우고 직접 빌드하는 것은 여전히 가능합니다.
+- exe 를 리버싱해 검사를 건너뛰는 것도 막지 못합니다. 어떤 오프라인 DRM 도 마찬가지입니다.
+- 공개키를 커밋하지 않은 빌드는 정책도 라이선스도 검증할 수 없어 **항상 open** 입니다.
 
 ---
 
@@ -282,6 +310,9 @@ git add revoked.json && git commit -m "chore: 라이선스 철회 목록 갱신"
 ## 배포 전 점검
 
 ```bash
+# 0. 오프라인 기본값이 의도대로인지
+python scripts/license_admin.py bake
+
 # 1. 공개키가 들어있는지 (빈 문자열이면 안 됨)
 grep 'PUBLIC_KEY_PEM = ' app/licensing/public_key.py
 
@@ -318,6 +349,7 @@ python -m unittest discover -s tests
 저장소 안 (공개)                     저장소 밖 (비공개)
 ├── app/licensing/                   ~/.config/private_train/
 │   ├── public_key.py    공개키      ├── license_signing_key.pem   ← 개인키
+│   ├── built_in_policy.py  오프라인 기본값 (빌드에 박힘)
 │   ├── token.py         서명 형식   └── issued.jsonl              ← 발급 대장
 │   ├── machine.py       머신 ID
 │   ├── store.py         저장/상태

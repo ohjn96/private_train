@@ -41,12 +41,17 @@ _refreshing = threading.Lock()
 
 
 class Policy:
-    __slots__ = ('mode', 'seq', 'message')
+    __slots__ = ('mode', 'seq', 'message', 'source')
 
-    def __init__(self, mode: str = DEFAULT_MODE, seq: int = 0, message: str = ''):
+    def __init__(self, mode: str = DEFAULT_MODE, seq: int = 0, message: str = '',
+                 source: str = 'builtin'):
         self.mode = mode if mode in VALID_MODES else DEFAULT_MODE
         self.seq = seq
         self.message = message
+        # 'remote'  방금 받아왔다
+        # 'cache'   전에 받아둔 것을 쓰는 중
+        # 'builtin' 한 번도 못 받아서 빌드 시점 값으로 돌아갔다
+        self.source = source
 
     @property
     def requires_license(self) -> bool:
@@ -56,11 +61,25 @@ class Policy:
     def blocks_everything(self) -> bool:
         return self.mode == BLOCKED
 
+    @property
+    def unverified(self) -> bool:
+        """원격 정책을 한 번도 확인하지 못한 상태인가."""
+        return self.source == 'builtin'
+
     def as_dict(self) -> dict:
         return {'mode': self.mode, 'seq': self.seq, 'message': self.message}
 
     def __repr__(self) -> str:
-        return f'Policy(mode={self.mode!r}, seq={self.seq})'
+        return f'Policy(mode={self.mode!r}, seq={self.seq}, source={self.source!r})'
+
+
+def built_in() -> Policy:
+    """원격 정책을 못 받았을 때 돌아갈 자리 — 빌드 시점에 구워둔 값."""
+    from app.licensing.built_in_policy import (
+        BUILT_IN_MESSAGE, BUILT_IN_MODE, BUILT_IN_SEQ,
+    )
+    return Policy(mode=BUILT_IN_MODE, seq=BUILT_IN_SEQ,
+                  message=BUILT_IN_MESSAGE, source='builtin')
 
 
 def _fetch(url: str) -> str | None:
@@ -99,13 +118,15 @@ def _parse_policy(token: str, public_key) -> Policy:
 
 
 def _stored() -> Policy:
+    """캐시된 정책. 캐시가 없으면 빌드 시점 값."""
     cached = store.read_state().get('policy')
     if not isinstance(cached, dict):
-        return Policy()
+        return built_in()
     return Policy(
         mode=str(cached.get('mode', DEFAULT_MODE)),
         seq=int(cached.get('seq', 0)) if isinstance(cached.get('seq'), int) else 0,
         message=str(cached.get('message', '')),
+        source='cache',
     )
 
 
@@ -127,11 +148,12 @@ def _refresh(public_key) -> Policy | None:
     except LicenseError:
         return None   # 서명이 안 맞는 정책은 없는 셈 친다
 
-    # 되돌리기(replay) 방지: 지금까지 본 것보다 낮은 seq 는 받지 않는다
+    # 되돌리기(replay) 방지: 지금까지 본 것(또는 빌드 시점 값)보다 낮은 seq 는 받지 않는다
     if fresh.seq < _stored().seq:
         return None
 
     _save(fresh)
+    fresh.source = 'remote'
     return fresh
 
 
@@ -169,5 +191,6 @@ def current(public_key, *, force: bool = False) -> Policy:
         _refresh_in_background(public_key)
         return _stored()
 
-    # 한 번도 받아본 적 없으면 한 번은 기다려본다 (실패하면 open)
-    return _refresh(public_key) or Policy()
+    # 한 번도 받아본 적 없으면 한 번은 기다려본다.
+    # 그래도 실패하면 빌드 시점 값으로 간다 — 네트워크를 막아서 검사를 피하지 못하게.
+    return _refresh(public_key) or built_in()

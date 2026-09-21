@@ -82,3 +82,5 @@ jobs:
         with:
           files: TrainReservationApp-v${{ env.VERSION }}.exe
           generate_release_notes: true
+          # 2.4.0-rc.0 처럼 하이픈이 붙은 버전은 프리릴리스로 표시한다
+          prerelease: ${{ contains(env.VERSION, '-') }}

@@ -8,7 +8,7 @@
 """
 
 # scripts/license_admin.py keygen 이 이 상수를 자동으로 덮어쓴다.
-PUBLIC_KEY_PEM = ""
+PUBLIC_KEY_PEM = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAfNUj3dnwMcMrCMmPrnI6VT2b7doMJZswWhSsG5iiAR0=\n-----END PUBLIC KEY-----"
 
 
 def is_configured() -> bool:

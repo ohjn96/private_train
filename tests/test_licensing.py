@@ -46,9 +46,22 @@ def enforcing_policy():
     """라이선스 검사가 켜진 상태로 고정하는 patcher.
 
     기본 정책은 open(검사 안 함)이라, 검사 동작을 보는 테스트는 이걸 걸어야 한다.
+    source='remote' 로 두는 이유: 'builtin' 이면 "정책을 확인 못 함"으로 보고
+    'offline' 안내를 내보내기 때문이다.
     """
-    return mock.patch('app.licensing.current_policy',
-                      return_value=policy_mod.Policy(mode=policy_mod.LICENSED, seq=1))
+    return mock.patch(
+        'app.licensing.current_policy',
+        return_value=policy_mod.Policy(mode=policy_mod.LICENSED, seq=1, source='remote'))
+
+
+def builtin_open():
+    """빌드에 박힌 오프라인 기본값을 open 으로 고정하는 patcher.
+
+    저장소에 실제로 박혀 있는 값이 무엇이든 테스트가 흔들리지 않게 한다.
+    """
+    return mock.patch.object(
+        policy_mod, 'built_in',
+        return_value=policy_mod.Policy(mode=policy_mod.OPEN, seq=0, source='builtin'))
 
 
 class TokenTest(unittest.TestCase):
@@ -122,6 +135,7 @@ class VerifyTest(unittest.TestCase):
 
         self.patches = [
             enforcing_policy(),
+            builtin_open(),
             mock.patch.object(licensing, '_public_key', return_value=self.key.public_key()),
             mock.patch.object(licensing, 'machine_id', return_value=MACHINE),
             mock.patch.object(licensing.revocation, 'revoked_ids', return_value=set()),
@@ -318,6 +332,7 @@ class AutoActivationTest(unittest.TestCase):
 
         self.patches = [
             enforcing_policy(),
+            builtin_open(),
             mock.patch.object(licensing, '_public_key', return_value=self.key.public_key()),
             mock.patch.object(licensing, 'machine_id', return_value=MACHINE),
             mock.patch.object(licensing.revocation, 'revoked_ids', return_value=set()),
@@ -395,8 +410,11 @@ class PolicySwitchTest(unittest.TestCase):
         self.pub = mock.patch.object(licensing, '_public_key',
                                      return_value=self.key.public_key())
         self.pub.start()
+        self.builtin = builtin_open()
+        self.builtin.start()
 
     def tearDown(self):
+        self.builtin.stop()
         self.pub.stop()
         self.machine.stop()
         self.env.stop()
@@ -551,3 +569,116 @@ class AutoRenewSettingsTest(unittest.TestCase):
     def test_days_are_at_least_one(self):
         self.assertEqual(self.days_for({'machines': {MACHINE: {'days': 0}}}), 1)
         self.assertEqual(self.days_for({'machines': {MACHINE: {'days': -5}}}), 1)
+
+
+class BuiltInPolicyTest(unittest.TestCase):
+    """빌드에 박히는 오프라인 기본값.
+
+    이게 없으면 "인터넷을 막고 첫 실행"만으로 라이선스 검사를 건너뛸 수 있다.
+    """
+
+    def setUp(self):
+        self.key = ECC.generate(curve='Ed25519')
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.env = mock.patch.dict(os.environ, {
+            'TRAIN_LICENSE_DIR': str(base / 'data'),
+            'TRAIN_LICENSE_SHADOW': str(base / 'shadow'),
+        })
+        self.env.start()
+
+        import app.licensing as licensing
+        self.licensing = licensing
+        licensing.invalidate_cache()
+        self.pub = mock.patch.object(licensing, '_public_key',
+                                     return_value=self.key.public_key())
+        self.pub.start()
+        self.machine = mock.patch.object(licensing, 'machine_id', return_value=MACHINE)
+        self.machine.start()
+
+    def tearDown(self):
+        self.machine.stop()
+        self.pub.stop()
+        self.env.stop()
+        self.licensing.invalidate_cache()
+        self.tmp.cleanup()
+
+    def _baked(self, mode, seq=1):
+        return mock.patch.object(
+            policy_mod, 'built_in',
+            return_value=policy_mod.Policy(mode=mode, seq=seq, source='builtin'))
+
+    def _offline(self):
+        return mock.patch.object(policy_mod, '_fetch', return_value=None)
+
+    def _serving(self, mode, seq):
+        now = int(time.time())
+        payload = build_payload(
+            license_id=policy_mod.POLICY_ID, machine_id='*',
+            issued_at=now, expires_at=now + 86400,
+            data={'mode': mode, 'seq': seq, 'message': ''})
+        token = sign(payload, self.key)
+        return mock.patch.object(policy_mod, '_fetch', return_value=token)
+
+    def test_offline_first_run_falls_back_to_builtin(self):
+        with self._baked('licensed'), self._offline():
+            status = self.licensing.current_status(refresh=True, force_policy=True)
+        self.assertFalse(status.valid)
+        self.assertEqual(status.code, 'offline')
+
+    def test_builtin_open_still_allows_offline(self):
+        """기본값이 open 인 빌드는 예전처럼 그냥 돌아간다 (하위 호환)."""
+        with self._baked('open', seq=0), self._offline():
+            status = self.licensing.current_status(refresh=True, force_policy=True)
+        self.assertTrue(status.valid)
+        self.assertFalse(status.enforced)
+
+    def test_remote_open_can_release_a_locked_build(self):
+        """박힌 licensed 를, seq 가 더 큰 공개 정책이 풀어줄 수 있다."""
+        with self._baked('licensed', seq=1), self._serving('open', 2):
+            status = self.licensing.current_status(refresh=True, force_policy=True)
+        self.assertTrue(status.valid)
+        self.assertFalse(status.enforced)
+
+    def test_older_open_policy_cannot_release_it(self):
+        """낮은 seq 의 open 을 들이밀어 박힌 잠금을 풀 수는 없다."""
+        with self._baked('licensed', seq=5), self._serving('open', 2):
+            status = self.licensing.current_status(refresh=True, force_policy=True)
+        self.assertFalse(status.valid)
+
+    def test_policy_source_is_reported(self):
+        with self._baked('licensed', seq=1), self._offline():
+            self.assertEqual(self.licensing.current_policy(force=True).source, 'builtin')
+        with self._baked('licensed', seq=1), self._serving('licensed', 2):
+            self.assertEqual(self.licensing.current_policy(force=True).source, 'remote')
+
+    def test_offline_message_differs_from_plain_missing(self):
+        """오프라인 때문에 잠긴 것과 라이선스가 없는 것은 안내가 달라야 한다."""
+        with self._baked('licensed', seq=1), self._offline():
+            offline = self.licensing.current_status(refresh=True, force_policy=True)
+        self.licensing.invalidate_cache()
+        with self._baked('licensed', seq=1), self._serving('licensed', 2):
+            missing = self.licensing.current_status(refresh=True, force_policy=True)
+        self.assertEqual(offline.code, 'offline')
+        self.assertEqual(missing.code, 'missing')
+        self.assertNotEqual(offline.message, missing.message)
+
+
+class BakeCommandTest(unittest.TestCase):
+    """license_admin.py bake — 오프라인 기본값을 코드에 박는 쪽."""
+
+    @classmethod
+    def setUpClass(cls):
+        scripts = Path(__file__).resolve().parent.parent / 'scripts'
+        sys.path.insert(0, str(scripts))
+        import license_admin
+        cls.admin = license_admin
+
+    def test_strictness_order(self):
+        s = self.admin.STRICTNESS
+        self.assertLess(s['open'], s['licensed'])
+        self.assertLess(s['licensed'], s['blocked'])
+
+    def test_baked_mode_reads_the_module(self):
+        """실제 파일에서 읽어오는지 (import 캐시가 아니라)."""
+        self.assertIn(self.admin.baked_mode(), self.admin.VALID_MODES)

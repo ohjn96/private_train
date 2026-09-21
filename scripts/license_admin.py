@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import sys
 import time
@@ -505,14 +506,84 @@ def cmd_policy(args: argparse.Namespace) -> None:
         'blocked': '전면 차단됩니다. 라이선스가 있어도 막힙니다.',
     }[args.mode]
 
+    # 오프라인 기본값도 갱신하되, 느슨해지는 방향으로는 자동으로 내리지 않는다.
+    # (공개 정책을 open 으로 풀어도, 정책을 못 받은 설치는 잠긴 채로 두기 위해서)
+    floor = baked_mode()
+    if STRICTNESS[args.mode] >= STRICTNESS[floor]:
+        bake_policy(args.mode)
+        floor_note = f'오프라인 기본값도 {args.mode} 로 맞췄습니다.'
+    else:
+        bake_policy(floor)      # 모드는 유지하고 seq 만 따라 올린다
+        floor_note = (f'오프라인 기본값은 {floor} 로 유지합니다 '
+                      f'(정책을 못 받은 설치는 계속 잠깁니다). '
+                      f'정말 풀려면: license_admin.py bake --mode {args.mode}')
+
     print(f'정책을 {args.mode} (seq {seq}) 로 설정했습니다.')
     print(f'  → {explain}')
+    print(f'  {floor_note}')
     print()
     print(f'{POLICY_FILE.name} 을 커밋/푸시해야 적용됩니다:')
     print(f'    git add {POLICY_FILE.name} && git commit -m "chore: 라이선스 정책 {args.mode}" && git push')
     print()
     print('앱은 6시간마다, 그리고 로그인할 때마다 확인합니다.')
     print('raw.githubusercontent.com CDN 캐시 때문에 최대 5분쯤 더 걸릴 수 있습니다.')
+
+
+# --------------------------------------------------------------------------- 빌드 시점 정책
+
+BUILT_IN_MODULE = ROOT / 'app' / 'licensing' / 'built_in_policy.py'
+
+# 느슨함 < 엄격함. 박히는 값은 "정책을 확인 못 했을 때 가정할 상태"이므로
+# 공개 정책을 풀어준다고 해서 같이 풀리면 안 된다.
+STRICTNESS = {'open': 0, 'licensed': 1, 'blocked': 2}
+
+
+def baked_mode() -> str:
+    """지금 박혀 있는 오프라인 기본값. (import 캐시를 피해 파일에서 직접 읽는다)"""
+    match = re.search(r'^BUILT_IN_MODE = "([^"]*)"',
+                      BUILT_IN_MODULE.read_text(encoding='utf-8'), re.M)
+    return match.group(1) if match else 'open'
+
+
+def bake_policy(mode: str | None = None) -> tuple[str, int]:
+    """오프라인 기본값을 built_in_policy.py 에 박는다.
+
+    mode 를 주지 않으면 현재 license-policy.json 의 모드를 쓴다.
+    seq 는 항상 현재 정책의 것을 따라간다 (옛 정책 재사용 방지의 하한선).
+
+    이 값이 있어야, 인터넷을 막고 처음 실행하는 것만으로 검사를 건너뛰지 못한다.
+    """
+    current = _read_policy()
+    seq = int(current.get('seq', 0) or 0)
+    mode = str(current.get('mode', 'open')) if mode is None else mode
+    message = str(current.get('message', ''))
+
+    source = BUILT_IN_MODULE.read_text(encoding='utf-8')
+    for key, value in (('BUILT_IN_MODE', mode),
+                       ('BUILT_IN_SEQ', seq),
+                       ('BUILT_IN_MESSAGE', message)):
+        literal = json.dumps(value, ensure_ascii=False)
+        source = re.sub(rf'^{key} = .*$', f'{key} = {literal}', source, flags=re.M)
+    BUILT_IN_MODULE.write_text(source, encoding='utf-8')
+    return mode, seq
+
+
+def cmd_bake(args: argparse.Namespace) -> None:
+    if args.mode is None and not args.sync:
+        current = _read_policy()
+        print(f'오프라인 기본값 : {baked_mode()}  ({BUILT_IN_MODULE.name})')
+        print(f'공개 정책       : {current.get("mode", "open")} (seq {current.get("seq", 0)})')
+        print()
+        print('바꾸려면 --mode open|licensed|blocked, 공개 정책과 맞추려면 --sync')
+        return
+
+    mode, seq = bake_policy(args.mode)
+    print(f'오프라인 기본값을 {mode} (seq {seq}) 로 박았습니다 → {BUILT_IN_MODULE.name}')
+    if mode == 'open':
+        print('  주의: 인터넷을 막고 첫 실행하면 검사를 건너뜁니다.')
+    else:
+        print('  정책을 못 받은 설치도 잠긴 상태로 시작합니다.')
+    print('  다음 빌드부터 적용됩니다. 커밋하는 것도 잊지 마세요.')
 
 
 # --------------------------------------------------------------------------- 검사
@@ -584,6 +655,14 @@ def main() -> None:
                                '생략하면 현재 상태만 보여준다')
     p_policy.add_argument('--message', default='', help='차단 화면에 띄울 안내 문구')
     p_policy.set_defaults(func=cmd_policy)
+
+    p_bake = sub.add_parser(
+        'bake', help='정책을 못 받았을 때 쓸 오프라인 기본값 (빌드에 박힌다)')
+    p_bake.add_argument('--mode', choices=list(VALID_MODES),
+                        help='오프라인 기본값. 생략하면 현재 상태만 보여준다')
+    p_bake.add_argument('--sync', action='store_true',
+                        help='공개 정책과 똑같이 맞춘다')
+    p_bake.set_defaults(func=cmd_bake)
 
     p_inspect = sub.add_parser('inspect', help='토큰 내용 확인')
     p_inspect.add_argument('token', help='TRAIN1....')

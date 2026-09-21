@@ -135,6 +135,12 @@ def _compute_status(*, force_policy: bool = False) -> LicenseStatus:
 
     token = store.read_license()
     if not token:
+        if active.unverified:
+            # 원격 정책을 한 번도 못 받았다. 인터넷이 막혀 있을 가능성이 크다.
+            return LicenseStatus(
+                False, 'offline',
+                '라이선스 정책을 확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 실행해주세요.',
+            )
         return LicenseStatus(False, 'missing', '라이선스가 등록되어 있지 않습니다.')
     try:
         return LicenseStatus(True, 'ok', license=_check(token))
