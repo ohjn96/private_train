@@ -23,7 +23,8 @@ pycryptodome==3.20.0
 # Build Tools
 pyinstaller==6.11.1
 pyinstaller-hooks-contrib==2025.0
-altgraph==0.17.4
+# altgraph 0.17.5: pkg_resources 의존 제거 (0.17.4 는 setuptools 84+/Python 3.12 환경에서 죽음)
+altgraph==0.17.5
 packaging==24.2
 
 # Utilities
