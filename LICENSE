@@ -1,0 +1,161 @@
+개인 사용 라이선스 (Personal Use License)
+=========================================
+
+Copyright (c) 2026 ohjn96. All rights reserved.
+
+(한국어 원문이 정본이며, 아래 영문은 참고 번역입니다.
+ The Korean text governs; the English text below is a reference translation.)
+
+
+--------------------------------------------------------------------------
+1. 정의
+--------------------------------------------------------------------------
+
+"소프트웨어" 란 이 저장소(https://github.com/ohjn96/private_train)의 소스 코드,
+문서, 그리고 여기서 빌드되어 배포되는 실행 파일(예: TrainReservationApp-v*.exe)
+전부를 말합니다. 단, 제5항에 열거된 제3자 구성요소는 제외합니다.
+
+"저작권자" 란 위 Copyright 표시의 권리자를 말합니다.
+
+
+--------------------------------------------------------------------------
+2. 허용되는 행위
+--------------------------------------------------------------------------
+
+저작권자는 누구에게나 다음 행위를 무상으로 허용합니다.
+
+  (a) 개인적·비상업적 목적의 학습, 열람, 실행
+  (b) 위 목적 범위에서의 복제 및 수정
+  (c) 본인만 사용하기 위한 수정본 보관
+
+여기서 "개인적·비상업적" 이란, 이용자 본인 또는 그 가족의 열차 이용을 위한
+사용을 말하며, 직접적이든 간접적이든 금전적 이익을 목적으로 하지 않는 경우를
+말합니다.
+
+
+--------------------------------------------------------------------------
+3. 금지되는 행위
+--------------------------------------------------------------------------
+
+저작권자의 사전 서면 허가 없이 다음 행위를 하는 것을 금지합니다.
+
+  (a) 재배포 — 소프트웨어의 원본, 수정본, 빌드 산출물(실행 파일 포함), 그 일부를
+      제3자에게 배포·전송·공유·재업로드하는 행위. 저장소 미러링, 다른 플랫폼에의
+      업로드, 실행 파일의 재배포를 포함합니다.
+  (b) 영리 목적 이용 — 판매, 대여, 구독, 유료 서비스 제공, 광고 수익, 대행 예약 등
+      직간접적으로 금전적 이익을 얻는 일체의 행위.
+  (c) 서비스 제공 — 소프트웨어를 서버에 설치해 제3자가 이용할 수 있도록 하는 행위
+      (무상 제공 포함).
+  (d) 저작권 표시, 본 라이선스 문서, 고지 문구의 제거·변경·은닉.
+
+예외: GitHub 플랫폼 내에서의 열람 및 Fork 는 GitHub 이용약관에 따라 가능하나,
+그것이 위 (a)~(d) 를 허용하는 것은 아닙니다. Fork 한 사본에도 본 라이선스가
+그대로 적용됩니다.
+
+
+--------------------------------------------------------------------------
+4. 허가 요청
+--------------------------------------------------------------------------
+
+제3항의 행위가 필요한 경우, 이 저장소의 GitHub Issue 를 통해 저작권자에게
+사전 허가를 요청하십시오. 허가는 서면(이메일 또는 GitHub 상의 기록)으로만
+유효하며, 저작권자는 허가 여부를 임의로 결정할 수 있고 언제든 철회할 수 있습니다.
+
+
+--------------------------------------------------------------------------
+5. 제3자 구성요소
+--------------------------------------------------------------------------
+
+다음 구성요소에는 본 라이선스가 적용되지 않으며, 각자의 라이선스를 따릅니다.
+
+  - korail2/            BSD License, Copyright (c) 2014 Taehoon Kim
+                        (korail2/LICENSE 참조)
+  - 그 밖의 오픈소스 의존성 (Flask, requests, pycryptodome 등)
+                        각 프로젝트의 라이선스 (THIRD-PARTY-NOTICES.md 참조)
+
+실행 파일에는 위 오픈소스 구성요소가 포함되어 있습니다.
+
+
+--------------------------------------------------------------------------
+6. 위반의 효과
+--------------------------------------------------------------------------
+
+본 라이선스를 위반하는 즉시 제2항의 허용은 자동으로 종료되며, 이용자는 보유한
+모든 사본을 파기해야 합니다.
+
+
+--------------------------------------------------------------------------
+7. 보증의 부인 및 책임의 제한
+--------------------------------------------------------------------------
+
+소프트웨어는 "있는 그대로(AS IS)" 제공되며, 상품성, 특정 목적에의 적합성,
+권리 비침해를 포함한 어떠한 명시적·묵시적 보증도 하지 않습니다.
+
+저작권자는 소프트웨어의 사용 또는 사용 불능으로 발생한 어떠한 손해(예약 실패,
+결제 누락, 계정 제재, 데이터 손실 등을 포함하되 이에 한정되지 않음)에 대해서도
+책임지지 않습니다.
+
+
+--------------------------------------------------------------------------
+8. 이용자의 준법 의무
+--------------------------------------------------------------------------
+
+이 소프트웨어는 한국철도공사(코레일) 및 에스알(SR)과 아무런 관련이 없고,
+이들로부터 승인받거나 후원받지 않았습니다.
+
+이용자는 해당 서비스의 이용약관 및 관계 법령(정보통신망법, 철도사업법 등)을
+준수할 책임이 있으며, 부정한 자동화·대량 조회·암표 거래 등 위법한 목적으로
+사용해서는 안 됩니다. 이로 인한 모든 책임은 이용자 본인에게 있습니다.
+
+
+--------------------------------------------------------------------------
+9. 준거법
+--------------------------------------------------------------------------
+
+본 라이선스는 대한민국 법률에 따라 해석됩니다.
+
+
+==========================================================================
+English (reference translation)
+==========================================================================
+
+Copyright (c) 2026 ohjn96. All rights reserved.
+
+1. DEFINITIONS. "Software" means the source code, documentation, and built
+   executables of this repository, excluding the third-party components
+   listed in Section 5.
+
+2. PERMITTED USE. You may study, run, copy, and modify the Software for
+   personal, non-commercial purposes only.
+
+3. PROHIBITED WITHOUT PRIOR WRITTEN PERMISSION.
+   (a) Redistribution of the Software, in original, modified, or compiled
+       form (including the released executables), in whole or in part;
+   (b) Any commercial use, including sale, rental, subscription, paid
+       services, advertising revenue, or booking-on-behalf services;
+   (c) Providing the Software as a hosted service to third parties, even
+       free of charge;
+   (d) Removing or altering copyright notices or this license.
+   Viewing and forking within GitHub is permitted under the GitHub Terms of
+   Service; this license continues to apply to any such fork.
+
+4. PERMISSION REQUESTS. Open a GitHub Issue on this repository. Permission
+   is valid only in writing and may be withheld or revoked at any time.
+
+5. THIRD-PARTY COMPONENTS. korail2/ is licensed under the BSD License,
+   Copyright (c) 2014 Taehoon Kim (see korail2/LICENSE). Other open-source
+   dependencies remain under their own licenses; see THIRD-PARTY-NOTICES.md.
+
+6. TERMINATION. Any violation terminates the permissions in Section 2
+   automatically, and you must destroy all copies in your possession.
+
+7. NO WARRANTY. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+   KIND, EXPRESS OR IMPLIED. THE COPYRIGHT HOLDER SHALL NOT BE LIABLE FOR
+   ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF OR
+   INABILITY TO USE THE SOFTWARE.
+
+8. COMPLIANCE. This project is not affiliated with, endorsed by, or
+   sponsored by KORAIL or SR. You are responsible for complying with their
+   terms of service and with applicable law.
+
+9. GOVERNING LAW. The laws of the Republic of Korea.
