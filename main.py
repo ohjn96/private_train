@@ -100,7 +100,14 @@ if __name__ == '__main__':
     debug = os.environ.get('FLASK_DEBUG', debug_default).lower() == 'true'
 
     print(f"🚄 Train Reservation App v{__version__}")
+    print("   (c) 2026 ohjn96 — 개인 사용 전용. 재배포·상업적 이용 금지 (LICENSE 참조)")
     print(f"   http://localhost:{port}")
+
+    # 공개키가 없으면 정책도 라이선스도 검증할 수 없어 검사가 통째로 꺼진다.
+    # 검사를 쓸 생각이라면 배포 전에 `license_admin.py keygen` 을 돌려야 한다.
+    from app.licensing.public_key import is_configured
+    if not is_configured():
+        print("   (라이선스 검사 없음 — 발급자라면: python scripts/license_admin.py keygen)")
     print("브라우저가 자동으로 열립니다. 종료하려면 이 창에서 Ctrl+C")
     print("")
 

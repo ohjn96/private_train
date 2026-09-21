@@ -2,6 +2,7 @@
 """Authentication routes (코레일 단일 서비스)."""
 from flask import Blueprint, request, session, redirect, url_for, render_template
 
+from app import licensing
 from app.services import ServiceManager
 from app.utils.session_helper import (
     PROVIDER,
@@ -24,6 +25,11 @@ def login():
     provider = PROVIDER
 
     if request.method == "POST":
+        # 로그인은 어차피 인터넷이 필요한 시점이라, 여기서 원격 스위치를 새로 확인한다.
+        # 평소에는 캐시로 돌아가므로 이 호출만 실제 네트워크를 탄다.
+        if not licensing.current_status(force_policy=True).valid:
+            return redirect(url_for("license.page"))
+
         user_id = request.form.get("user_id", "").strip()
         password = request.form.get("password", "").strip()
 

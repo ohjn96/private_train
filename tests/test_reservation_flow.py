@@ -27,6 +27,23 @@ from app.services.rate_limit import (
 )
 from app.services.telegram_service import TelegramService
 
+from support import valid_license_patch
+
+# 이 모듈은 라우트를 직접 두드린다. 라이선스 게이트가 전부 막아버리므로
+# 유효한 라이선스가 있는 상태로 고정해두고 돌린다.
+_license_patch = None
+
+
+def setUpModule():
+    global _license_patch
+    _license_patch = valid_license_patch()
+    _license_patch.start()
+
+
+def tearDownModule():
+    if _license_patch is not None:
+        _license_patch.stop()
+
 
 # ---------------------------------------------------------------- 가짜 클라이언트
 

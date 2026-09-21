@@ -20,10 +20,16 @@ def create_app(config_name: str = 'default') -> Flask:
         return {'app_version': get_version()}
 
     # Register blueprints
-    from app.routes import auth, search, reservation, telegram
+    from app.routes import auth, search, reservation, telegram, license
     app.register_blueprint(auth.bp)
     app.register_blueprint(search.bp)
     app.register_blueprint(reservation.bp)
     app.register_blueprint(telegram.bp)
+    app.register_blueprint(license.bp)
+
+    # 라이선스 게이트 — 등록된 키가 없으면 /license 외의 모든 요청을 막는다.
+    # 블루프린트 등록 뒤에 걸어야 엔드포인트 이름이 잡힌다.
+    from app.licensing import guard
+    guard.register(app)
 
     return app

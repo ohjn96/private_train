@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}라이선스 등록 - 열차 예약{% endblock %}
+
+{% block content %}
+<div class="min-h-[calc(100vh-12rem)] flex items-center justify-center">
+  <div class="w-full max-w-2xl">
+    <div class="bg-white rounded-2xl shadow-xl p-8">
+
+      {% if status.code == 'blocked' %}
+      <div class="text-center py-8">
+        <h1 class="text-2xl font-bold mb-4 text-gray-800">사용이 중지되었습니다</h1>
+        <p class="text-gray-600 whitespace-pre-line">{{ status.message }}</p>
+        <p class="mt-6 text-sm text-gray-400">
+          문의: <a href="mailto:{{ owner_email }}" class="underline">{{ owner_email }}</a>
+        </p>
+      </div>
+      {% else %}
+
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold mb-2">라이선스 등록</h1>
+        <p class="text-gray-500">
+          이 프로그램은 발급자의 허가를 받은 PC 에서만 동작합니다.
+        </p>
+      </div>
+
+      {% if error %}
+      <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <p class="text-sm text-red-600">{{ error }}</p>
+      </div>
+      {% elif status.code == 'expired' %}
+      <div class="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+        <p class="text-sm text-amber-700">{{ status.message }}</p>
+      </div>
+      {% elif status.code not in ('missing', 'ok') %}
+      <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <p class="text-sm text-red-600">{{ status.message }}</p>
+      </div>
+      {% endif %}
+
+      <!-- 1단계: 머신 ID -->
+      <div class="mb-8">
+        <div class="flex items-center mb-3">
+          <span class="flex items-center justify-center w-6 h-6 rounded-full bg-ktx-primary text-white text-xs font-bold mr-2">1</span>
+          <h2 class="font-semibold text-gray-800">이 PC 의 머신 ID 를 발급자에게 보내세요</h2>
+        </div>
+
+        <div class="flex items-stretch gap-2">
+          <code id="machineId"
+                class="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-mono text-lg tracking-widest text-center select-all">{{ machine_id }}</code>
+          <button type="button" onclick="copyMachineId()"
+                  class="px-4 py-3 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700 transition-colors whitespace-nowrap">
+            복사
+          </button>
+        </div>
+        <p id="copyDone" class="hidden mt-2 text-sm text-green-600">복사했습니다.</p>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a href="{{ request_url }}" target="_blank" rel="noopener noreferrer"
+             onclick="startWaiting()"
+             class="px-4 py-2 bg-ktx-primary text-white rounded-lg text-sm hover:bg-ktx-secondary transition-colors">
+            라이선스 요청하기
+          </a>
+          <a href="{{ mailto }}"
+             class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+            이메일로 요청
+          </a>
+        </div>
+        <p class="mt-2 text-xs text-gray-500">
+          발급자 연락처: {{ owner_email }}
+        </p>
+      </div>
+
+      <!-- 2단계: 승인 대기 -->
+      <div class="mb-8">
+        <div class="flex items-center mb-3">
+          <span class="flex items-center justify-center w-6 h-6 rounded-full bg-ktx-primary text-white text-xs font-bold mr-2">2</span>
+          <h2 class="font-semibold text-gray-800">승인되면 자동으로 활성화됩니다</h2>
+        </div>
+
+        <div id="waitingBox" class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <div class="flex items-center gap-3">
+            <svg id="waitingSpinner" class="hidden animate-spin h-5 w-5 text-ktx-primary" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <p id="waitingText" class="text-sm text-gray-600">
+              요청을 보낸 뒤 이 화면을 켜두세요. 승인되면 자동으로 넘어갑니다.
+              (승인 후 반영까지 최대 5분쯤 걸립니다)
+            </p>
+          </div>
+          <button type="button" id="waitingButton" onclick="startWaiting()"
+                  class="mt-3 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+            지금 확인하기
+          </button>
+        </div>
+      </div>
+
+      <!-- 3단계: 수동 입력 (자동이 안 될 때) -->
+      <div>
+        <div class="flex items-center mb-3">
+          <span class="flex items-center justify-center w-6 h-6 rounded-full bg-gray-400 text-white text-xs font-bold mr-2">3</span>
+          <h2 class="font-semibold text-gray-800">
+            키를 직접 받았다면 여기에 붙여넣으세요
+            <span class="font-normal text-gray-400 text-sm">(선택)</span>
+          </h2>
+        </div>
+
+        <form method="POST" action="{{ url_for('license.activate') }}" class="space-y-4">
+          <textarea name="license_key"
+                    rows="4"
+                    required
+                    spellcheck="false"
+                    placeholder="TRAIN1.xxxxxxxx.xxxxxxxx"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-xs break-all focus:ring-2 focus:ring-ktx-primary focus:border-transparent">{{ submitted_key or '' }}</textarea>
+
+          <button type="submit"
+                  class="w-full py-3 bg-ktx-primary text-white rounded-lg font-semibold hover:bg-ktx-secondary transition-colors">
+            등록하기
+          </button>
+        </form>
+      </div>
+
+      {% if status.valid and status.license %}
+      <div class="mt-8 pt-6 border-t">
+        <h2 class="font-semibold text-gray-800 mb-3">현재 등록된 라이선스</h2>
+        <dl class="text-sm space-y-1">
+          <div class="flex justify-between">
+            <dt class="text-gray-500">발급 대상</dt>
+            <dd class="text-gray-800">{{ status.license.name or '-' }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-500">라이선스 ID</dt>
+            <dd class="font-mono text-gray-800">{{ status.license.license_id }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-500">남은 기간</dt>
+            <dd class="text-gray-800">{{ status.license.days_left }}일</dd>
+          </div>
+        </dl>
+        <form method="POST" action="{{ url_for('license.deactivate') }}" class="mt-4">
+          <button type="submit"
+                  class="text-sm text-gray-500 hover:text-red-600 transition-colors">
+            이 PC 에서 라이선스 삭제
+          </button>
+        </form>
+      </div>
+      {% endif %}
+
+      <p class="mt-8 text-xs text-gray-400 leading-relaxed">
+        라이선스는 이 PC 에만 유효하며 다른 PC 로 옮겨 쓸 수 없습니다.
+        무단 재배포는 <a href="https://github.com/ohjn96/private_train/blob/release/LICENSE"
+        target="_blank" rel="noopener noreferrer" class="underline">라이선스</a> 위반입니다.
+      </p>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ---------------------------------------------------------------- 승인 대기
+// 발급자가 승인하면 서명된 키가 올라온다. 그걸 앱이 스스로 주워오므로
+// 사용자는 이 화면을 켜둔 채 기다리기만 하면 된다.
+const CHECK_URL = "{{ url_for('license.check') }}";
+let pollTimer = null;
+let attempts = 0;
+
+function setWaiting(text, spinning) {
+    // 차단 화면에서는 대기 UI 자체가 없다
+    const textEl = document.getElementById('waitingText');
+    if (!textEl) return;
+    textEl.textContent = text;
+    document.getElementById('waitingSpinner').classList.toggle('hidden', !spinning);
+}
+
+async function checkOnce() {
+    attempts += 1;
+    try {
+        const res = await fetch(CHECK_URL, {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+        });
+        const data = await res.json();
+        if (data.valid) {
+            stopWaiting();
+            setWaiting('승인되었습니다. 잠시 후 이동합니다...', true);
+            window.location.href = '/';
+            return true;
+        }
+    } catch (e) {
+        // 네트워크가 잠깐 끊긴 것뿐일 수 있으니 조용히 넘어간다
+    }
+    return false;
+}
+
+function stopWaiting() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    const btn = document.getElementById('waitingButton');
+    if (btn) btn.disabled = false;
+}
+
+async function startWaiting() {
+    if (pollTimer) return;
+    const btn = document.getElementById('waitingButton');
+    if (!btn) return;
+    attempts = 0;
+    btn.disabled = true;
+    setWaiting('승인을 기다리는 중입니다...', true);
+
+    if (await checkOnce()) return;
+
+    pollTimer = setInterval(async () => {
+        if (await checkOnce()) return;
+        // 10분(5초 x 120회)쯤 기다렸는데 안 오면 멈춘다. 버튼으로 다시 시작할 수 있다.
+        if (attempts >= 120) {
+            stopWaiting();
+            setWaiting('아직 승인되지 않았습니다. [지금 확인하기] 를 눌러 다시 확인하세요.', false);
+        }
+    }, 5000);
+}
+
+// ---------------------------------------------------------------- 머신 ID 복사
+function copyMachineId() {
+    const text = document.getElementById('machineId').textContent.trim();
+    const done = () => {
+        const el = document.getElementById('copyDone');
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.add('hidden'), 2000);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done);
+    } else {
+        // http://localhost 에서 clipboard API 가 막힌 브라우저용 폴백
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } finally { document.body.removeChild(ta); }
+    }
+}
+</script>
+{% endblock %}

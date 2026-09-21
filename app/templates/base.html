@@ -72,6 +72,18 @@
             </div>
         </nav>
 
+        {% if license_expiring_soon %}
+        <div class="bg-amber-50 border-b border-amber-200">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2">
+                <p class="text-sm text-amber-800 text-center">
+                    라이선스가 <strong>{{ license_days_left }}일</strong> 뒤 만료됩니다.
+                    계속 쓰려면 발급자에게 연장을 요청하세요.
+                    <a href="{{ url_for('license.page', manage=1) }}" class="underline">라이선스 보기</a>
+                </p>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Main Content -->
         <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
             {% block content %}{% endblock %}
@@ -86,6 +98,12 @@
                 <p class="mt-1 text-center text-sm font-semibold text-red-600">
                     상업용 사용 · 배포 절대 금지
                 </p>
+                {% if license_status and license_status.enforced and license_status.license %}
+                <p class="mt-1 text-center text-xs text-gray-400">
+                    라이선스 {{ license_days_left }}일 남음 ·
+                    <a href="{{ url_for('license.page', manage=1) }}" class="underline">상세</a>
+                </p>
+                {% endif %}
             </div>
         </footer>
     </div>

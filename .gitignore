@@ -54,3 +54,14 @@ screenshots/
 
 # Claude Code
 .claude/
+
+# 라이선스 서명 개인키 / 발급 대장 — 절대 커밋 금지
+# (기본 보관 위치는 저장소 바깥인 ~/.config/private_train/ 이지만, 실수 방지용으로 한 번 더 막는다)
+*.pem
+*.key
+license_signing_key*
+issued.jsonl
+
+# 발급된 라이선스는 커밋해야 한다 (앱이 여기서 받아간다).
+# 머신에 묶여 있어 공개돼도 남이 쓸 수 없다.
+!licenses/*.key
