@@ -212,6 +212,17 @@ python scripts/license_admin.py autorenew            # 현재 설정 보기
 이슈가 닫히므로, 다음 만료 때 새로 옵니다. 지금 당장 확인하려면 Actions 탭에서
 수동 실행(Run workflow)하면 됩니다.
 
+### 저장소 권한자는 자동 승인
+
+`OWNER` / `MEMBER` / `COLLABORATOR` 가 요청 이슈를 열면 **댓글 없이 바로 90일이 발급**됩니다.
+협업자를 추가해두면 그 사람은 알아서 쓰게 됩니다.
+
+- 판정에 쓰는 `author_association` 은 GitHub 이 붙이는 값이라 요청자가 조작할 수 없습니다.
+- `CONTRIBUTOR` 는 제외합니다 — PR 이 머지된 적 있을 뿐 쓰기 권한이 아닙니다.
+- 이슈 **본문**에 `/approve` 를 적어두는 것은 무시됩니다. 명령은 댓글에서만 읽습니다.
+- 기간은 `scripts/ci_approve.py` 의 `TRUSTED_DAYS` 로 바꿉니다.
+- 협업자를 내보내도 이미 나간 라이선스는 살아 있습니다. 끊으려면 `/revoke` 를 쓰세요.
+
 ### 쓸 수 있는 명령
 
 이슈 댓글(또는 알림 메일 답장)의 **첫 줄**에 적습니다.

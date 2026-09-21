@@ -10,11 +10,17 @@ name: 라이선스 승인
 #   /revoke          이 PC 의 라이선스 차단
 #   /deny            거절하고 닫기
 #
+# 저장소에 쓰기 권한이 있는 사람(OWNER/MEMBER/COLLABORATOR)이 요청을 올리면
+# 댓글 없이 바로 발급된다. author_association 은 GitHub 이 붙이는 값이라
+# 요청자가 조작할 수 없다.
+#
 # issue_comment 워크플로는 항상 기본 브랜치의 파일로 실행되므로,
 # 외부인이 PR 로 이 파일을 바꿔치기해 Secrets 를 빼갈 수는 없다.
 on:
   issue_comment:
     types: [created]
+  issues:
+    types: [opened]
 
 permissions:
   contents: write   # licenses/ 커밋
@@ -27,14 +33,22 @@ concurrency:
 
 jobs:
   approve:
-    # 이슈(PR 아님) + 저장소 주인 + 명령으로 시작하는 댓글일 때만
+    # 둘 중 하나일 때만 돈다.
+    #   1) 저장소 주인이 명령 댓글을 달았다
+    #   2) 쓰기 권한자가 이슈를 새로 열었다 (자동 승인)
     if: >
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.login == github.repository_owner &&
-      (startsWith(github.event.comment.body, '/approve') ||
-       startsWith(github.event.comment.body, '/autorenew') ||
-       startsWith(github.event.comment.body, '/deny') ||
-       startsWith(github.event.comment.body, '/revoke'))
+      github.event.issue.pull_request == null && (
+        (github.event_name == 'issue_comment' &&
+         github.event.comment.user.login == github.repository_owner &&
+         (startsWith(github.event.comment.body, '/approve') ||
+          startsWith(github.event.comment.body, '/autorenew') ||
+          startsWith(github.event.comment.body, '/deny') ||
+          startsWith(github.event.comment.body, '/revoke')))
+        ||
+        (github.event_name == 'issues' &&
+         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+                  github.event.issue.author_association))
+      )
     runs-on: ubuntu-latest
 
     steps:
@@ -53,8 +67,10 @@ jobs:
         id: parse
         env:
           # 남이 쓴 문자열이므로 환경변수로만 넘기고, 셸에 직접 끼워넣지 않는다
+          EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          AUTHOR_ASSOCIATION: ${{ github.event.issue.author_association }}
         run: python scripts/ci_approve.py
 
       - name: 머신 ID 를 못 찾았을 때
@@ -140,8 +156,14 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           MACHINE_ID: ${{ steps.parse.outputs.machine_id }}
           DAYS: ${{ steps.parse.outputs.days }}
+          AUTO: ${{ steps.parse.outputs.auto }}
         run: |
-          gh issue comment "$ISSUE_NUMBER" --body "승인되었습니다. (머신 \`$MACHINE_ID\`, $DAYS일)
+          if [ "$AUTO" = "true" ]; then
+            PREFIX="저장소 권한자라 자동 승인되었습니다."
+          else
+            PREFIX="승인되었습니다."
+          fi
+          gh issue comment "$ISSUE_NUMBER" --body "$PREFIX (머신 \`$MACHINE_ID\`, $DAYS일)
 
           앱의 **라이선스 화면을 켜두면 자동으로 활성화**됩니다.
           GitHub CDN 캐시 때문에 최대 5분쯤 걸릴 수 있습니다.

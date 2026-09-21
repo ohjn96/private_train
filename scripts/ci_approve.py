@@ -15,6 +15,11 @@ import re
 import sys
 
 MACHINE_ID_RE = re.compile(r'\b([0-9A-Fa-f]{4}(?:-[0-9A-Fa-f]{4}){3})\b')
+
+# 저장소에 쓰기 권한이 있는 사람이 요청하면 댓글 없이 바로 발급한다.
+# GitHub 이 붙여주는 값이라 요청자가 조작할 수 없다.
+TRUSTED_ASSOCIATIONS = frozenset({'OWNER', 'MEMBER', 'COLLABORATOR'})
+TRUSTED_DAYS = 90
 COMMAND_RE = re.compile(
     r'^\s*/(approve|deny|revoke|autorenew)\b\s*(\d+|off)?', re.IGNORECASE)
 
@@ -64,11 +69,26 @@ def emit(**outputs: str) -> None:
             fh.write(f'{key}={value}\n')
 
 
+def decide(event_name: str, comment: str, association: str) -> tuple[str, int] | None:
+    """이번 이벤트로 무엇을 할지.
+
+    - 이슈가 새로 열렸다  → 요청자가 권한자면 바로 승인, 아니면 아무것도 안 함
+    - 댓글이 달렸다       → 명령을 해석 (권한 확인은 워크플로 if: 가 이미 했다)
+    """
+    if event_name == 'issues':
+        if association.upper() in TRUSTED_ASSOCIATIONS:
+            return 'approve', TRUSTED_DAYS
+        return None
+    return parse_command(comment)
+
+
 def main() -> int:
+    event_name = os.environ.get('EVENT_NAME', 'issue_comment')
     comment = os.environ.get('COMMENT_BODY', '')
     body = os.environ.get('ISSUE_BODY', '')
+    association = os.environ.get('AUTHOR_ASSOCIATION', '')
 
-    parsed = parse_command(comment)
+    parsed = decide(event_name, comment, association)
     if parsed is None:
         emit(action='none')
         return 0
@@ -82,7 +102,8 @@ def main() -> int:
                      'A1B2-C3D4-E5F6-7890 형식인지 확인해주세요.')
         return 0
 
-    emit(action=action, days=str(days), machine_id=machine_id)
+    emit(action=action, days=str(days), machine_id=machine_id,
+         auto=('true' if event_name == 'issues' else 'false'))
     return 0
 
 

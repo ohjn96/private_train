@@ -311,6 +311,28 @@ class ApprovalCommandTest(unittest.TestCase):
         for body in ('', '머신 ID: 없음', 'A1B2-C3D4-E5F6', 'ZZZZ-ZZZZ-ZZZZ-ZZZZ'):
             self.assertIsNone(self.mod.parse_machine_id(body), body)
 
+    # -------------------------------------------------------------- 자동 승인
+
+    def test_write_access_requesters_are_auto_approved(self):
+        """저장소 쓰기 권한자가 이슈를 열면 댓글 없이 바로 발급된다."""
+        for who in ('OWNER', 'MEMBER', 'COLLABORATOR', 'collaborator'):
+            self.assertEqual(self.mod.decide('issues', '', who),
+                             ('approve', self.mod.TRUSTED_DAYS), who)
+
+    def test_outsiders_are_not_auto_approved(self):
+        """CONTRIBUTOR 는 PR 이 머지된 적 있을 뿐 쓰기 권한이 아니다."""
+        for who in ('NONE', 'CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', '', 'MANNEQUIN'):
+            self.assertIsNone(self.mod.decide('issues', '', who), who)
+
+    def test_opening_an_issue_ignores_command_text(self):
+        """본문에 /approve 를 적어둔다고 승인되지는 않는다."""
+        self.assertIsNone(self.mod.decide('issues', '/approve 3650', 'NONE'))
+
+    def test_comments_still_go_through_command_parsing(self):
+        self.assertEqual(self.mod.decide('issue_comment', '/approve 30', 'NONE'),
+                         ('approve', 30))
+        self.assertIsNone(self.mod.decide('issue_comment', '고맙습니다', 'OWNER'))
+
 
 class AutoActivationTest(unittest.TestCase):
     """승인된 키를 앱이 스스로 받아 등록하는 경로."""
