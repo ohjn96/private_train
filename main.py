@@ -92,6 +92,28 @@ def open_browser(port: int) -> None:
 
 app = create_app()
 
+
+def restore_telegram() -> None:
+    """지난번에 연결해둔 텔레그램 봇을 다시 살린다.
+
+    create_app() 이 아니라 여기서 하는 이유: 앱 객체를 만드는 것만으로
+    백그라운드 폴링 스레드가 뜨면 테스트가 네트워크를 타게 된다.
+    """
+    if os.environ.get('NO_TELEGRAM', '').lower() in ('1', 'true', 'yes'):
+        return
+    try:
+        from app.routes.reservation import _setup_telegram_callbacks
+        from app.services.telegram_service import TelegramService
+
+        tg = TelegramService.get_instance()
+        _setup_telegram_callbacks()
+        if tg.restore():
+            print("   텔레그램 봇 자동 연결됨")
+    except Exception as exc:
+        # 봇이 안 붙어도 앱은 멀쩡히 돌아야 한다
+        print(f"   텔레그램 자동 연결 실패 (무시하고 계속): {exc}")
+
+
 if __name__ == '__main__':
     # 기본 포트를 5050으로 변경 (macOS AirPlay가 5000 사용)
     port = int(os.environ.get('PORT', 5050))
@@ -114,6 +136,7 @@ if __name__ == '__main__':
     # debug 모드에서는 reloader 가 프로세스를 두 번 띄우므로 실제 실행되는 쪽에서만 연다
     if not debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         open_browser(port)
+        restore_telegram()
 
     try:
         app.run(host='0.0.0.0', port=port, debug=debug, threaded=True)

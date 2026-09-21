@@ -86,14 +86,15 @@ class TelegramService:
 
     # ─── Configuration ───────────────────────────────────────────
 
-    def configure(self, bot_token: str, chat_id: str = '') -> dict:
+    def configure(self, bot_token: str, chat_id: str = '', remember: bool = True) -> dict:
         """
         Configure the telegram bot.
         
         Args:
             bot_token: Telegram Bot API token from @BotFather
             chat_id: Optional chat ID (can be auto-detected via /start)
-            
+            remember: 이 PC 에 암호화해 저장해둘지 (다음 실행에서 자동 연결)
+
         Returns:
             dict with success status and bot info
         """
@@ -112,6 +113,17 @@ class TelegramService:
             if chat_id:
                 self.chat_id = str(chat_id)
 
+            # 웹훅이 걸려 있으면 getUpdates 가 409 로 계속 실패한다.
+            # (다른 데서 같은 토큰을 쓰다 남긴 흔적일 수 있다)
+            self._api_call('deleteWebhook', {'drop_pending_updates': False})
+
+            # 텔레그램 입력창의 명령어 메뉴를 채운다. 이게 없으면 사용자가
+            # 명령어를 외워서 쳐야 한다.
+            self.register_commands()
+
+            if remember:
+                self._remember()
+
             return {
                 'success': True,
                 'message': f"봇 연결 성공: @{bot_info['username']}",
@@ -121,9 +133,55 @@ class TelegramService:
         except requests.RequestException as e:
             return {'success': False, 'message': f'연결 오류: {str(e)}'}
 
+    BOT_COMMANDS = [
+        ('start', '연결 / 시작'),
+        ('reserve', '열차 검색·예약 (출발 도착 날짜 시간)'),
+        ('trains', '마지막 검색 결과 보기'),
+        ('status', '현재 상태 확인'),
+        ('stop', '매크로 중단'),
+        ('restart', '최신 데이터로 재시작'),
+        ('chatid', '채팅 ID 확인'),
+        ('help', '도움말'),
+    ]
+
+    def register_commands(self) -> bool:
+        """텔레그램 입력창의 명령어 메뉴를 채운다."""
+        result = self._api_call('setMyCommands', {
+            'commands': [{'command': name, 'description': desc}
+                         for name, desc in self.BOT_COMMANDS],
+        })
+        return result is not None
+
+    # ─── 이 PC 에 기억해두기 ───────────────────────────────────
+
+    def _remember(self) -> None:
+        from app.services import telegram_store
+        telegram_store.save(self.bot_token, self.chat_id)
+
+    def restore(self) -> bool:
+        """저장해둔 설정으로 다시 연결한다. 앱 기동 때 부른다."""
+        from app.services import telegram_store
+
+        saved = telegram_store.load()
+        if not saved:
+            return False
+
+        result = self.configure(saved['bot_token'], saved['chat_id'] or '',
+                                remember=False)
+        if not result.get('success'):
+            logger.info(f"저장된 텔레그램 설정으로 연결하지 못했습니다: {result.get('message')}")
+            return False
+
+        self.start_polling()
+        logger.info("저장된 설정으로 텔레그램 봇을 다시 연결했습니다.")
+        return True
+
     def disconnect(self):
         """Disconnect and reset the bot."""
+        from app.services import telegram_store
+
         self.stop_polling()
+        telegram_store.clear()
         self.bot_token = None
         self.chat_id = None
         self._connected = False
@@ -358,6 +416,21 @@ class TelegramService:
             logger.error(f"Error creating standalone service: {e}")
             return None, None
 
+    def _skip_backlog(self):
+        """쌓여 있던 예전 메시지를 건너뛴다.
+
+        텔레그램은 최대 24시간 치를 보관한다. 이걸 안 버리면 어제 친 /stop 이
+        앱을 켜자마자 실행되는 일이 생긴다.
+        """
+        try:
+            # offset=-1 은 "마지막 하나만" 이라는 뜻. 그 다음 번호부터 받으면 된다.
+            latest = self._api_call('getUpdates', {'offset': -1, 'timeout': 0})
+            if latest:
+                self._last_update_id = latest[-1]['update_id'] + 1
+                logger.info(f"묵은 텔레그램 메시지를 건너뜁니다 (offset={self._last_update_id})")
+        except Exception as e:
+            logger.warning(f"묵은 메시지 정리 실패: {e}")
+
     def start_polling(self):
         """Start polling for incoming bot commands in a background thread."""
         if self._polling_active:
@@ -367,6 +440,7 @@ class TelegramService:
             logger.warning("Cannot start polling: bot token not set")
             return
 
+        self._skip_backlog()
         self._polling_active = True
         self._connected = True
         self._polling_thread = threading.Thread(
@@ -393,10 +467,15 @@ class TelegramService:
             try:
                 updates = self._get_updates()
                 consecutive_errors = 0  # reset on success
-                if updates:
-                    for update in updates:
+                for update in updates or []:
+                    # offset 은 처리 성공 여부와 무관하게 먼저 올린다.
+                    # 안 그러면 메시지 하나가 터질 때 같은 것을 무한히 다시 받아
+                    # 봇이 통째로 멎는다.
+                    self._last_update_id = update['update_id'] + 1
+                    try:
                         self._handle_update(update)
-                        self._last_update_id = update['update_id'] + 1
+                    except Exception as e:
+                        logger.exception(f"Telegram update 처리 실패 (건너뜀): {e}")
             except Exception as e:
                 consecutive_errors += 1
                 logger.error(f"Telegram polling error: {e}")
@@ -428,6 +507,7 @@ class TelegramService:
         # Auto-register chat_id on first /start
         if text == '/start' and not self.chat_id:
             self.chat_id = incoming_chat_id
+            self._remember()      # 재시작해도 이 대화에 계속 붙어 있도록
             self.send_message(
                 f"✅ <b>연결 완료!</b>\n"
                 f"👋 안녕하세요, {user_name}님!\n"

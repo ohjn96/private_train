@@ -157,10 +157,11 @@ gh secret set LICENSE_SIGNING_KEY < ~/.config/private_train/license_signing_key.
 
 ### 현황 보기 — 터미널 없이
 
-- **대시보드**: GitHub Pages 를 켜면 `https://ohjn96.github.io/private_train/` 에서
-  누가 언제까지 쓰는지 표로 볼 수 있습니다 (휴대폰에서도).
-  저장소 → Settings → Pages → Source: *Deploy from a branch* → `release` / `/docs` 로 설정하면 끝입니다.
+- **대시보드**: `https://ohjn96.github.io/private_train/` 에서 누가 언제까지 쓰는지
+  표로 볼 수 있습니다 (휴대폰에서도). `.github/workflows/pages.yml` 이 `docs/` 가
+  바뀔 때마다 알아서 배포하고, Pages 가 꺼져 있으면 켜기까지 합니다.
   **공개 페이지이니** 머신 ID 와 이름이 남에게 보인다는 점만 감안하세요.
+  원치 않으면 그 워크플로를 지우고 Settings → Pages 에서 끄면 됩니다.
 
   | 페이지 | 내용 |
   |---|---|

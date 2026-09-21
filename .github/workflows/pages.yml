@@ -1,0 +1,47 @@
+name: 라이선스 대시보드 배포
+
+# docs/ 를 GitHub Pages 로 올린다. Settings 에서 손댈 필요 없이
+# configure-pages 가 Pages 자체도 켜준다(enablement).
+#
+# 공개 페이지이므로 발급된 머신 ID 와 이름이 남에게 보인다.
+# 원치 않으면 이 워크플로를 지우고 Settings → Pages 에서 끄면 된다.
+on:
+  push:
+    branches: [release]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 한 번에 하나만. 진행 중인 것은 취소하지 않는다(중간 상태로 남지 않게).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pages 준비 (꺼져 있으면 켠다)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: docs/ 업로드
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: 배포
+        id: deploy
+        uses: actions/deploy-pages@v4
