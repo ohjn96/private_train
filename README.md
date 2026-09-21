@@ -1,8 +1,10 @@
 # KTX/SRT 열차 예약 시스템
 
-> **주의: 상업용, 영리행위 등 불법행위 절대 금지**
+> **주의: 개인 사용 전용. 재배포·상업적 이용 금지**
 >
-> 이 프로젝트는 개인 학습 목적으로만 사용하세요.
+> 이 프로젝트는 개인 학습·개인 사용 목적으로만 쓸 수 있습니다.
+> 소스/실행 파일의 재배포와 영리 목적 이용은 저작권자의 사전 서면 허가가 필요합니다.
+> 자세한 조건은 [LICENSE](LICENSE) 를 보세요.
 
 ## 개요
 
@@ -227,17 +229,25 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 ```
 private_train/
 ├── app/                        # Flask 앱
-│   ├── routes/                 # 라우트 (auth, search, reservation, telegram)
+│   ├── routes/                 # 라우트 (auth, search, reservation, telegram, license)
 │   ├── services/               # 서비스 레이어 (Korail, Telegram)
+│   ├── licensing/              # 라이선스 게이트 (머신 바인딩 + 서명 검증)
 │   ├── templates/              # Jinja2 템플릿
 │   └── static/                 # 정적 파일
 ├── korail2/                    # Korail API 모듈
 ├── tests/                      # 회귀 테스트 (네트워크 불필요)
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
+│   ├── license_admin.py        # 라이선스 발급/철회 (발급자 전용)
+│   └── ci_approve.py           # 승인 댓글 해석 (Actions 용)
+├── licenses/                   # 승인된 라이선스 (앱이 여기서 자동 수령)
+├── license-policy.json         # 라이선스 검사 ON/OFF (없으면 OFF)
+├── docs/LICENSING.md           # 라이선스 운영 가이드
 ├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
-├── .github/workflows/          # 태그 푸시 시 Windows exe 자동 빌드
+├── .github/workflows/          # exe 자동 빌드 + 라이선스 승인 자동화
 ├── main.py                     # 진입점
 ├── VERSION                     # 버전 단일 출처
+├── LICENSE                     # 개인 사용 라이선스 (재배포·상업이용 금지)
+├── THIRD-PARTY-NOTICES.md      # 번들 오픈소스 고지
 └── requirements.txt            # 의존성
 ```
 
@@ -283,6 +293,51 @@ PyInstaller 옵션은 `build/build.py` 한 곳에만 있고, `build.ps1` 은 이
 
 ---
 
+## 라이선스 인증
+
+**현재는 꺼져 있습니다.** 별도 인증 없이 그냥 쓰시면 됩니다.
+
+인증 기능 자체는 구현돼 있고, 배포자가 원격 스위치로 켤 수 있습니다. 켜지면 이렇게 됩니다:
+
+```
+1. 앱 실행 → [라이선스 요청하기] 클릭 (머신 ID 가 자동으로 채워진 요청 폼이 열립니다)
+2. 발급자가 승인
+3. 라이선스 화면을 켜둔 채 기다리면 자동으로 활성화됩니다 (최대 5분)
+```
+
+복붙할 게 없습니다. 이메일로 키를 직접 받았다면 화면 아래쪽에 붙여넣는 칸도 있습니다.
+
+- 라이선스는 **그 PC 에서만** 유효합니다. 다른 PC 로 옮기거나 남에게 넘겨줄 수 없습니다.
+- 정해진 기간이 지나면 만료되며, 연장은 발급자에게 다시 요청하면 됩니다.
+- OS 를 재설치하면 머신 ID 가 바뀌므로 재발급이 필요합니다.
+- 활성화된 뒤에는 인터넷 없이도 동작합니다.
+
+> 발급자라면 스위치·키 생성·발급·철회·자동 승인 설정은
+> [docs/LICENSING.md](docs/LICENSING.md) 를 보세요.
+> 검사를 켜려면 `python scripts/license_admin.py policy --mode licensed`,
+> 승인은 GitHub 알림 메일에 `/approve 30` 이라고 답장하면 끝입니다.
+
+---
+
 ## 라이선스
 
-이 프로젝트는 개인 학습 목적으로만 사용하세요.
+**개인 사용 라이선스 (Personal Use License)** — 전문은 [LICENSE](LICENSE).
+
+| | |
+|---|---|
+| ✅ 허용 | 개인적·비상업적 목적의 학습, 실행, 수정 |
+| ❌ 금지 | 재배포 (소스·수정본·exe 모두), 상업적 이용, 제3자 대상 서비스 제공, 저작권 표시 제거 |
+
+Fork 를 포함한 모든 사본에 같은 조건이 적용됩니다. 위 금지 행위가 필요하면
+[Issue](https://github.com/ohjn96/private_train/issues) 로 사전 허가를 요청해 주세요.
+
+### 제3자 구성요소
+
+`korail2/` 는 BSD 라이선스(© 2014 Taehoon Kim)이며 위 조건이 적용되지 않습니다.
+실행 파일에 번들되는 오픈소스 목록은 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 참조.
+
+### 면책
+
+이 프로젝트는 한국철도공사(코레일) 및 에스알(SR)과 무관하며 승인받지 않았습니다.
+이용자는 각 서비스의 이용약관과 관계 법령을 준수할 책임이 있고, 사용으로 발생한
+모든 결과에 대한 책임은 이용자 본인에게 있습니다.

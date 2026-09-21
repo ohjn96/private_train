@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 라이선스 조건 확인
+    url: https://github.com/ohjn96/private_train/blob/release/LICENSE
+    about: 개인 사용 라이선스 전문 (재배포·상업적 이용 금지)

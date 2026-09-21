@@ -1,0 +1,44 @@
+name: 라이선스 요청
+description: 앱을 사용할 PC 의 라이선스를 요청합니다.
+title: "[라이선스] "
+labels: ["license-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        앱의 라이선스 화면에서 **[라이선스 요청하기]** 버튼을 누르면 머신 ID 가 자동으로 채워집니다.
+        승인되면 앱이 알아서 활성화되므로, 그때까지 라이선스 화면을 켜두세요.
+
+  - type: input
+    id: machine-id
+    attributes:
+      label: 머신 ID
+      description: 앱 라이선스 화면에 표시된 16자리 값 (예 A1B2-C3D4-E5F6-7890)
+      placeholder: A1B2-C3D4-E5F6-7890
+    validations:
+      required: true
+
+  - type: input
+    id: purpose
+    attributes:
+      label: 이름 / 용도
+      description: 누구인지, 어디에 쓸 것인지 알려주세요.
+      placeholder: 홍길동 - 개인 출퇴근용
+    validations:
+      required: true
+
+  - type: input
+    id: period
+    attributes:
+      label: 희망 사용 기간
+      placeholder: 30일
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 확인
+      options:
+        - label: 개인적·비상업적 용도로만 사용하며, 재배포하지 않겠습니다.
+          required: true

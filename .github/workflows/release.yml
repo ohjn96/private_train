@@ -57,10 +57,12 @@ jobs:
           $exe = ".\TrainReservationApp-v$env:VERSION.exe"
           $proc = Start-Process -FilePath $exe -PassThru
           $ok = $false
+          # /license?manage=1 은 라이선스 검사가 켜졌든 꺼졌든 항상 200 이라
+          # 정책 상태에 흔들리지 않는 기동 확인 지점이다.
           foreach ($i in 1..30) {
             Start-Sleep -Seconds 2
             try {
-              $res = Invoke-WebRequest http://localhost:5050/login -UseBasicParsing -TimeoutSec 5
+              $res = Invoke-WebRequest "http://localhost:5050/license?manage=1" -UseBasicParsing -TimeoutSec 5
               if ($res.StatusCode -eq 200) { $ok = $true; break }
             } catch { }
           }
