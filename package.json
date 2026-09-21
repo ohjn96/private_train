@@ -1,6 +1,6 @@
 {
   "name": "train-reservation",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "KTX/SRT Train Reservation System",
   "scripts": {
     "build:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --minify",
