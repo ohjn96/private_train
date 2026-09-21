@@ -23,6 +23,9 @@ from Crypto.PublicKey import ECC          # noqa: E402
 
 from app.licensing.token import parse     # noqa: E402
 
+sys.path.insert(0, str(ROOT / 'scripts'))
+from license_admin import autorenew_days_for   # noqa: E402
+
 LICENSES_DIR = ROOT / 'licenses'
 REVOCATION_FILE = ROOT / 'revoked.json'
 
@@ -60,6 +63,8 @@ def collect(within_days: int) -> list[dict]:
             continue
         if license_obj.expires_at > cutoff:
             continue
+        if autorenew_days_for(license_obj.machine_id) is not None:
+            continue   # 자동 갱신되므로 알릴 필요가 없다
 
         seconds_left = license_obj.expires_at - now
         found.append({

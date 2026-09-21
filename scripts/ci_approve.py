@@ -15,7 +15,8 @@ import re
 import sys
 
 MACHINE_ID_RE = re.compile(r'\b([0-9A-Fa-f]{4}(?:-[0-9A-Fa-f]{4}){3})\b')
-COMMAND_RE = re.compile(r'^\s*/(approve|deny|revoke)\b\s*(\d+)?', re.IGNORECASE)
+COMMAND_RE = re.compile(
+    r'^\s*/(approve|deny|revoke|autorenew)\b\s*(\d+|off)?', re.IGNORECASE)
 
 MIN_DAYS = 1
 MAX_DAYS = 3650
@@ -29,15 +30,25 @@ def parse_machine_id(issue_body: str) -> str | None:
 
 
 def parse_command(comment: str) -> tuple[str, int] | None:
-    """'/approve 30' 같은 댓글을 (명령, 일수) 로. 명령이 아니면 None."""
+    """'/approve 30' 같은 댓글을 (명령, 일수) 로. 명령이 아니면 None.
+
+    '/autorenew off' 는 ('autorenew', 0) 으로 돌려준다. 0 = 끄기.
+    """
     match = COMMAND_RE.match(comment or '')
     if not match:
         return None
 
     action = match.group(1).lower()
+    argument = match.group(2)
+
+    if argument and argument.lower() == 'off':
+        if action != 'autorenew':
+            return None      # off 는 autorenew 에만 쓴다
+        return action, 0
+
     days = DEFAULT_DAYS
-    if match.group(2):
-        days = max(MIN_DAYS, min(MAX_DAYS, int(match.group(2))))
+    if argument:
+        days = max(MIN_DAYS, min(MAX_DAYS, int(argument)))
     return action, days
 
 

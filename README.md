@@ -239,11 +239,11 @@ private_train/
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
 │   ├── license_admin.py        # 라이선스 발급/철회 (발급자 전용)
 │   ├── ci_approve.py           # 승인 댓글 해석 (Actions 용)
-│   └── ci_expiry.py            # 만료 임박 스캔 (Actions 용)
+│   ├── ci_expiry.py            # 만료 임박 스캔 (Actions 용)
+│   └── ci_renew.py             # 자동 갱신 대상 스캔 (Actions 용)
 ├── licenses/                   # 승인된 라이선스 (앱이 여기서 자동 수령)
 ├── license-policy.json         # 라이선스 검사 ON/OFF (없으면 OFF)
-├── docs/LICENSING.md           # 라이선스 운영 가이드
-├── docs/index.html             # 라이선스 현황 대시보드 (GitHub Pages)
+├── docs/                       # 라이선스 운영 가이드 + 현황 대시보드(GitHub Pages)
 ├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
 ├── .github/workflows/          # exe 자동 빌드 + 라이선스 승인 자동화
 ├── main.py                     # 진입점

@@ -61,6 +61,10 @@ LICENSES_INDEX = LICENSES_DIR / 'index.json'
 POLICY_FILE = ROOT / 'license-policy.json'
 POLICY_VALID_DAYS = 3650
 
+# 자동 갱신 설정. 앱은 이 파일을 보지 않는다 — Actions 만 읽으므로 서명이 필요 없다.
+AUTORENEW_FILE = LICENSES_DIR / 'autorenew.json'
+AUTORENEW_DEFAULT_DAYS = 30
+
 # 철회 목록 토큰의 유효기간 (주기적으로 다시 서명하게 만들어, 오래된 목록이
 # 영원히 재사용되는 것을 막는다)
 REVOCATION_VALID_DAYS = 3650
@@ -322,11 +326,123 @@ def cmd_revoke(args: argparse.Namespace) -> None:
         action = f'철회: {", ".join(sorted(targets))}'
 
     _write_revocation_file(ids, key)
+
+    # 철회한 머신이 자동 갱신 대상이면 꺼둔다. 안 그러면 다음 갱신 때 되살아난다.
+    if not args.undo and args.machine_id:
+        settings = read_autorenew()
+        machine_id = normalize(args.machine_id)
+        if autorenew_days_for(machine_id, settings) is not None:
+            settings['machines'][machine_id] = {'off': True}
+            write_autorenew(settings)
+            print(f'{machine_id}: 자동 갱신도 함께 껐습니다.')
+
     print(action)
     print(f'{REVOCATION_FILE} 를 갱신했습니다. 커밋 후 푸시하면 적용됩니다:')
     print(f'    git add {REVOCATION_FILE.name} && git commit -m "chore: 라이선스 철회 목록 갱신" && git push')
     print()
     print('앱은 최대 24시간 캐시를 쓰므로, 반영까지 하루 정도 걸릴 수 있습니다.')
+
+
+# --------------------------------------------------------------------------- 자동 갱신
+
+def read_autorenew() -> dict:
+    """자동 갱신 설정. 없으면 '아무도 자동 갱신 안 함'."""
+    if not AUTORENEW_FILE.exists():
+        return {'all': False, 'default_days': AUTORENEW_DEFAULT_DAYS, 'machines': {}}
+    try:
+        data = json.loads(AUTORENEW_FILE.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return {'all': False, 'default_days': AUTORENEW_DEFAULT_DAYS, 'machines': {}}
+    if not isinstance(data, dict):
+        return {'all': False, 'default_days': AUTORENEW_DEFAULT_DAYS, 'machines': {}}
+
+    data.setdefault('all', False)
+    data.setdefault('default_days', AUTORENEW_DEFAULT_DAYS)
+    if not isinstance(data.get('machines'), dict):
+        data['machines'] = {}
+    return data
+
+
+def write_autorenew(data: dict) -> None:
+    LICENSES_DIR.mkdir(parents=True, exist_ok=True)
+    AUTORENEW_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+        encoding='utf-8')
+
+
+def autorenew_days_for(machine_id: str, settings: dict | None = None) -> int | None:
+    """이 머신을 자동 갱신한다면 몇 일짜리로? 대상이 아니면 None."""
+    settings = read_autorenew() if settings is None else settings
+    entry = settings['machines'].get(machine_id)
+
+    if entry is None:
+        if not settings.get('all'):
+            return None
+        entry = {}
+
+    if entry.get('off'):
+        return None
+
+    until = entry.get('until')
+    if until:
+        try:
+            deadline = datetime.strptime(str(until), '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        except ValueError:
+            deadline = None
+        if deadline and datetime.now(timezone.utc) > deadline:
+            return None   # 자동 갱신 유효기간이 끝났다
+
+    days = entry.get('days', settings.get('default_days', AUTORENEW_DEFAULT_DAYS))
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        days = AUTORENEW_DEFAULT_DAYS
+    return max(1, days)
+
+
+def cmd_autorenew(args: argparse.Namespace) -> None:
+    settings = read_autorenew()
+
+    # 전역 스위치
+    if args.all is not None:
+        settings['all'] = args.all
+        write_autorenew(settings)
+        state = '켬 (모든 라이선스)' if args.all else '끔'
+        print(f'전역 자동 갱신: {state}')
+        print(f'{AUTORENEW_FILE} 를 커밋하면 적용됩니다.')
+        return
+
+    # 조회
+    if not args.machine_id:
+        print(f'전역 자동 갱신 : {"켜짐" if settings["all"] else "꺼짐"}')
+        print(f'기본 기간      : {settings["default_days"]}일')
+        if not settings['machines']:
+            print('개별 설정      : 없음')
+            return
+        print('개별 설정      :')
+        for mid, entry in sorted(settings['machines'].items()):
+            if entry.get('off'):
+                print(f'  {mid}  자동 갱신 안 함')
+            else:
+                until = f', {entry["until"]} 까지' if entry.get('until') else ''
+                print(f'  {mid}  {entry.get("days", settings["default_days"])}일마다{until}')
+        return
+
+    # 개별 설정
+    machine_id = normalize(args.machine_id)
+    if args.off:
+        settings['machines'][machine_id] = {'off': True}
+        print(f'{machine_id}: 자동 갱신 끔')
+    else:
+        entry = {'days': args.days or settings['default_days']}
+        if args.until:
+            entry['until'] = args.until
+        settings['machines'][machine_id] = entry
+        until = f' ({args.until} 까지)' if args.until else ''
+        print(f'{machine_id}: {entry["days"]}일마다 자동 갱신{until}')
+
+    write_autorenew(settings)
+    print(f'{AUTORENEW_FILE} 를 커밋하면 적용됩니다.')
 
 
 # --------------------------------------------------------------------------- 정책 스위치
@@ -450,6 +566,17 @@ def main() -> None:
     p_revoke.add_argument('--machine-id', help='머신 ID 통째로 차단')
     p_revoke.add_argument('--undo', action='store_true', help='철회 해제')
     p_revoke.set_defaults(func=cmd_revoke)
+
+    p_auto = sub.add_parser('autorenew', help='만료 임박 시 자동 갱신 설정')
+    p_auto.add_argument('--machine-id', help='대상 머신 (없으면 현재 설정만 보여준다)')
+    p_auto.add_argument('--days', type=int, help='갱신할 기간(일). 기본 30')
+    p_auto.add_argument('--until', help='이 날짜까지만 자동 갱신 (YYYY-MM-DD)')
+    p_auto.add_argument('--off', action='store_true', help='이 머신의 자동 갱신 끄기')
+    p_auto.add_argument('--all', dest='all', action='store_const', const=True,
+                        help='모든 라이선스를 자동 갱신 대상으로')
+    p_auto.add_argument('--no-all', dest='all', action='store_const', const=False,
+                        help='전역 자동 갱신 끄기')
+    p_auto.set_defaults(func=cmd_autorenew, all=None)
 
     p_policy = sub.add_parser('policy', help='라이선스 검사를 켜고 끄는 원격 스위치')
     p_policy.add_argument('--mode', choices=list(VALID_MODES),

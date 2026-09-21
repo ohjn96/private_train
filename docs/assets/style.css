@@ -1,0 +1,151 @@
+/* 라이선스 현황 사이트 공통 스타일.
+   앱과 달리 여기는 관리자용이라 Tailwind 대신 직접 쓴다. 빌드 단계가 없다. */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e3e6ea;
+  --text: #1f2328;
+  --muted: #6b7280;
+  --faint: #9ca3af;
+  --accent: #ef4444;
+  --accent-soft: #fef2f2;
+
+  --ok-bg: #dcfce7;    --ok-fg: #15803d;
+  --warn-bg: #fef3c7;  --warn-fg: #b45309;
+  --dead-bg: #f1f3f5;  --dead-fg: #6b7280;
+  --auto-bg: #e0e7ff;  --auto-fg: #4338ca;
+
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --surface: #1c1f24;
+    --border: #2c3037;
+    --text: #e6e8ea;
+    --muted: #9aa1ab;
+    --faint: #6b7280;
+    --accent-soft: #2a1a1a;
+
+    --ok-bg: #14331f;    --ok-fg: #4ade80;
+    --warn-bg: #3a2c10;  --warn-fg: #fbbf24;
+    --dead-bg: #24272c;  --dead-fg: #9aa1ab;
+    --auto-bg: #1e2140;  --auto-fg: #a5b4fc;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+a { color: inherit; }
+
+.wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+
+/* ---------------------------------------------------------------- 헤더 */
+
+.topbar {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.topbar .wrap {
+  padding: 14px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.brand { font-weight: 700; text-decoration: none; }
+.brand .dot { color: var(--accent); }
+.nav { display: flex; gap: 4px; }
+.nav a {
+  padding: 6px 12px; border-radius: 8px; text-decoration: none;
+  color: var(--muted); font-size: 14px;
+}
+.nav a:hover { background: var(--bg); color: var(--text); }
+.nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.page-head { margin: 28px 0 20px; display: flex; align-items: flex-start;
+             justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 28px 0 10px; }
+.sub { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* ---------------------------------------------------------------- 요소 */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.btn {
+  font: inherit; font-size: 14px;
+  padding: 7px 14px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  cursor: pointer; text-decoration: none; display: inline-block;
+}
+.btn:hover:not(:disabled) { background: var(--bg); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #dc2626; }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+@media (max-width: 560px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+.stat .label { font-size: 12px; color: var(--muted); }
+.stat .value { font-size: 26px; font-weight: 700; line-height: 1.2; margin-top: 2px;
+               font-variant-numeric: tabular-nums; }
+.stat .value.ok { color: var(--ok-fg); }
+.stat .value.warn { color: var(--warn-fg); }
+.stat .value.dead { color: var(--faint); }
+
+.banner { border-radius: var(--radius); padding: 14px 16px; margin-bottom: 20px;
+          border: 1px solid var(--border); background: var(--surface); font-size: 14px; }
+.banner.ok { background: var(--ok-bg); color: var(--ok-fg); border-color: transparent; }
+.banner.warn { background: var(--warn-bg); color: var(--warn-fg); border-color: transparent; }
+.banner.danger { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.banner .seq { opacity: .7; font-size: 12px; }
+.banner p { margin: 4px 0 0; opacity: .85; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table-wrap { background: var(--surface); border: 1px solid var(--border);
+              border-radius: var(--radius); overflow: hidden; }
+.scroll-x { overflow-x: auto; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 13px;
+     padding: 11px 14px; background: var(--bg); white-space: nowrap; }
+td { padding: 11px 14px; border-top: 1px solid var(--border); }
+tbody tr:hover { background: var(--bg); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.inactive td { opacity: .5; }
+
+code, .mono { font-family: var(--mono); font-size: 13px; }
+td a.mid { text-decoration: none; border-bottom: 1px dotted var(--faint); }
+td a.mid:hover { border-bottom-color: var(--accent); color: var(--accent); }
+
+.tag { display: inline-block; padding: 2px 8px; border-radius: 99px;
+       font-size: 12px; font-weight: 600; white-space: nowrap; }
+.tag.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.tag.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.tag.dead { background: var(--dead-bg); color: var(--dead-fg); }
+.tag.auto { background: var(--auto-bg); color: var(--auto-fg); }
+
+.empty { padding: 48px 16px; text-align: center; color: var(--faint); }
+
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 0; }
+dl.facts dt { color: var(--muted); font-size: 14px; }
+dl.facts dd { margin: 0; }
+
+.note { color: var(--faint); font-size: 12.5px; line-height: 1.7; margin-top: 20px; }
+.steps { padding-left: 20px; }
+.steps li { margin-bottom: 8px; }
+pre.cmd { background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+          padding: 10px 14px; overflow-x: auto; font-family: var(--mono); font-size: 13px;
+          margin: 8px 0; }

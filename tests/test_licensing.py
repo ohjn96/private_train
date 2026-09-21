@@ -506,3 +506,48 @@ class PolicySwitchTest(unittest.TestCase):
         with self._serve(self._policy_token('nonsense', 3)):
             status = self.licensing.current_status(refresh=True, force_policy=True)
         self.assertTrue(status.valid)
+
+
+class AutoRenewSettingsTest(unittest.TestCase):
+    """자동 갱신 판정 (scripts/license_admin.py) — dukpy 없이도 도는 쪽."""
+
+    @classmethod
+    def setUpClass(cls):
+        scripts = Path(__file__).resolve().parent.parent / 'scripts'
+        sys.path.insert(0, str(scripts))
+        import license_admin
+        cls.admin = license_admin
+
+    def days_for(self, settings, machine_id=MACHINE):
+        base = {'all': False, 'default_days': 30, 'machines': {}}
+        base.update(settings)
+        return self.admin.autorenew_days_for(machine_id, base)
+
+    def test_off_by_default(self):
+        self.assertIsNone(self.days_for({}))
+
+    def test_enabled_for_one_machine(self):
+        self.assertEqual(self.days_for({'machines': {MACHINE: {'days': 45}}}), 45)
+        self.assertIsNone(self.days_for({'machines': {MACHINE: {'days': 45}}}, OTHER_MACHINE))
+
+    def test_global_switch_with_opt_out(self):
+        self.assertEqual(self.days_for({'all': True}), 30)
+        self.assertIsNone(self.days_for({'all': True, 'machines': {MACHINE: {'off': True}}}))
+
+    def test_default_days_applies_when_entry_is_empty(self):
+        self.assertEqual(self.days_for({'default_days': 14, 'machines': {MACHINE: {}}}), 14)
+
+    def test_until_date_stops_renewal(self):
+        self.assertIsNone(self.days_for(
+            {'machines': {MACHINE: {'days': 30, 'until': '2000-01-01'}}}))
+        self.assertEqual(self.days_for(
+            {'machines': {MACHINE: {'days': 30, 'until': '2999-01-01'}}}), 30)
+
+    def test_malformed_values_fall_back(self):
+        self.assertEqual(self.days_for({'machines': {MACHINE: {'days': 'abc'}}}), 30)
+        self.assertEqual(self.days_for(
+            {'machines': {MACHINE: {'days': 30, 'until': '엉터리'}}}), 30)
+
+    def test_days_are_at_least_one(self):
+        self.assertEqual(self.days_for({'machines': {MACHINE: {'days': 0}}}), 1)
+        self.assertEqual(self.days_for({'machines': {MACHINE: {'days': -5}}}), 1)

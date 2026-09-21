@@ -133,8 +133,46 @@ gh secret set LICENSE_SIGNING_KEY < ~/.config/private_train/license_signing_key.
   누가 언제까지 쓰는지 표로 볼 수 있습니다 (휴대폰에서도).
   저장소 → Settings → Pages → Source: *Deploy from a branch* → `release` / `/docs` 로 설정하면 끝입니다.
   **공개 페이지이니** 머신 ID 와 이름이 남에게 보인다는 점만 감안하세요.
+
+  | 페이지 | 내용 |
+  |---|---|
+  | `index.html` | 현황 표, 요약, 검사 ON/OFF 배너 |
+  | `detail.html?id=<머신ID>` | 개별 라이선스 상세와 쓸 수 있는 명령 |
+  | `guide.html` | 사용자·발급자용 안내 |
+
+  빌드 단계가 없는 정적 ES 모듈입니다. 계산 로직은 `assets/js/model.js` 한 곳에 모여
+  있고 `tests/test_dashboard_js.py` 가 실제로 실행해서 검증합니다
+  (`pip install dukpy` 가 있어야 돌고, 없으면 건너뜁니다).
 - **원본 데이터**: `licenses/index.json` 을 GitHub 웹에서 그냥 열어봐도 됩니다.
 - **이력**: `licenses/` 의 커밋 히스토리가 발급·철회 기록입니다.
+
+### 자동 갱신 — 한 번 켜두면 손 안 대도 됨
+
+만료 3일 전에 알아서 연장합니다. 머신별로 켭니다 (기본은 꺼짐).
+
+```
+/autorenew        30일씩 자동 연장
+/autorenew 90     90일씩
+/autorenew off    끄기
+```
+
+CLI 로도 됩니다.
+
+```bash
+python scripts/license_admin.py autorenew --machine-id A1B2-... --days 30
+python scripts/license_admin.py autorenew --machine-id A1B2-... --until 2027-01-01  # 이 날까지만
+python scripts/license_admin.py autorenew --all      # 전부 자동 갱신
+python scripts/license_admin.py autorenew            # 현재 설정 보기
+```
+
+- 설정은 `licenses/autorenew.json` 에 들어가고, 커밋해야 적용됩니다
+  (댓글로 켰다면 Actions 가 알아서 커밋합니다).
+- `license-renew.yml` 이 **매일 08:30 KST** 에 돌면서 3일 미만 남은 대상을 재발급합니다.
+- **`/revoke` 하면 자동 갱신도 같이 꺼집니다.** 안 그러면 다음날 되살아나기 때문입니다.
+- 자동 갱신 대상은 만료 알림을 보내지 않습니다 (알릴 이유가 없으므로).
+
+자동 갱신을 켜면 그 사람은 사실상 무기한 사용자가 됩니다. 끊으려면 `/revoke` 나
+`/autorenew off` 를 쓰거나, `--until` 로 기한을 미리 박아두세요.
 
 ### 만료 알림
 
@@ -154,6 +192,8 @@ gh secret set LICENSE_SIGNING_KEY < ~/.config/private_train/license_signing_key.
 |---|---|
 | `/approve` | 30일 발급 |
 | `/approve 90` | 90일 발급 (1~3650 범위로 자름) |
+| `/autorenew 30` | 만료 3일 전마다 30일씩 자동 연장 |
+| `/autorenew off` | 자동 갱신 끄기 |
 | `/revoke` | 그 PC 차단 (`revoked.json` 갱신 + `licenses/` 에서 삭제) |
 | `/deny` | 거절하고 닫기 |
 
@@ -286,14 +326,21 @@ python -m unittest discover -s tests
 ├── scripts/
 │   ├── license_admin.py             발급 도구
 │   ├── ci_approve.py                승인 댓글 해석 (Actions 용)
-│   └── ci_expiry.py                 만료 임박 스캔 (Actions 용)
+│   ├── ci_expiry.py                 만료 임박 스캔 (Actions 용)
+│   └── ci_renew.py                  자동 갱신 대상 스캔 (Actions 용)
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
 │   │   └── license-request.yml      요청 폼
 │   └── workflows/
 │       ├── license-approve.yml      승인 워크플로
-│       └── license-expiry.yml       만료 알림 (매일)
-├── docs/index.html                  현황 대시보드 (GitHub Pages)
+│       ├── license-renew.yml        자동 갱신 (매일 08:30)
+│       └── license-expiry.yml       만료 알림 (매일 09:00)
+├── docs/                            GitHub Pages 사이트
+│   ├── index.html                   현황 대시보드
+│   ├── detail.html                  라이선스 상세
+│   ├── guide.html                   사용 안내
+│   └── assets/                      style.css, js/ (config·api·model·ui·페이지)
+├── licenses/autorenew.json          자동 갱신 설정
 ├── licenses/<머신ID>.key             발급된 라이선스 (앱이 여기서 받아감)
 ├── license-policy.json              검사 ON/OFF 스위치 (없으면 OFF)
 └── revoked.json                     서명된 철회 목록
