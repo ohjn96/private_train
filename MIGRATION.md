@@ -17,8 +17,17 @@ ohjn96/train-reservation    (공개)    릴리스 · 요청 이슈 · 발급된 
 
 ## 1. 공개 저장소 만들기
 
-GitHub 에서 **ohjn96/train-reservation** 을 **Public** 으로 새로 만듭니다.
-README·gitignore·라이선스는 **넣지 마세요** (이미 준비돼 있습니다).
+https://github.com/new 에서 만듭니다.
+
+| | |
+|---|---|
+| Owner | `ohjn96` |
+| Repository name | `train-reservation` |
+| 공개 설정 | **Public** |
+| README / .gitignore / license 추가 | **전부 체크 해제** (이미 준비돼 있습니다) |
+
+만들기 전에 VS Code 로그인 계정이 `ohjn96` 인지 확인하세요 — `jinyoung-oh2` 로
+되어 있으면 푸시가 403 으로 막힙니다.
 
 ```bash
 cd ~/workspace/train-reservation
@@ -38,9 +47,11 @@ git push -u origin release
 |---|---|
 | `LICENSE_SIGNING_KEY` | `~/.config/private_train/license_signing_key.pem` 내용 전체 |
 
+```bash
+clip.exe < ~/.config/private_train/license_signing_key.pem && echo "복사됨"
 ```
-! clip.exe < ~/.config/private_train/license_signing_key.pem && echo "복사됨"
-```
+
+(WSL 에서 윈도우 클립보드로 복사됩니다. `clip.exe` 는 성공해도 출력이 없습니다.)
 
 **라벨** — Issues → Labels 에서 `license-request` 를 만들어 둡니다.
 (`license-expiry` 는 워크플로가 알아서 만듭니다.)
