@@ -161,6 +161,39 @@ class ModelJsTest(unittest.TestCase):
         self.assertIsNone(row['autoRenew'])
         self.assertFalse(row['renewingSoon'])
 
+    # ------------------------------------------------------------------ 유효기간 레일
+
+    def test_remaining_fraction(self):
+        """발급~만료 구간에서 남은 비율. 유효기간 레일의 길이가 된다."""
+        now_ms = 1_700_000_000_000
+        now_s = now_ms // 1000
+        lic = {'issued_at': now_s - 30 * 86400, 'expires_at': now_s + 30 * 86400}
+        self.assertAlmostEqual(
+            self.run_js('remainingFraction(lic, now)', lic=lic, now=now_ms), 0.5, places=2)
+
+    def test_remaining_fraction_is_clamped(self):
+        now_ms = 1_700_000_000_000
+        now_s = now_ms // 1000
+        expired = {'issued_at': now_s - 60 * 86400, 'expires_at': now_s - 86400}
+        self.assertEqual(self.run_js('remainingFraction(lic, now)', lic=expired, now=now_ms), 0)
+        future = {'issued_at': now_s + 86400, 'expires_at': now_s + 60 * 86400}
+        self.assertEqual(self.run_js('remainingFraction(lic, now)', lic=future, now=now_ms), 1)
+
+    def test_remaining_fraction_without_issue_date(self):
+        """예전 index.json 에는 발급일이 없을 수 있다 — 레일을 못 그린다."""
+        self.assertIsNone(self.run_js(
+            'remainingFraction(lic, now)',
+            lic={'expires_at': 1_700_100_000}, now=1_700_000_000_000))
+
+    def test_describe_carries_the_fraction(self):
+        now = int(time.time())
+        lic = {'machine_id': 'A1B2-C3D4-E5F6-7890', 'license_id': 'x', 'name': '',
+               'issued_at': now - 10 * 86400, 'expires_at': now + 10 * 86400}
+        row = self.run_js('describe(lic, {revoked: new Set()})', lic=lic)
+        self.assertIsNotNone(row['remaining'])
+        self.assertGreater(row['remaining'], 0.4)
+        self.assertLess(row['remaining'], 0.6)
+
     # ------------------------------------------------------------------ 정렬 / 집계
 
     def test_sort_puts_inactive_last_and_urgent_first(self):

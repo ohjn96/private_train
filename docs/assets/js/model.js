@@ -62,6 +62,7 @@ export function describe(license, { revoked, autorenew, now = Date.now() } = {})
     ...license,
     status,
     statusLabel: STATUS_LABEL[status],
+    remaining: remainingFraction(license, now),
     daysLeft: left,
     expiresOn: formatDate(license.expires_at),
     issuedOn: license.issued_at ? formatDate(license.issued_at) : null,
@@ -70,6 +71,16 @@ export function describe(license, { revoked, autorenew, now = Date.now() } = {})
     renewingSoon: !isRevoked && renewDays !== null && left <= AUTORENEW_TRIGGER_DAYS && left > 0,
     inactive: status === STATUS.EXPIRED || status === STATUS.REVOKED,
   };
+}
+
+/** 발급 기간 중 얼마나 남았는지 0~1. 유효기간 레일에 쓴다.
+ *  발급일을 모르면(구버전 index.json) null. */
+export function remainingFraction(license, now = Date.now()) {
+  const { issued_at: issued, expires_at: expires } = license;
+  if (!issued || !expires || expires <= issued) return null;
+  const total = expires - issued;
+  const left = expires - now / 1000;
+  return Math.max(0, Math.min(1, left / total));
 }
 
 /** 만료가 임박한 순으로. 비활성(만료·철회)은 뒤로 보낸다. */
@@ -94,11 +105,15 @@ export function summarize(rows) {
 /** license-policy.json → 배너에 쓸 내용. 파일이 없으면 open 으로 본다. */
 export function describePolicy(policy) {
   const mode = policy?.mode ?? 'open';
-  const views = {
-    open: { tone: '', text: '라이선스 검사 <strong>꺼짐</strong> — 누구나 앱을 쓸 수 있습니다.' },
-    licensed: { tone: 'ok', text: '라이선스 검사 <strong>켜짐</strong> — 허가된 PC 에서만 동작합니다.' },
-    blocked: { tone: 'danger', text: '<strong>전면 차단</strong> 중 — 라이선스가 있어도 막힙니다.' },
+  const TEXT = {
+    open: '라이선스 검사 <strong>꺼짐</strong> — 누구나 앱을 쓸 수 있습니다.',
+    licensed: '라이선스 검사 <strong>켜짐</strong> — 허가된 PC 에서만 동작합니다.',
+    blocked: '<strong>전면 차단</strong> 중 — 라이선스가 있어도 막힙니다.',
   };
-  const view = views[mode] ?? views.open;
-  return { mode, tone: view.tone, text: view.text, seq: policy?.seq ?? null, message: policy?.message ?? '' };
+  return {
+    mode,
+    text: TEXT[mode] ?? TEXT.open,
+    seq: policy?.seq ?? null,
+    message: policy?.message ?? '',
+  };
 }

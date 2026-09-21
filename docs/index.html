@@ -4,61 +4,58 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>라이선스 현황</title>
+<title>라이선스 콘솔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 
-<div class="wrap">
+<main class="wrap">
 
   <div class="page-head">
     <div>
+      <p class="eyebrow">KTX / SRT 예약</p>
       <h1>라이선스 현황</h1>
-      <p class="sub">저장소의 <code>licenses/index.json</code> 을 그대로 읽습니다.</p>
     </div>
-    <button id="refresh" class="btn">새로고침</button>
+    <button id="refresh" class="btn" type="button">새로고침</button>
   </div>
 
-  <div id="policy" class="banner">정책 확인 중...</div>
+  <div id="policy" class="policy">정책 확인 중…</div>
 
   <div class="stats">
-    <div class="card stat"><div class="label">전체</div>
-      <div class="value" id="statTotal">–</div></div>
-    <div class="card stat"><div class="label">유효</div>
-      <div class="value ok" id="statValid">–</div></div>
-    <div class="card stat"><div class="label">곧 만료</div>
-      <div class="value warn" id="statSoon">–</div></div>
-    <div class="card stat"><div class="label">만료·철회</div>
-      <div class="value dead" id="statInactive">–</div></div>
+    <div class="stat"><span class="k">전체</span><span class="v" id="statTotal">–</span></div>
+    <div class="stat"><span class="k">유효</span><span class="v ok" id="statValid">–</span></div>
+    <div class="stat"><span class="k">곧 만료</span><span class="v warn" id="statSoon">–</span></div>
+    <div class="stat"><span class="k">만료·철회</span><span class="v off" id="statInactive">–</span></div>
   </div>
 
-  <div class="table-wrap">
-    <div class="scroll-x">
-      <table>
-        <thead>
-          <tr>
-            <th>머신 ID</th>
-            <th>대상</th>
-            <th>만료일</th>
-            <th class="num">남은 기간</th>
-            <th>상태</th>
-          </tr>
-        </thead>
-        <tbody id="rows">
-          <tr><td colspan="5"><div class="empty">불러오는 중...</div></td></tr>
-        </tbody>
-      </table>
-    </div>
+  <div class="panel roster">
+    <table id="rosterTable" hidden>
+      <thead>
+        <tr>
+          <th scope="col">상태</th>
+          <th scope="col">머신 ID</th>
+          <th scope="col">대상</th>
+          <th scope="col">유효기간</th>
+          <th scope="col">만료일</th>
+          <th scope="col" class="num">남은</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="rosterEmpty"><div class="empty"><p>불러오는 중…</p></div></div>
   </div>
 
-  <p class="note">
+  <p class="foot">
     <span id="autoNote"></span><br>
-    <span id="updated"></span><br>
-    이 페이지는 공개 저장소의 파일을 읽으므로 <strong>누구나 볼 수 있습니다.</strong>
-    발급·연장·철회는 Issues 에서 <code>/approve 30</code> 같은 댓글로 합니다.
+    공개 저장소의 파일을 읽어 그립니다. <strong>이 페이지는 누구나 볼 수 있습니다.</strong><br>
+    발급·연장·철회는 요청함에서 <code>/approve 30</code> 같은 댓글로 합니다.<br>
+    <span class="stamp">마지막 확인 <span id="updated">–</span></span>
   </p>
 
-</div>
+</main>
 
 <script type="module" src="assets/js/dashboard.js"></script>
 </body>
