@@ -28,6 +28,9 @@ build/*/
 # Distribution
 dist/
 
+# 빌드된 실행 파일 (배포는 GitHub Release asset 으로)
+/TrainReservationApp-v*
+
 # Node.js
 node_modules/
 package-lock.json
