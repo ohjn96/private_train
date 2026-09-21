@@ -15,7 +15,14 @@ from pathlib import Path
 #   런타임에 LICENSE_OWNER_EMAIL 환경변수로 덮어쓸 수 있다.
 # ---------------------------------------------------------------------------
 OWNER_EMAIL = os.environ.get('LICENSE_OWNER_EMAIL', 'ohjn96@naver.com')
-OWNER_ISSUE_URL = 'https://github.com/ohjn96/private_train/issues'
+
+# 라이선스 인프라(요청 이슈·발급된 키·정책·철회 목록)는 공개 배포 저장소에 있다.
+# 이 저장소(앱 소스)는 비공개라 앱이 접근할 수 없다.
+DIST_REPO = os.environ.get('LICENSE_DIST_REPO', 'ohjn96/train-reservation')
+DIST_BRANCH = os.environ.get('LICENSE_DIST_BRANCH', 'release')
+DIST_RAW = f'https://raw.githubusercontent.com/{DIST_REPO}/{DIST_BRANCH}'
+
+OWNER_ISSUE_URL = f'https://github.com/{DIST_REPO}/issues'
 
 # ---------------------------------------------------------------------------
 # 자동 발급 경로
@@ -25,13 +32,13 @@ OWNER_ISSUE_URL = 'https://github.com/ohjn96/private_train/issues'
 # ---------------------------------------------------------------------------
 REQUEST_FORM_URL = os.environ.get(
     'LICENSE_REQUEST_URL',
-    'https://github.com/ohjn96/private_train/issues/new'
+    f'https://github.com/{DIST_REPO}/issues/new'
     '?template=license-request.yml&title=%5B%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4%5D+{machine_id}'
     '&machine-id={machine_id}',
 )
 DELIVERY_URL = os.environ.get(
     'LICENSE_DELIVERY_URL',
-    'https://raw.githubusercontent.com/ohjn96/private_train/release/licenses/{machine_id}.key',
+    DIST_RAW + '/licenses/{machine_id}.key',
 )
 DELIVERY_TIMEOUT = 5.0
 
@@ -41,10 +48,7 @@ DELIVERY_TIMEOUT = 5.0
 #       python scripts/license_admin.py policy --mode licensed
 #   raw.githubusercontent.com 은 CDN 캐시가 약 5분이라 반영에 그만큼 걸린다.
 # ---------------------------------------------------------------------------
-POLICY_URL = os.environ.get(
-    'LICENSE_POLICY_URL',
-    'https://raw.githubusercontent.com/ohjn96/private_train/release/license-policy.json',
-)
+POLICY_URL = os.environ.get('LICENSE_POLICY_URL', f'{DIST_RAW}/license-policy.json')
 POLICY_TIMEOUT = 3.0
 POLICY_TTL = 6 * 3600     # 초. 이 주기로 스위치를 다시 확인한다
 
@@ -53,10 +57,7 @@ POLICY_TTL = 6 * 3600     # 초. 이 주기로 스위치를 다시 확인한다
 #   서명된 정적 JSON. 저장소에 커밋해두면 raw URL 로 그냥 받아진다.
 #   네트워크가 안 되면 조용히 넘어간다(fail-open) — 오프라인 사용을 막지 않기 위해서.
 # ---------------------------------------------------------------------------
-REVOCATION_URL = os.environ.get(
-    'LICENSE_REVOCATION_URL',
-    'https://raw.githubusercontent.com/ohjn96/private_train/release/revoked.json',
-)
+REVOCATION_URL = os.environ.get('LICENSE_REVOCATION_URL', f'{DIST_RAW}/revoked.json')
 REVOCATION_TIMEOUT = 3.0      # 초. 앱 기동을 붙잡지 않도록 짧게
 REVOCATION_TTL = 24 * 3600    # 초. 이 기간 동안은 캐시된 목록을 재사용
 

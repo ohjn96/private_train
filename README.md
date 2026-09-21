@@ -1,4 +1,8 @@
-# KTX/SRT 열차 예약 시스템
+# KTX/SRT 열차 예약 시스템 (소스)
+
+> **이 저장소는 비공개입니다.** 배포와 라이선스 관리는 공개 저장소
+> [ohjn96/train-reservation](https://github.com/ohjn96/train-reservation) 에서 합니다.
+> 사용자는 그쪽에서 exe 를 받고 라이선스를 요청합니다.
 
 > **주의: 개인 사용 전용. 재배포·상업적 이용 금지**
 >
@@ -237,15 +241,9 @@ private_train/
 ├── korail2/                    # Korail API 모듈
 ├── tests/                      # 회귀 테스트 (네트워크 불필요)
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
-│   ├── license_admin.py        # 라이선스 발급/철회 (발급자 전용)
-│   ├── ci_approve.py           # 승인 댓글 해석 (Actions 용)
-│   ├── ci_expiry.py            # 만료 임박 스캔 (Actions 용)
-│   └── ci_renew.py             # 자동 갱신 대상 스캔 (Actions 용)
-├── licenses/                   # 승인된 라이선스 (앱이 여기서 자동 수령)
-├── license-policy.json         # 라이선스 검사 ON/OFF (없으면 OFF)
-├── docs/                       # 라이선스 운영 가이드 + 현황 대시보드(GitHub Pages)
+│   └── bake_policy.py          # 오프라인 기본값 굽기 (빌드가 호출)
 ├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
-├── .github/workflows/          # exe 자동 빌드 + 라이선스 승인 자동화
+├── .github/workflows/          # 태그 푸시 시 exe 빌드 → 배포 저장소 Release 로
 ├── main.py                     # 진입점
 ├── VERSION                     # 버전 단일 출처
 ├── LICENSE                     # 개인 사용 라이선스 (재배포·상업이용 금지)
@@ -271,7 +269,7 @@ Linux/macOS 에서는 Windows exe 를 만들 수 없으므로, Windows 러너에
 
 VERSION·package.json 을 올리고 커밋 → `v2.3.1` 태그 푸시 → GitHub Actions
 (`.github/workflows/release.yml`)가 Windows 러너에서 exe 를 빌드해
-**Release asset 으로 자동 첨부**합니다. 태그 없이 Actions 탭에서 수동 실행(Run workflow)하면
+**공개 배포 저장소의 Release 에 자동으로 올립니다** (`DIST_RELEASE_TOKEN` 시크릿 필요). 태그 없이 Actions 탭에서 수동 실행(Run workflow)하면
 Release 없이 아티팩트로만 받을 수 있습니다.
 
 > 💡 GitHub Actions 는 무료 플랜에서도 씁니다. 퍼블릭 저장소는 무제한, 프라이빗 저장소는
@@ -297,27 +295,30 @@ PyInstaller 옵션은 `build/build.py` 한 곳에만 있고, `build.ps1` 은 이
 
 ## 라이선스 인증
 
-**현재는 꺼져 있습니다.** 별도 인증 없이 그냥 쓰시면 됩니다.
+앱은 공개 배포 저장소에서 정책과 라이선스를 받아옵니다.
 
-인증 기능 자체는 구현돼 있고, 배포자가 원격 스위치로 켤 수 있습니다. 켜지면 이렇게 됩니다:
+| 받아오는 것 | 어디서 |
+|---|---|
+| 검사 ON/OFF 정책 | `train-reservation/license-policy.json` |
+| 발급된 라이선스 | `train-reservation/licenses/<머신ID>.key` |
+| 철회 목록 | `train-reservation/revoked.json` |
 
+주소는 `app/licensing/config.py` 의 `DIST_REPO` 한 곳에서 정합니다.
+
+### 오프라인 기본값
+
+정책을 **한 번도** 못 받은 설치가 기준 없이 열리지 않도록, 빌드할 때 기본값을
+exe 에 굽습니다.
+
+```bash
+python scripts/bake_policy.py                  # 지금 박힌 값 보기
+python scripts/bake_policy.py --mode licensed  # 정책을 못 받으면 잠기게
 ```
-1. 앱 실행 → [라이선스 요청하기] 클릭 (머신 ID 가 자동으로 채워진 요청 폼이 열립니다)
-2. 발급자가 승인
-3. 라이선스 화면을 켜둔 채 기다리면 자동으로 활성화됩니다 (최대 5분)
-```
 
-복붙할 게 없습니다. 이메일로 키를 직접 받았다면 화면 아래쪽에 붙여넣는 칸도 있습니다.
+빌드는 이 모드를 유지한 채 seq 만 배포 저장소의 현재 정책에 맞춥니다.
 
-- 라이선스는 **그 PC 에서만** 유효합니다. 다른 PC 로 옮기거나 남에게 넘겨줄 수 없습니다.
-- 정해진 기간이 지나면 만료되며, 연장은 발급자에게 다시 요청하면 됩니다.
-- OS 를 재설치하면 머신 ID 가 바뀌므로 재발급이 필요합니다.
-- 활성화된 뒤에는 인터넷 없이도 동작합니다.
-
-> 발급자라면 스위치·키 생성·발급·철회·자동 승인 설정은
-> [docs/LICENSING.md](docs/LICENSING.md) 를 보세요.
-> 검사를 켜려면 `python scripts/license_admin.py policy --mode licensed`,
-> 승인은 GitHub 알림 메일에 `/approve 30` 이라고 답장하면 끝입니다.
+> 발급·승인·철회·정책 스위치는 전부 배포 저장소에서 합니다.
+> 운영 문서: [train-reservation/docs/LICENSING.md](https://github.com/ohjn96/train-reservation/blob/release/docs/LICENSING.md)
 
 ---
 

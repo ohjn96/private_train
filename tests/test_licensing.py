@@ -272,68 +272,6 @@ if __name__ == '__main__':
     unittest.main()
 
 
-class ApprovalCommandTest(unittest.TestCase):
-    """GitHub 댓글 명령 해석 (scripts/ci_approve.py).
-
-    남이 쓴 문자열을 다루므로, 인정하는 형식을 좁게 유지하는 게 핵심이다.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        scripts = Path(__file__).resolve().parent.parent / 'scripts'
-        sys.path.insert(0, str(scripts))
-        import ci_approve
-        cls.mod = ci_approve
-
-    def test_approve_variants(self):
-        self.assertEqual(self.mod.parse_command('/approve'), ('approve', 30))
-        self.assertEqual(self.mod.parse_command('/approve 90'), ('approve', 90))
-        self.assertEqual(self.mod.parse_command('  /approve 7  '), ('approve', 7))
-        self.assertEqual(self.mod.parse_command('/APPROVE'), ('approve', 30))
-
-    def test_other_commands(self):
-        self.assertEqual(self.mod.parse_command('/deny')[0], 'deny')
-        self.assertEqual(self.mod.parse_command('/revoke')[0], 'revoke')
-
-    def test_non_commands_are_ignored(self):
-        for text in ('', '고마워요', 'approve', '나중에 /approve 할게요', '/approvex'):
-            self.assertIsNone(self.mod.parse_command(text), text)
-
-    def test_days_are_clamped(self):
-        self.assertEqual(self.mod.parse_command('/approve 0')[1], self.mod.MIN_DAYS)
-        self.assertEqual(self.mod.parse_command('/approve 99999')[1], self.mod.MAX_DAYS)
-
-    def test_machine_id_extraction(self):
-        body = '### 머신 ID\n\na1b2-c3d4-e5f6-7890\n\n### 용도\n\n출퇴근'
-        self.assertEqual(self.mod.parse_machine_id(body), MACHINE)
-
-    def test_machine_id_missing_or_malformed(self):
-        for body in ('', '머신 ID: 없음', 'A1B2-C3D4-E5F6', 'ZZZZ-ZZZZ-ZZZZ-ZZZZ'):
-            self.assertIsNone(self.mod.parse_machine_id(body), body)
-
-    # -------------------------------------------------------------- 자동 승인
-
-    def test_write_access_requesters_are_auto_approved(self):
-        """저장소 쓰기 권한자가 이슈를 열면 댓글 없이 바로 발급된다."""
-        for who in ('OWNER', 'MEMBER', 'COLLABORATOR', 'collaborator'):
-            self.assertEqual(self.mod.decide('issues', '', who),
-                             ('approve', self.mod.TRUSTED_DAYS), who)
-
-    def test_outsiders_are_not_auto_approved(self):
-        """CONTRIBUTOR 는 PR 이 머지된 적 있을 뿐 쓰기 권한이 아니다."""
-        for who in ('NONE', 'CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', '', 'MANNEQUIN'):
-            self.assertIsNone(self.mod.decide('issues', '', who), who)
-
-    def test_opening_an_issue_ignores_command_text(self):
-        """본문에 /approve 를 적어둔다고 승인되지는 않는다."""
-        self.assertIsNone(self.mod.decide('issues', '/approve 3650', 'NONE'))
-
-    def test_comments_still_go_through_command_parsing(self):
-        self.assertEqual(self.mod.decide('issue_comment', '/approve 30', 'NONE'),
-                         ('approve', 30))
-        self.assertIsNone(self.mod.decide('issue_comment', '고맙습니다', 'OWNER'))
-
-
 class AutoActivationTest(unittest.TestCase):
     """승인된 키를 앱이 스스로 받아 등록하는 경로."""
 
@@ -548,51 +486,6 @@ class PolicySwitchTest(unittest.TestCase):
         self.assertTrue(status.valid)
 
 
-class AutoRenewSettingsTest(unittest.TestCase):
-    """자동 갱신 판정 (scripts/license_admin.py) — dukpy 없이도 도는 쪽."""
-
-    @classmethod
-    def setUpClass(cls):
-        scripts = Path(__file__).resolve().parent.parent / 'scripts'
-        sys.path.insert(0, str(scripts))
-        import license_admin
-        cls.admin = license_admin
-
-    def days_for(self, settings, machine_id=MACHINE):
-        base = {'all': False, 'default_days': 30, 'machines': {}}
-        base.update(settings)
-        return self.admin.autorenew_days_for(machine_id, base)
-
-    def test_off_by_default(self):
-        self.assertIsNone(self.days_for({}))
-
-    def test_enabled_for_one_machine(self):
-        self.assertEqual(self.days_for({'machines': {MACHINE: {'days': 45}}}), 45)
-        self.assertIsNone(self.days_for({'machines': {MACHINE: {'days': 45}}}, OTHER_MACHINE))
-
-    def test_global_switch_with_opt_out(self):
-        self.assertEqual(self.days_for({'all': True}), 30)
-        self.assertIsNone(self.days_for({'all': True, 'machines': {MACHINE: {'off': True}}}))
-
-    def test_default_days_applies_when_entry_is_empty(self):
-        self.assertEqual(self.days_for({'default_days': 14, 'machines': {MACHINE: {}}}), 14)
-
-    def test_until_date_stops_renewal(self):
-        self.assertIsNone(self.days_for(
-            {'machines': {MACHINE: {'days': 30, 'until': '2000-01-01'}}}))
-        self.assertEqual(self.days_for(
-            {'machines': {MACHINE: {'days': 30, 'until': '2999-01-01'}}}), 30)
-
-    def test_malformed_values_fall_back(self):
-        self.assertEqual(self.days_for({'machines': {MACHINE: {'days': 'abc'}}}), 30)
-        self.assertEqual(self.days_for(
-            {'machines': {MACHINE: {'days': 30, 'until': '엉터리'}}}), 30)
-
-    def test_days_are_at_least_one(self):
-        self.assertEqual(self.days_for({'machines': {MACHINE: {'days': 0}}}), 1)
-        self.assertEqual(self.days_for({'machines': {MACHINE: {'days': -5}}}), 1)
-
-
 class BuiltInPolicyTest(unittest.TestCase):
     """빌드에 박히는 오프라인 기본값.
 
@@ -686,21 +579,61 @@ class BuiltInPolicyTest(unittest.TestCase):
         self.assertNotEqual(offline.message, missing.message)
 
 
-class BakeCommandTest(unittest.TestCase):
-    """license_admin.py bake — 오프라인 기본값을 코드에 박는 쪽."""
+class BakePolicyToolTest(unittest.TestCase):
+    """scripts/bake_policy.py — 오프라인 기본값을 코드에 박는 쪽."""
 
     @classmethod
     def setUpClass(cls):
         scripts = Path(__file__).resolve().parent.parent / 'scripts'
         sys.path.insert(0, str(scripts))
-        import license_admin
-        cls.admin = license_admin
+        import bake_policy
+        cls.tool = bake_policy
 
-    def test_strictness_order(self):
-        s = self.admin.STRICTNESS
-        self.assertLess(s['open'], s['licensed'])
-        self.assertLess(s['licensed'], s['blocked'])
+    def test_reads_the_module_from_disk(self):
+        """import 캐시가 아니라 파일에서 읽어야 한다 (같은 프로세스에서 다시 쓰므로)."""
+        mode, seq, _ = self.tool.current()
+        self.assertIn(mode, policy_mod.VALID_MODES)
+        self.assertIsInstance(seq, int)
 
-    def test_baked_mode_reads_the_module(self):
-        """실제 파일에서 읽어오는지 (import 캐시가 아니라)."""
-        self.assertIn(self.admin.baked_mode(), self.admin.VALID_MODES)
+    def test_roundtrip_preserves_other_values(self):
+        original = self.tool.current()
+        try:
+            self.tool.write('blocked', 41, '점검')
+            self.assertEqual(self.tool.current(), ('blocked', 41, '점검'))
+        finally:
+            self.tool.write(*original)
+        self.assertEqual(self.tool.current(), original)
+
+    def test_sync_keeps_mode_and_does_not_lower_seq(self):
+        """배포 저장소가 낮은 seq 를 주더라도 내려가면 안 된다.
+        앱이 낮은 seq 를 거부하므로, 내려가면 정상 정책이 거절당한다."""
+        original = self.tool.current()
+        try:
+            self.tool.write('licensed', 9, '')
+            with mock.patch.object(self.tool, 'fetch_remote',
+                                   return_value={'mode': 'open', 'seq': 3}):
+                mode, seq = self.tool.sync()
+            self.assertEqual((mode, seq), ('licensed', 9))
+            self.assertEqual(self.tool.current()[:2], ('licensed', 9))
+        finally:
+            self.tool.write(*original)
+
+    def test_sync_takes_a_higher_seq(self):
+        original = self.tool.current()
+        try:
+            self.tool.write('licensed', 2, '')
+            with mock.patch.object(self.tool, 'fetch_remote',
+                                   return_value={'mode': 'open', 'seq': 7}):
+                mode, seq = self.tool.sync()
+            self.assertEqual((mode, seq), ('licensed', 7))   # 모드는 유지, seq 만 따라간다
+        finally:
+            self.tool.write(*original)
+
+    def test_sync_survives_a_failed_fetch(self):
+        original = self.tool.current()
+        try:
+            self.tool.write('licensed', 5, '')
+            with mock.patch.object(self.tool, 'fetch_remote', return_value=None):
+                self.assertEqual(self.tool.sync(), ('licensed', 5))
+        finally:
+            self.tool.write(*original)
