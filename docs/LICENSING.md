@@ -127,6 +127,25 @@ gh secret set LICENSE_SIGNING_KEY < ~/.config/private_train/license_signing_key.
 
 사용자는 복붙하지 않고, 나는 답장 한 줄만 씁니다.
 
+### 현황 보기 — 터미널 없이
+
+- **대시보드**: GitHub Pages 를 켜면 `https://ohjn96.github.io/private_train/` 에서
+  누가 언제까지 쓰는지 표로 볼 수 있습니다 (휴대폰에서도).
+  저장소 → Settings → Pages → Source: *Deploy from a branch* → `release` / `/docs` 로 설정하면 끝입니다.
+  **공개 페이지이니** 머신 ID 와 이름이 남에게 보인다는 점만 감안하세요.
+- **원본 데이터**: `licenses/index.json` 을 GitHub 웹에서 그냥 열어봐도 됩니다.
+- **이력**: `licenses/` 의 커밋 히스토리가 발급·철회 기록입니다.
+
+### 만료 알림
+
+`.github/workflows/license-expiry.yml` 이 **매일 09:00 (KST)** 에 돌면서 7일 안에
+만료될 라이선스마다 이슈를 엽니다. GitHub 이 메일로 알려주고, **그 메일에
+`/approve 30` 이라고 답장하면 바로 연장**됩니다.
+
+같은 머신에 대해 이미 열린 알림 이슈가 있으면 다시 만들지 않습니다. 처리 후에는
+이슈가 닫히므로, 다음 만료 때 새로 옵니다. 지금 당장 확인하려면 Actions 탭에서
+수동 실행(Run workflow)하면 됩니다.
+
 ### 쓸 수 있는 명령
 
 이슈 댓글(또는 알림 메일 답장)의 **첫 줄**에 적습니다.
@@ -266,12 +285,15 @@ python -m unittest discover -s tests
 │   └── guard.py         요청 차단
 ├── scripts/
 │   ├── license_admin.py             발급 도구
-│   └── ci_approve.py                승인 댓글 해석 (Actions 용)
+│   ├── ci_approve.py                승인 댓글 해석 (Actions 용)
+│   └── ci_expiry.py                 만료 임박 스캔 (Actions 용)
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
 │   │   └── license-request.yml      요청 폼
 │   └── workflows/
-│       └── license-approve.yml      승인 워크플로
+│       ├── license-approve.yml      승인 워크플로
+│       └── license-expiry.yml       만료 알림 (매일)
+├── docs/index.html                  현황 대시보드 (GitHub Pages)
 ├── licenses/<머신ID>.key             발급된 라이선스 (앱이 여기서 받아감)
 ├── license-policy.json              검사 ON/OFF 스위치 (없으면 OFF)
 └── revoked.json                     서명된 철회 목록

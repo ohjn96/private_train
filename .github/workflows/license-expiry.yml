@@ -1,0 +1,106 @@
+name: 라이선스 만료 알림
+
+# 매일 한 번 만료가 다가온 라이선스를 찾아 이슈를 연다.
+# GitHub 이 이슈 알림을 메일로 보내주므로, 그 메일에 "/approve 30" 이라고
+# 답장하면 license-approve 워크플로가 바로 연장해준다.
+#
+# 라이선스마다 이슈를 따로 여는 이유: 승인 워크플로가 이슈 본문에서 머신 ID 를
+# 읽으므로, 한 이슈에 여러 건을 묶으면 답장으로 연장할 수 없다.
+on:
+  schedule:
+    - cron: '0 0 * * *'   # 매일 09:00 KST
+  workflow_dispatch:
+    inputs:
+      within:
+        description: '며칠 안쪽을 볼지'
+        default: '7'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: license-expiry
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 의존성 설치
+        run: pip install --quiet pycryptodome==3.20.0
+
+      - name: 만료 임박 목록 만들기
+        env:
+          WITHIN: ${{ github.event.inputs.within || '7' }}
+        run: python scripts/ci_expiry.py --within "$WITHIN" --out expiring.json
+
+      - name: 라벨 준비
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create license-expiry --color FBCA04 \
+            --description "만료가 임박한 라이선스" --force
+
+      - name: 건별로 이슈 열기 (이미 열려 있으면 건너뜀)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          count=$(jq 'length' expiring.json)
+          echo "대상 $count 건"
+          if [ "$count" -eq 0 ]; then
+            echo "만료 임박한 라이선스가 없습니다."
+            exit 0
+          fi
+
+          for i in $(seq 0 $((count - 1))); do
+            MACHINE_ID=$(jq -r ".[$i].machine_id" expiring.json)
+            NAME=$(jq -r ".[$i].name" expiring.json)
+            EXPIRES=$(jq -r ".[$i].expires_str" expiring.json)
+            DAYS=$(jq -r ".[$i].days_left" expiring.json)
+            EXPIRED=$(jq -r ".[$i].expired" expiring.json)
+
+            TITLE="[라이선스 만료] $MACHINE_ID"
+
+            # 같은 머신에 대해 이미 열린 알림이 있으면 다시 만들지 않는다
+            EXISTING=$(gh issue list --state open --label license-expiry \
+                         --search "$MACHINE_ID in:title" --json number --jq '.[0].number')
+            if [ -n "$EXISTING" ]; then
+              echo "이미 열려 있음: #$EXISTING ($MACHINE_ID)"
+              continue
+            fi
+
+            if [ "$EXPIRED" = "true" ]; then
+              STATUS="**이미 만료되었습니다** ($EXPIRES)"
+            else
+              STATUS="**$DAYS일 뒤 만료**됩니다 ($EXPIRES)"
+            fi
+
+            gh issue create \
+              --title "$TITLE" \
+              --label license-expiry \
+              --body "$NAME 님의 라이선스가 $STATUS
+
+          | | |
+          |---|---|
+          | 머신 ID | \`$MACHINE_ID\` |
+          | 대상 | $NAME |
+          | 만료일 | $EXPIRES |
+
+          연장하려면 이 이슈에 (또는 이 알림 메일에 답장으로) 다음과 같이 적으세요.
+
+          \`\`\`
+          /approve 30
+          \`\`\`
+
+          연장하지 않으려면 \`/deny\`, 아예 차단하려면 \`/revoke\` 입니다."
+
+            echo "이슈 생성: $MACHINE_ID"
+          done
