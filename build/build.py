@@ -29,6 +29,10 @@ BUILD_CONFIG = {
             f'{ROOT_DIR / "app" / "templates"}{DATA_SEP}app/templates',
             f'{ROOT_DIR / "app" / "static"}{DATA_SEP}app/static',
             f'{ROOT_DIR / "VERSION"}{DATA_SEP}.',
+            # 라이선스 고지: BSD 등 번들 구성요소는 바이너리 배포 시 고지문을 함께 제공해야 한다
+            f'{ROOT_DIR / "LICENSE"}{DATA_SEP}.',
+            f'{ROOT_DIR / "THIRD-PARTY-NOTICES.md"}{DATA_SEP}.',
+            f'{ROOT_DIR / "korail2" / "LICENSE"}{DATA_SEP}korail2',
         ],
         'hidden_imports': [
             'flask', 'flask.sessions', 'jinja2',

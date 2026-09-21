@@ -22,9 +22,9 @@ jobs:
       PYTHONIOENCODING: 'utf-8'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -69,14 +69,14 @@ jobs:
           Write-Host "OK: exe 정상 기동 확인"
 
       - name: 아티팩트 업로드 (수동 실행용)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: TrainReservationApp-v${{ env.VERSION }}
           path: TrainReservationApp-v${{ env.VERSION }}.exe
 
       - name: Release 에 첨부 (태그 푸시일 때만)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: TrainReservationApp-v${{ env.VERSION }}.exe
           generate_release_notes: true
