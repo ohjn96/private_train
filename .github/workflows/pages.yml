@@ -1,7 +1,11 @@
 name: 라이선스 대시보드 배포
 
-# docs/ 를 GitHub Pages 로 올린다. Settings 에서 손댈 필요 없이
-# configure-pages 가 Pages 자체도 켜준다(enablement).
+# docs/ 를 GitHub Pages 로 올린다.
+#
+# 최초 1회만 수동 설정이 필요하다:
+#   Settings → Pages → Build and deployment → Source: **GitHub Actions**
+# 기본 GITHUB_TOKEN 으로는 Pages 를 처음 켜지 못해 enablement 가 실패한다.
+# 한 번 켜두면 그 뒤로는 docs/ 를 푸시할 때마다 알아서 배포된다.
 #
 # 공개 페이지이므로 발급된 머신 ID 와 이름이 남에게 보인다.
 # 원치 않으면 이 워크플로를 지우고 Settings → Pages 에서 끄면 된다.
@@ -32,9 +36,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pages 준비 (꺼져 있으면 켠다)
+      - name: Pages 준비
         uses: actions/configure-pages@v5
         with:
+          # 이미 켜져 있으면 그냥 넘어간다. 꺼져 있으면 켜보려 시도하는데,
+          # 기본 GITHUB_TOKEN 에는 권한이 없어 실패할 수 있다.
+          # 그때는 Settings → Pages → Source 를 'GitHub Actions' 로 한 번만 바꾸면 된다.
           enablement: true
 
       - name: docs/ 업로드
