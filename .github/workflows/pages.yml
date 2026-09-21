@@ -34,10 +34,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Pages 준비
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
         with:
           # 이미 켜져 있으면 그냥 넘어간다. 꺼져 있으면 켜보려 시도하는데,
           # 기본 GITHUB_TOKEN 에는 권한이 없어 실패할 수 있다.
@@ -45,10 +45,10 @@ jobs:
           enablement: true
 
       - name: docs/ 업로드
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs
 
       - name: 배포
         id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
