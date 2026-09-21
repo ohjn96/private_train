@@ -16,6 +16,11 @@ jobs:
   build-windows:
     runs-on: windows-latest
 
+    env:
+      # Windows 콘솔 기본 인코딩(cp949/cp1252)에서 한글·이모지 출력이 죽지 않도록
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: 'utf-8'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +48,25 @@ jobs:
 
       - name: 빌드
         run: python build/build.py unified
+
+      - name: 실행 스모크 테스트 (exe 가 실제로 뜨는지)
+        shell: pwsh
+        env:
+          NO_BROWSER: '1'   # 러너에서 브라우저 띄우지 않기
+        run: |
+          $exe = ".\TrainReservationApp-v$env:VERSION.exe"
+          $proc = Start-Process -FilePath $exe -PassThru
+          $ok = $false
+          foreach ($i in 1..30) {
+            Start-Sleep -Seconds 2
+            try {
+              $res = Invoke-WebRequest http://localhost:5050/login -UseBasicParsing -TimeoutSec 5
+              if ($res.StatusCode -eq 200) { $ok = $true; break }
+            } catch { }
+          }
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "exe 가 60초 안에 응답하지 않았습니다." }
+          Write-Host "OK: exe 정상 기동 확인"
 
       - name: 아티팩트 업로드 (수동 실행용)
         uses: actions/upload-artifact@v4

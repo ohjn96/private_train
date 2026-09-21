@@ -53,7 +53,10 @@ Python 캐시 삭제 → `venv` 의 python 으로 실행. **`python` / `python3`
 ### 실행 파일 (설치 없이)
 
 Windows 사용자는 [Releases](https://github.com/ohjn96/private_train/releases) 에서
-`TrainReservationApp-v<버전>.exe` 를 받아 더블클릭하면 끝입니다. Python 설치도 필요 없습니다.
+`TrainReservationApp-v<버전>.exe` 를 받아 더블클릭하면 끝입니다. Python 설치도 필요 없고,
+**브라우저가 자동으로 열립니다.** (검은 콘솔 창은 서버라 켜둬야 하고, 종료는 그 창에서 Ctrl+C)
+
+> 브라우저 자동 실행을 끄려면 `NO_BROWSER=1`, 개발 중(스크립트 실행)에 켜려면 `OPEN_BROWSER=1`.
 
 ---
 
