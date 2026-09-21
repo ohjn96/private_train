@@ -159,7 +159,9 @@ gh secret set LICENSE_SIGNING_KEY < ~/.config/private_train/license_signing_key.
 
 - **대시보드**: `https://ohjn96.github.io/private_train/` 에서 누가 언제까지 쓰는지
   표로 볼 수 있습니다 (휴대폰에서도). `.github/workflows/pages.yml` 이 `docs/` 가
-  바뀔 때마다 알아서 배포하고, Pages 가 꺼져 있으면 켜기까지 합니다.
+  바뀔 때마다 알아서 배포합니다. **최초 1회만** Settings → Pages → Source 를
+  `GitHub Actions` 로 바꿔주세요 — 기본 GITHUB_TOKEN 으로는 Pages 를 처음
+  켜지 못합니다.
   **공개 페이지이니** 머신 ID 와 이름이 남에게 보인다는 점만 감안하세요.
   원치 않으면 그 워크플로를 지우고 Settings → Pages 에서 끄면 됩니다.
 
