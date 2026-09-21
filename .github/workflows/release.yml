@@ -1,0 +1,58 @@
+name: Build Windows EXE
+
+# v 태그를 푸시하면 Windows 러너에서 exe 를 빌드해 Release 에 첨부합니다.
+#   git tag v2.0.1 && git push origin v2.0.1
+# 수동 실행(Actions 탭 > Run workflow)도 가능하며, 이때는 Release 없이 아티팩트만 남습니다.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Release 생성/업로드에 필요
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: VERSION 과 태그 일치 확인
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+            if ($tag -ne $version) {
+              throw "태그($tag) 와 VERSION 파일($version) 이 다릅니다. VERSION 을 먼저 올려주세요."
+            }
+          }
+
+      - name: 의존성 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-windows.txt
+
+      - name: 빌드
+        run: python build/build.py unified
+
+      - name: 아티팩트 업로드 (수동 실행용)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrainReservationApp-v${{ env.VERSION }}
+          path: TrainReservationApp-v${{ env.VERSION }}.exe
+
+      - name: Release 에 첨부 (태그 푸시일 때만)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TrainReservationApp-v${{ env.VERSION }}.exe
+          generate_release_notes: true

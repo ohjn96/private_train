@@ -21,84 +21,46 @@
 
 ---
 
+## 빠른 시작
+
+Python 3.12+ 만 설치돼 있으면 됩니다. **명령어 하나로 가상환경 생성 → 의존성 설치 → 실행까지 끝납니다.**
+
+### Windows
+
+```powershell
+.\scripts\run.ps1
+```
+> 더블클릭으로 실행하려면 `scripts\run.bat` 을 두 번 클릭하세요.
+> PowerShell 실행 정책 오류가 나면: `powershell -ExecutionPolicy Bypass -File scripts\run.ps1`
+
+### Linux / macOS
+
+```bash
+./scripts/run.sh
+```
+
+실행 후 브라우저에서 **http://localhost:5050** 접속.
+
+| 하고 싶은 것 | 명령 (Windows) | 명령 (Linux/macOS) |
+|---|---|---|
+| 그냥 실행 | `.\scripts\run.ps1` | `./scripts/run.sh` |
+| 의존성 다시 설치 | `.\scripts\run.ps1 -Reinstall` | `./scripts/run.sh --reinstall` |
+| 다른 포트로 실행 | `.\scripts\run.ps1 -Port 8080` | `PORT=8080 ./scripts/run.sh` |
+
+스크립트가 알아서 하는 일: 가상환경(`venv/`) 없으면 생성 → `requirements` 변경 시에만 재설치 →
+Python 캐시 삭제 → `venv` 의 python 으로 실행. **`python` / `python3` 헷갈릴 일 없습니다.**
+
+### 실행 파일 (설치 없이)
+
+Windows 사용자는 [Releases](https://github.com/ohjn96/private_train/releases) 에서
+`TrainReservationApp-v<버전>.exe` 를 받아 더블클릭하면 끝입니다. Python 설치도 필요 없습니다.
+
+---
+
 ## 요구사항
 
-- **Python**: 3.12+
-- **Node.js**: 18+ (Tailwind CSS 빌드용, 선택사항)
-
----
-
-## 설치
-
-### 1. 저장소 클론
-
-```bash
-git clone <repository-url>
-cd private_train
-```
-
-### 2. 가상환경 생성
-
-```bash
-# Linux/macOS
-python3.12 -m venv venv
-source venv/bin/activate
-
-# Windows (PowerShell) - 권장
-.\run.ps1  # 가상환경 생성 후 바로 실행 가능
-
-# Windows (수동 가상환경 생성)
-python -m venv venv
-.\scripts\activate.ps1
-```
-
-**⚠️ 중요: 가상환경에서는 `python` 명령어를 사용하세요** (python3 아님!)
-
-### 3. 의존성 설치
-
-```bash
-# Linux/macOS
-pip install -r requirements.txt
-
-# Windows
-pip install -r requirements-windows.txt
-```
-
----
-
-## 실행
-
-### 방법 1: 실행 파일 (가장 간단)
-
-**Windows 사용자:**
-```powershell
-.\TrainReservationApp.exe
-```
-별도 설치 없이 바로 실행 가능합니다.
-
-### 방법 2: 스크립트 실행 (개발자)
-
-**빠른 실행:**
-```powershell
-.\run.ps1  # Windows
-```
-
-이 스크립트는 자동으로:
-- 가상환경 활성화
-- Python 캐시 삭제
-- 애플리케이션 실행
-
-**수동 실행:**
-```bash
-# 1. 가상환경 활성화
-.\scripts\activate.ps1  # Windows
-# source venv/bin/activate  # Linux/macOS
-
-# 2. 실행 (python3 아님!)
-python main.py
-```
-
-브라우저에서 `http://localhost:5050` 접속
+- **Python**: 3.12+ (실행 파일만 쓸 거면 불필요)
+- **Node.js**: 18+ (Tailwind CSS 재빌드용, 선택사항)
 
 ---
 
@@ -133,8 +95,8 @@ python -m unittest discover -s tests -v
 # python3 대신 python 사용
 python main.py
 
-# 또는 run.ps1 사용
-.\run.ps1
+# 또는 실행 스크립트 사용 (venv 의 python 을 직접 호출)
+.\scripts\run.ps1
 ```
 
 ### 코드 변경사항이 반영되지 않음
@@ -146,8 +108,8 @@ python main.py
 # 캐시 삭제
 Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
-# 또는 run.ps1 사용 (자동 캐시 삭제)
-.\run.ps1
+# 또는 실행 스크립트 사용 (자동 캐시 삭제)
+.\scripts\run.ps1
 ```
 
 ---
@@ -268,27 +230,53 @@ private_train/
 │   └── static/                 # 정적 파일
 ├── korail2/                    # Korail API 모듈
 ├── tests/                      # 회귀 테스트 (네트워크 불필요)
-├── build/                      # 빌드 스크립트
+├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
+├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
+├── .github/workflows/          # 태그 푸시 시 Windows exe 자동 빌드
 ├── main.py                     # 진입점
+├── VERSION                     # 버전 단일 출처
 └── requirements.txt            # 의존성
 ```
 
 ---
 
-## 빌드 (실행파일 생성)
+## 빌드 / 릴리스
+
+버전은 루트의 **`VERSION`** 파일 하나가 단일 출처이고, 결과물 이름에 그대로 박힙니다
+(`TrainReservationApp-v2.3.0.exe`). 빌드된 실행 파일은 자동으로 프로젝트 루트로 옮겨지고,
+같은 플랫폼의 이전 버전 파일은 삭제됩니다. 중간 산출물(spec, work 폴더)은 `build/.pyi/` 에만 생겼다가 지워집니다.
+
+### 1. GitHub Actions 로 릴리스 (권장)
+
+Linux/macOS 에서는 Windows exe 를 만들 수 없으므로, Windows 러너에서 빌드합니다.
 
 ```bash
-python build/build.py
+./scripts/release.sh 2.3.1
 ```
 
-**수동 빌드:**
+VERSION·package.json 을 올리고 커밋 → `v2.3.1` 태그 푸시 → GitHub Actions
+(`.github/workflows/release.yml`)가 Windows 러너에서 exe 를 빌드해
+**Release asset 으로 자동 첨부**합니다. 태그 없이 Actions 탭에서 수동 실행(Run workflow)하면
+Release 없이 아티팩트로만 받을 수 있습니다.
+
+> 💡 GitHub Actions 는 무료 플랜에서도 씁니다. 퍼블릭 저장소는 무제한, 프라이빗 저장소는
+> 월 2,000분 무료이며 **Windows 러너는 분당 2배**로 차감됩니다(≈ 월 1,000분).
+> 이 빌드는 한 번에 3~5분 정도라 넉넉합니다.
+
+### 2. Windows PC 에서 직접 빌드
+
+```powershell
+.\build\build.ps1          # venv 준비 + 의존성 설치 + 빌드
+.\build\build.ps1 -SkipInstall   # 이미 설치돼 있으면
+```
+더블클릭으로 하려면 `build\build.bat`.
+
+### 3. 파이썬으로 직접
+
 ```bash
-# Windows
-pyinstaller --onefile --add-data "app/templates;app/templates" --add-data "app/static;app/static" --name=TrainReservationApp main.py
-
-# macOS / Linux
-pyinstaller --onefile --add-data "app/templates:app/templates" --add-data "app/static:app/static" --name=TrainReservationApp main.py
+python build/build.py unified
 ```
+PyInstaller 옵션은 `build/build.py` 한 곳에만 있고, `build.ps1` 은 이를 호출만 합니다.
 
 ---
 
