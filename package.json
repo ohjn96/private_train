@@ -1,6 +1,6 @@
 {
   "name": "train-reservation",
-  "version": "2.4.0-rc.1",
+  "version": "2.4.0-rc.2",
   "description": "KTX/SRT Train Reservation System",
   "author": "ohjn96",
   "license": "SEE LICENSE IN LICENSE",
