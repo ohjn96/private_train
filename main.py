@@ -22,6 +22,24 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+
+def _force_utf8_output() -> None:
+    """표준출력을 UTF-8 로 고정한다.
+
+    Windows 는 출력이 콘솔이 아니라 파이프/파일이면 로캘 인코딩(cp949, cp1252)을
+    쓴다. 그 상태로 한글이나 이모지를 찍으면 UnicodeEncodeError 로 프로세스가
+    죽는다. exe 로 묶으면 PYTHONUTF8 환경변수도 먹지 않아 여기서 직접 세운다.
+    (로그를 파일로 리디렉션하는 헤드리스 실행에서 특히 중요하다)
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError):
+            pass  # 이미 감싸였거나 reconfigure 를 지원하지 않는 스트림
+
+
+_force_utf8_output()
+
 from app import create_app
 from app.version import __version__
 

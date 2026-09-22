@@ -403,6 +403,13 @@ class EntryPointTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {'HEADLESS': 'no'}):
             self.assertFalse(main_module.wants_headless([]))
 
+    def test_utf8_setup_tolerates_odd_streams(self):
+        # StringIO 는 reconfigure 가 없고, 아래 object() 는 아무것도 없다.
+        # 어느 쪽이든 조용히 넘어가야 한다 (테스트 러너의 stdout 도 이런 모양이다).
+        with mock.patch.object(sys, 'stdout', io.StringIO()), \
+             mock.patch.object(sys, 'stderr', object()):
+            main_module._force_utf8_output()
+
     def test_flag_is_stripped_before_handoff(self):
         with mock.patch('app.headless.main', return_value=0) as headless_main:
             main_module.run_headless(['--headless', '--id', 'x', '--pw', 'y'])
