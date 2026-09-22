@@ -61,13 +61,23 @@ Python 캐시 삭제 → `venv` 의 python 으로 실행. **`python` / `python3`
 **Windows**: `TrainReservationApp-v<버전>.exe` 를 받아 더블클릭.
 
 **macOS**: `TrainReservationApp-v<버전>-macos-arm64.tar.gz` (Apple Silicon 전용).
-서명·공증을 하지 않은 빌드라 Gatekeeper 가 막으므로 격리 속성을 한 번 벗겨줘야 합니다.
+받아서 더블클릭해 압축을 풀면 폴더 안에 **`실행.command`** 가 있습니다. **그걸 더블클릭하면 끝**입니다.
+(서명·공증을 안 한 빌드라 macOS 가 거는 격리를 이 스크립트가 알아서 풀어줍니다.)
+
+> ⚠️ **첫 실행 때 한 번**은 macOS 가 "확인되지 않은 개발자" 라며 막을 수 있습니다.
+> 그럴 땐 **시스템 설정 → 개인정보 보호 및 보안** 으로 가면 하단에 **"확인 없이 열기"** 버튼이
+> 뜹니다. 한 번 눌러주면 그 다음부터는 더블클릭만으로 실행됩니다.
+
+터미널이 편하다면 아래처럼 해도 됩니다. `curl` 로 받으면 격리 속성 자체가 안 붙어서 더 간단합니다.
 
 ```bash
+curl -LO https://github.com/ohjn96/private_train/releases/latest/download/TrainReservationApp-v<버전>-macos-arm64.tar.gz
 tar -xzf TrainReservationApp-v<버전>-macos-arm64.tar.gz
-xattr -dr com.apple.quarantine TrainReservationApp-v<버전>-macos-arm64
-./TrainReservationApp-v<버전>-macos-arm64
+cd TrainReservationApp-v<버전>-macos-arm64 && ./TrainReservationApp-v<버전>-macos-arm64
 ```
+
+> 💡 Mac 에 Python 3.12 가 있다면 바이너리 없이 `./scripts/run.sh` 로 실행하는 게 제일 깔끔합니다.
+> 보안 확인 절차를 아예 안 거칩니다.
 
 > 브라우저 자동 실행을 끄려면 `NO_BROWSER=1`, 개발 중(스크립트 실행)에 켜려면 `OPEN_BROWSER=1`.
 
