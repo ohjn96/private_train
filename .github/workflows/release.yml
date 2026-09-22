@@ -1,6 +1,6 @@
-name: Build Windows EXE
+name: Build Desktop Apps
 
-# v 태그를 푸시하면 Windows 러너에서 exe 를 빌드해 Release 에 첨부합니다.
+# v 태그를 푸시하면 Windows / macOS 러너에서 실행 파일을 빌드해 Release 에 첨부합니다.
 #   git tag v2.0.1 && git push origin v2.0.1
 # 수동 실행(Actions 탭 > Run workflow)도 가능하며, 이때는 Release 없이 아티팩트만 남습니다.
 on:
@@ -79,4 +79,91 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: TrainReservationApp-v${{ env.VERSION }}.exe
+          generate_release_notes: true
+
+  build-macos:
+    # Apple Silicon(arm64) 과 Intel(x86_64) 을 각각 빌드한다.
+    # PyInstaller 는 크로스 컴파일이 안 되므로 러너 아키텍처 = 산출물 아키텍처.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest   # Apple Silicon
+            arch: arm64
+          - runner: macos-13       # Intel
+            arch: x86_64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: VERSION 과 태그 일치 확인
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = 'tag' ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$tag" != "$version" ]; then
+              echo "태그($tag) 와 VERSION 파일($version) 이 다릅니다. VERSION 을 먼저 올려주세요." >&2
+              exit 1
+            fi
+          fi
+
+      - name: 의존성 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 빌드
+        run: python build/build.py unified
+
+      - name: 실행 스모크 테스트 (바이너리가 실제로 뜨는지)
+        env:
+          NO_BROWSER: '1'   # 러너에서 브라우저 띄우지 않기
+        run: |
+          app="./TrainReservationApp-v$VERSION"
+          chmod +x "$app"
+          "$app" &
+          pid=$!
+          ok=0
+          for _ in $(seq 1 30); do
+            sleep 2
+            if curl -fsS -m 5 http://localhost:5050/login > /dev/null; then ok=1; break; fi
+          done
+          kill "$pid" 2>/dev/null || true
+          if [ "$ok" -ne 1 ]; then
+            echo "바이너리가 60초 안에 응답하지 않았습니다." >&2
+            exit 1
+          fi
+          echo "OK: 바이너리 정상 기동 확인"
+
+      - name: 아카이브 (실행 권한 보존 + 아키텍처 구분)
+        run: |
+          name="TrainReservationApp-v$VERSION-macos-${{ matrix.arch }}"
+          mv "TrainReservationApp-v$VERSION" "$name"
+          chmod +x "$name"
+          # 웹에서 받은 단일 바이너리는 실행 권한이 날아가므로 tar 로 감싼다
+          tar -czf "$name.tar.gz" "$name"
+          echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=$name" >> "$GITHUB_ENV"
+          file "$name"
+          lipo -archs "$name"
+
+      - name: 아티팩트 업로드 (수동 실행용)
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: ${{ env.ASSET }}
+
+      - name: Release 에 첨부 (태그 푸시일 때만)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ env.ASSET }}
           generate_release_notes: true

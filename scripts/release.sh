@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 버전을 올리고 태그를 밀어 GitHub Actions 의 Windows exe 빌드를 띄운다.
+# 버전을 올리고 태그를 밀어 GitHub Actions 의 Windows/macOS 빌드를 띄운다.
 #   ./scripts/release.sh 2.0.1
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -33,5 +33,5 @@ git push origin "v$VERSION"
 
 echo ""
 echo "✅ v$VERSION 태그를 푸시했습니다."
-echo "   GitHub Actions 가 Windows exe 를 빌드해 Release 에 첨부합니다:"
+echo "   GitHub Actions 가 Windows exe + macOS(arm64/x86_64) 바이너리를 빌드해 Release 에 첨부합니다:"
 echo "   https://github.com/ohjn96/private_train/actions"

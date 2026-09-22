@@ -54,9 +54,21 @@ Python 캐시 삭제 → `venv` 의 python 으로 실행. **`python` / `python3`
 
 ### 실행 파일 (설치 없이)
 
-Windows 사용자는 [Releases](https://github.com/ohjn96/private_train/releases) 에서
-`TrainReservationApp-v<버전>.exe` 를 받아 더블클릭하면 끝입니다. Python 설치도 필요 없고,
-**브라우저가 자동으로 열립니다.** (검은 콘솔 창은 서버라 켜둬야 하고, 종료는 그 창에서 Ctrl+C)
+[Releases](https://github.com/ohjn96/private_train/releases) 에 Windows / macOS 실행 파일이
+올라갑니다. Python 설치가 필요 없고, 실행하면 **브라우저가 자동으로 열립니다.**
+(콘솔 창은 서버라 켜둬야 하고, 종료는 그 창에서 Ctrl+C)
+
+**Windows**: `TrainReservationApp-v<버전>.exe` 를 받아 더블클릭.
+
+**macOS**: 칩에 맞는 파일을 받습니다 — Apple Silicon 은 `...-macos-arm64.tar.gz`,
+Intel 은 `...-macos-x86_64.tar.gz`. 서명·공증을 하지 않은 빌드라 Gatekeeper 가 막으므로
+격리 속성을 한 번 벗겨줘야 합니다.
+
+```bash
+tar -xzf TrainReservationApp-v<버전>-macos-arm64.tar.gz
+xattr -dr com.apple.quarantine TrainReservationApp-v<버전>-macos-arm64
+./TrainReservationApp-v<버전>-macos-arm64
+```
 
 > 브라우저 자동 실행을 끄려면 `NO_BROWSER=1`, 개발 중(스크립트 실행)에 켜려면 `OPEN_BROWSER=1`.
 
@@ -237,7 +249,7 @@ private_train/
 ├── tests/                      # 회귀 테스트 (네트워크 불필요)
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
 ├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
-├── .github/workflows/          # 태그 푸시 시 Windows exe 자동 빌드
+├── .github/workflows/          # 태그 푸시 시 Windows/macOS 실행 파일 자동 빌드
 ├── main.py                     # 진입점
 ├── VERSION                     # 버전 단일 출처
 ├── LICENSE                     # 개인 사용 라이선스 (재배포·상업이용 금지)
@@ -255,20 +267,21 @@ private_train/
 
 ### 1. GitHub Actions 로 릴리스 (권장)
 
-Linux/macOS 에서는 Windows exe 를 만들 수 없으므로, Windows 러너에서 빌드합니다.
+PyInstaller 는 크로스 컴파일이 안 되므로, 플랫폼별 러너에서 각각 빌드합니다
+(Windows exe 1개 + macOS arm64/x86_64 2개).
 
 ```bash
 ./scripts/release.sh 2.3.1
 ```
 
 VERSION·package.json 을 올리고 커밋 → `v2.3.1` 태그 푸시 → GitHub Actions
-(`.github/workflows/release.yml`)가 Windows 러너에서 exe 를 빌드해
+(`.github/workflows/release.yml`)가 Windows·macOS 러너에서 실행 파일을 빌드해
 **Release asset 으로 자동 첨부**합니다. 태그 없이 Actions 탭에서 수동 실행(Run workflow)하면
 Release 없이 아티팩트로만 받을 수 있습니다.
 
-> 💡 GitHub Actions 는 무료 플랜에서도 씁니다. 퍼블릭 저장소는 무제한, 프라이빗 저장소는
-> 월 2,000분 무료이며 **Windows 러너는 분당 2배**로 차감됩니다(≈ 월 1,000분).
-> 이 빌드는 한 번에 3~5분 정도라 넉넉합니다.
+> 💡 GitHub Actions 는 무료 플랜에서도 씁니다. 이 저장소는 퍼블릭이라 무제한입니다.
+> (프라이빗으로 바꾸면 월 2,000분 한도에 **Windows 2배, macOS 10배**로 차감되니 주의.)
+> 세 잡이 병렬로 돌아 한 번에 5분 안팎입니다.
 
 ### 2. Windows PC 에서 직접 빌드
 

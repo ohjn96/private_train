@@ -78,9 +78,8 @@ def get_pyinstaller_cmd(config: dict) -> list[str]:
     for pkg in config.get('collect_submodules', []):
         cmd.append(f'--collect-submodules={pkg}')
 
-    # Platform-specific options
-    if platform.system() == 'Darwin':  # macOS
-        cmd.append('--argv-emulation')
+    # macOS 의 --argv-emulation 은 .app 번들(windowed) 전용이라 콘솔 앱에는 쓰지 않는다.
+    # (기동 시 AppKit 이벤트 루프를 잠깐 도느라 늦어지기만 한다)
 
     cmd.append(str(ROOT_DIR / config['script']))
     return cmd
@@ -129,9 +128,13 @@ def move_to_root(base_name: str) -> Path:
 
     target = ROOT_DIR / built.name
 
-    # 같은 플랫폼의 이전 버전 산출물만 정리 (예: Linux 빌드가 .exe 를 지우지 않도록)
+    # 같은 플랫폼의 이전 버전 산출물만 정리 (예: Linux 빌드가 .exe 를 지우지 않도록).
+    # 버전에 점이 들어가 Path.suffix 가 '.1' 처럼 잡히므로 확장자는 이름으로 판별한다.
+    def _same_platform(name: str) -> bool:
+        return name.endswith('.exe') if suffix == '.exe' else not name.endswith('.exe')
+
     for old in ROOT_DIR.glob(f'{base_name}*'):
-        if old.is_file() and old.suffix == suffix and old != target:
+        if old.is_file() and _same_platform(old.name) and old != target:
             old.unlink()
     shutil.move(str(built), target)
 
