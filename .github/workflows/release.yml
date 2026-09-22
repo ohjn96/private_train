@@ -160,6 +160,17 @@ jobs:
           LAUNCHER
           chmod +x "$name/실행.command"
 
+          # 클릭만 하는 사용자를 위한 3줄 안내
+          cat > "$name/읽어주세요.txt" <<'READ_ME'
+          1. 이 폴더 안의  실행.command  를 더블클릭하세요.
+          2. "확인되지 않은 개발자" 라며 막히면,
+             시스템 설정 > 개인정보 보호 및 보안 으로 가서
+             맨 아래 "확인 없이 열기" 를 누른 뒤 다시 더블클릭하세요.
+             (처음 한 번만 하면 됩니다)
+          3. 브라우저가 자동으로 열립니다.
+             종료하려면 같이 열린 터미널 창에서 Control + C.
+          READ_ME
+
           # 웹에서 받은 파일은 실행 권한이 날아가므로 tar 로 감싼다
           tar -czf "$name.tar.gz" "$name"
           echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
