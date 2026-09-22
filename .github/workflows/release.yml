@@ -82,18 +82,10 @@ jobs:
           generate_release_notes: true
 
   build-macos:
-    # Apple Silicon(arm64) 과 Intel(x86_64) 을 각각 빌드한다.
+    # Apple Silicon 전용. 2020년 M1 이후 Mac 은 전부 arm64 이고, Intel 러너
+    # (macos-13) 는 은퇴해서 큐에서 배정되지 않는다.
     # PyInstaller 는 크로스 컴파일이 안 되므로 러너 아키텍처 = 산출물 아키텍처.
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest   # Apple Silicon
-            arch: arm64
-          - runner: macos-13       # Intel
-            arch: x86_64
-
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v7
@@ -145,7 +137,7 @@ jobs:
 
       - name: 아카이브 (실행 권한 보존 + 아키텍처 구분)
         run: |
-          name="TrainReservationApp-v$VERSION-macos-${{ matrix.arch }}"
+          name="TrainReservationApp-v$VERSION-macos-arm64"
           mv "TrainReservationApp-v$VERSION" "$name"
           chmod +x "$name"
           # 웹에서 받은 단일 바이너리는 실행 권한이 날아가므로 tar 로 감싼다

@@ -33,5 +33,5 @@ git push origin "v$VERSION"
 
 echo ""
 echo "✅ v$VERSION 태그를 푸시했습니다."
-echo "   GitHub Actions 가 Windows exe + macOS(arm64/x86_64) 바이너리를 빌드해 Release 에 첨부합니다:"
+echo "   GitHub Actions 가 Windows exe + macOS(arm64) 바이너리를 빌드해 Release 에 첨부합니다:"
 echo "   https://github.com/ohjn96/private_train/actions"

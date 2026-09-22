@@ -60,9 +60,8 @@ Python 캐시 삭제 → `venv` 의 python 으로 실행. **`python` / `python3`
 
 **Windows**: `TrainReservationApp-v<버전>.exe` 를 받아 더블클릭.
 
-**macOS**: 칩에 맞는 파일을 받습니다 — Apple Silicon 은 `...-macos-arm64.tar.gz`,
-Intel 은 `...-macos-x86_64.tar.gz`. 서명·공증을 하지 않은 빌드라 Gatekeeper 가 막으므로
-격리 속성을 한 번 벗겨줘야 합니다.
+**macOS**: `TrainReservationApp-v<버전>-macos-arm64.tar.gz` (Apple Silicon 전용).
+서명·공증을 하지 않은 빌드라 Gatekeeper 가 막으므로 격리 속성을 한 번 벗겨줘야 합니다.
 
 ```bash
 tar -xzf TrainReservationApp-v<버전>-macos-arm64.tar.gz
@@ -268,7 +267,7 @@ private_train/
 ### 1. GitHub Actions 로 릴리스 (권장)
 
 PyInstaller 는 크로스 컴파일이 안 되므로, 플랫폼별 러너에서 각각 빌드합니다
-(Windows exe 1개 + macOS arm64/x86_64 2개).
+(Windows exe + macOS arm64).
 
 ```bash
 ./scripts/release.sh 2.3.1
@@ -281,7 +280,7 @@ Release 없이 아티팩트로만 받을 수 있습니다.
 
 > 💡 GitHub Actions 는 무료 플랜에서도 씁니다. 이 저장소는 퍼블릭이라 무제한입니다.
 > (프라이빗으로 바꾸면 월 2,000분 한도에 **Windows 2배, macOS 10배**로 차감되니 주의.)
-> 세 잡이 병렬로 돌아 한 번에 5분 안팎입니다.
+> 두 잡이 병렬로 돌아 한 번에 3분 안팎입니다.
 
 ### 2. Windows PC 에서 직접 빌드
 
