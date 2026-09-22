@@ -56,6 +56,17 @@ class KorailService(BaseTrainService):
         """Check if logged in."""
         return self._client is not None and self._client.logined
 
+    @property
+    def credentials(self) -> dict | None:
+        """재로그인에 쓸 자격증명. 로그인한 적이 없으면 None.
+
+        웹에서는 Flask 세션이 같은 역할을 하지만, 헤드리스 실행에는 세션이 없어
+        서비스 인스턴스가 쥔 것이 유일한 출처가 된다.
+        """
+        if not self._user_id or not self._password:
+            return None
+        return {'user_id': self._user_id, 'password': self._password}
+
     def search(
         self,
         dep: str,

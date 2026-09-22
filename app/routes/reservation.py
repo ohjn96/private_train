@@ -236,6 +236,21 @@ def reserve_select():
     return jsonify({"success": True, "count": len(indices)})
 
 
+def _recovery_credentials(provider: str, service) -> dict | None:
+    """재로그인에 쓸 자격증명을 찾는다.
+
+    웹에서는 Flask 세션이 출처지만, 헤드리스 실행에는 요청 컨텍스트가 없다.
+    그때는 서비스 인스턴스가 로그인할 때 쥔 것을 쓴다.
+    """
+    try:
+        credentials = get_credentials(provider)
+        if credentials:
+            return credentials
+    except RuntimeError:
+        pass  # 요청 컨텍스트 밖 (헤드리스)
+    return getattr(service, "credentials", None)
+
+
 def attempt_recovery(provider: str, service) -> tuple[bool, str]:
     """Attempt to recover from connection/login errors.
 
@@ -243,8 +258,7 @@ def attempt_recovery(provider: str, service) -> tuple[bool, str]:
         tuple: (success: bool, message: str)
     """
     try:
-        # Get stored credentials
-        credentials = get_credentials(provider)
+        credentials = _recovery_credentials(provider, service)
         if not credentials:
             return False, "저장된 로그인 정보가 없습니다."
 
@@ -257,7 +271,10 @@ def attempt_recovery(provider: str, service) -> tuple[bool, str]:
         # Attempt re-login
         success = service.login(credentials["user_id"], credentials["password"])
         if success:
-            set_auth_state(provider, credentials["user_id"])
+            try:
+                set_auth_state(provider, credentials["user_id"])
+            except RuntimeError:
+                pass  # 헤드리스에는 갱신할 세션이 없다
             return True, "재로그인 성공"
         else:
             return False, "재로그인 실패"

@@ -74,6 +74,29 @@ class TrainInfo:
         """Check if any seat is available."""
         return self.general_seat_available or self.special_seat_available
 
+    def to_dict(self, index: int = 0) -> dict:
+        """예약 루프·웹 JSON·텔레그램이 공통으로 쓰는 직렬화 형태.
+
+        예약 루프는 raw_data(원본 열차 객체)를 들고 다니지 않는다. 매 시도마다
+        새로 조회한 결과에서 train_number/dep_time 으로 다시 찾기 때문이다.
+        """
+        return {
+            'index': index,
+            'train_name': self.train_name,
+            'train_number': self.train_number,
+            'dep_date': self.dep_date,
+            'dep_time': self.dep_time,
+            'dep_time_formatted': self.dep_time_formatted,
+            'arr_date': self.arr_date,
+            'arr_time': self.arr_time,
+            'arr_time_formatted': self.arr_time_formatted,
+            'duration_formatted': self.duration_formatted,
+            'dep_station': self.dep_station,
+            'arr_station': self.arr_station,
+            'general_seat_available': self.general_seat_available,
+            'special_seat_available': self.special_seat_available,
+        }
+
 
 @dataclass
 class ReservationResult:

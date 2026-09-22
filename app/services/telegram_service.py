@@ -58,6 +58,7 @@ class TelegramService:
         self._stored_card_settings: Optional[dict] = None
 
         # Shared log queue for web ↔ Telegram sync
+        self._log_sink: Optional[Callable[[str, str], None]] = None
         self._macro_logs: collections.deque = collections.deque(maxlen=500)
         self._log_event = threading.Event()
         self._log_counter = 0
@@ -328,12 +329,26 @@ class TelegramService:
         """Update current macro attempt count."""
         self._macro_attempt = attempt
 
+    def set_log_sink(self, sink: Optional[Callable[[str, str], None]]):
+        """매크로 로그를 실시간으로 넘겨받을 콜백을 건다.
+
+        웹에서는 SSE 가 버퍼를 읽어가지만 헤드리스에는 읽어갈 클라이언트가 없어,
+        로그를 곧바로 stdout 으로 흘려보내야 한다. None 으로 해제한다.
+        """
+        self._log_sink = sink
+
     def push_log(self, event_type: str, message: str, **extra):
         """Push a log event to shared buffer for web/Telegram sync."""
         self._log_counter += 1
         event = {'id': self._log_counter, 'type': event_type, 'message': message, **extra}
         self._macro_logs.append(event)
         self._log_event.set()
+        if self._log_sink:
+            try:
+                self._log_sink(event_type, message)
+            except Exception:
+                # 로그 출력 실패가 매크로를 멈추게 해서는 안 된다
+                logger.exception('log sink failed')
 
     def clear_logs(self):
         """Clear the log buffer."""

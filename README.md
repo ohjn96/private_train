@@ -83,6 +83,75 @@ cd TrainReservationApp-v<버전>-macos-arm64 && ./TrainReservationApp-v<버전>-
 
 ---
 
+## 헤드리스 실행 (화면 없이)
+
+웹 UI 없이 예약 매크로만 돌립니다. 클라우드 인스턴스, 라즈베리파이, 도커처럼
+브라우저를 띄울 수 없는 곳에 올려두고 텔레그램으로 조종하는 용도입니다.
+**예약 로직은 웹과 완전히 같은 루프**를 씁니다.
+
+```bash
+python headless.py --id 1234567890 --pw 비밀번호 \
+  --dep 서울 --arr 부산 --date 2026-10-03 --from 08:00 --to 12:00
+```
+
+먼저 `--dry-run` 으로 설정을 점검하세요. 조회만 하고 매크로는 돌리지 않습니다.
+
+```bash
+python headless.py ... --dry-run
+```
+```
+🚄 헤드리스 예약 러너 v2.3.2
+[08:00:01] 서울 → 부산  20261003  08:00~12:00
+[08:00:02] 로그인 성공
+[08:00:03] 대상 열차 2편:
+    KTX   101  08:30→10:40  일반🟢 특실🔴
+    KTX   103  09:30→11:50  일반🔴 특실🔴
+```
+
+### 주요 옵션
+
+| 옵션 | 환경변수 | 설명 |
+|---|---|---|
+| `--id` / `--pw` | `KORAIL_ID` / `KORAIL_PW` | 코레일 계정 (필수) |
+| `--dep` / `--arr` | `TRAIN_DEP` / `TRAIN_ARR` | 출발·도착역 (필수) |
+| `--date` | `TRAIN_DATE` | 출발일 `YYYYMMDD` (필수) |
+| `--from` / `--to` | `TRAIN_FROM` / `TRAIN_TO` | 노릴 시간대. `--to` 생략 시 `--from` +3시간 |
+| `--trains` | `TRAIN_NUMBERS` | 특정 열차번호만 (`101,103`). 주면 시간대는 무시 |
+| `--passengers` | `PASSENGERS` | 좌석 수 1 또는 2 |
+| `--sequential` | `SEQUENTIAL` | 2석을 한 석씩 순차로 (같은 열차 고정) |
+| `--telegram-token` | `TELEGRAM_BOT_TOKEN` | 알림 + 원격 `/stop`, `/status` |
+| `--card-number` 외 | `CARD_*` | 예약 성공 시 자동결제 |
+| — | `KORAIL_MIN_API_INTERVAL` | API 호출 최소 간격(초). 1 미만으로는 안 내려감 |
+
+전체 목록은 `python headless.py --help`. 모든 옵션은 환경변수로도 줄 수 있어서,
+서버에서는 인자 없이 환경변수만으로 띄우는 편이 낫습니다 (`ps` 에 비밀번호가 안 보입니다).
+
+### 서버에 상주시키기
+
+`Ctrl+C` 와 `SIGTERM` 을 받으면 진행 중인 시도를 마치고 정리 후 종료합니다.
+systemd 라면 이 정도면 충분합니다.
+
+```ini
+# /etc/systemd/system/train.service
+[Service]
+WorkingDirectory=/opt/private_train
+EnvironmentFile=/etc/train.env      # KORAIL_ID=... 등 (chmod 600)
+ExecStart=/opt/private_train/venv/bin/python headless.py
+Restart=on-failure
+```
+
+### 올리기 전에 알아둘 것
+
+- **무료 티어 대부분은 이 용도에 안 맞습니다.** Render·Railway 무료 등급은 트래픽이
+  없으면 슬립에 들어가는데, 표가 날 때까지 계속 조회해야 하는 매크로와는 상극입니다.
+  24시간 상주가 진짜 무료인 건 Oracle Cloud Always Free 정도입니다.
+- **GitHub Actions 크론으로 돌리지 마세요.** 공짜지만 ToS 위반이라 계정이 정지될 수 있습니다.
+- **데이터센터 IP 가 막힐 수 있습니다.** 코레일이 클라우드 대역을 차단하면 코드와 무관하게
+  실패합니다. 집에 있는 기기(라즈베리파이, 안 쓰는 노트북)가 이 점에서 안전합니다.
+- **계정 정보가 그 서버에 남습니다.** 환경변수 파일 권한(`chmod 600`)을 꼭 확인하세요.
+
+---
+
 ## 요구사항
 
 - **Python**: 3.12+ (실행 파일만 쓸 거면 불필요)
@@ -259,7 +328,8 @@ private_train/
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
 ├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
 ├── .github/workflows/          # 태그 푸시 시 Windows/macOS 실행 파일 자동 빌드
-├── main.py                     # 진입점
+├── main.py                     # 진입점 (웹)
+├── headless.py                 # 진입점 (화면 없이 매크로만)
 ├── VERSION                     # 버전 단일 출처
 ├── LICENSE                     # 개인 사용 라이선스 (재배포·상업이용 금지)
 ├── THIRD-PARTY-NOTICES.md      # 번들 오픈소스 고지
