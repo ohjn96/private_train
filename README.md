@@ -86,18 +86,44 @@ cd TrainReservationApp-v<버전>-macos-arm64 && ./TrainReservationApp-v<버전>-
 ## 헤드리스 실행 (화면 없이)
 
 웹 UI 없이 예약 매크로만 돌립니다. 클라우드 인스턴스, 라즈베리파이, 도커처럼
-브라우저를 띄울 수 없는 곳에 올려두고 텔레그램으로 조종하는 용도입니다.
-**예약 로직은 웹과 완전히 같은 루프**를 씁니다.
+브라우저를 띄울 수 없는 곳에 올려두는 용도입니다. 진입점은 웹과 같은 `main.py`
+이고, **예약 로직도 웹과 완전히 같은 루프**를 씁니다.
+
+### 대기 모드 (권장) — 텔레그램으로 조종
+
+열차 정보를 미리 정하지 않고 띄워둡니다. 검색부터 예약까지 전부 텔레그램에서 시킵니다.
 
 ```bash
-python headless.py --id 1234567890 --pw 비밀번호 \
+python main.py --headless --id 1234567890 --pw 비밀번호 --telegram-token <봇토큰>
+```
+
+띄운 뒤 텔레그램에서:
+
+```
+/reserve 서울 부산 2026-10-03 08:00   → 검색 결과에서 번호를 고르면 매크로 시작
+/trains    마지막 검색 결과       /status   상태 확인
+/stop      매크로 중단            /restart  최신 데이터로 재시작
+```
+
+봇 토큰은 텔레그램 [@BotFather](https://t.me/BotFather) 에서 받습니다. 채팅 ID 는
+따로 안 넣어도 되고, 봇에게 `/start` 를 한 번 보내면 자동으로 등록됩니다.
+
+> 💡 배포된 실행 파일도 같은 방식으로 됩니다:
+> `TrainReservationApp-v2.3.2.exe --headless --telegram-token <봇토큰> ...`
+
+### 한 방 모드 — 노릴 열차를 미리 지정
+
+예매 오픈처럼 시각이 정해져 있을 때 씁니다. 띄우자마자 매크로가 돕니다.
+
+```bash
+python main.py --headless --id 1234567890 --pw 비밀번호 \
   --dep 서울 --arr 부산 --date 2026-10-03 --from 08:00 --to 12:00
 ```
 
 먼저 `--dry-run` 으로 설정을 점검하세요. 조회만 하고 매크로는 돌리지 않습니다.
 
 ```bash
-python headless.py ... --dry-run
+python main.py --headless ... --dry-run
 ```
 ```
 🚄 헤드리스 예약 러너 v2.3.2
@@ -113,17 +139,17 @@ python headless.py ... --dry-run
 | 옵션 | 환경변수 | 설명 |
 |---|---|---|
 | `--id` / `--pw` | `KORAIL_ID` / `KORAIL_PW` | 코레일 계정 (필수) |
-| `--dep` / `--arr` | `TRAIN_DEP` / `TRAIN_ARR` | 출발·도착역 (필수) |
-| `--date` | `TRAIN_DATE` | 출발일 `YYYYMMDD` (필수) |
+| `--dep` / `--arr` | `TRAIN_DEP` / `TRAIN_ARR` | 출발·도착역 (한 방 모드에서 필수) |
+| `--date` | `TRAIN_DATE` | 출발일 `YYYYMMDD` (한 방 모드에서 필수) |
 | `--from` / `--to` | `TRAIN_FROM` / `TRAIN_TO` | 노릴 시간대. `--to` 생략 시 `--from` +3시간 |
 | `--trains` | `TRAIN_NUMBERS` | 특정 열차번호만 (`101,103`). 주면 시간대는 무시 |
 | `--passengers` | `PASSENGERS` | 좌석 수 1 또는 2 |
 | `--sequential` | `SEQUENTIAL` | 2석을 한 석씩 순차로 (같은 열차 고정) |
-| `--telegram-token` | `TELEGRAM_BOT_TOKEN` | 알림 + 원격 `/stop`, `/status` |
+| `--telegram-token` | `TELEGRAM_BOT_TOKEN` | 알림 + 원격 조종 (대기 모드에서 필수) |
 | `--card-number` 외 | `CARD_*` | 예약 성공 시 자동결제 |
 | — | `KORAIL_MIN_API_INTERVAL` | API 호출 최소 간격(초). 1 미만으로는 안 내려감 |
 
-전체 목록은 `python headless.py --help`. 모든 옵션은 환경변수로도 줄 수 있어서,
+전체 목록은 `python main.py --headless --help`. 모든 옵션은 환경변수로도 줄 수 있어서,
 서버에서는 인자 없이 환경변수만으로 띄우는 편이 낫습니다 (`ps` 에 비밀번호가 안 보입니다).
 
 ### 서버에 상주시키기
@@ -135,8 +161,8 @@ systemd 라면 이 정도면 충분합니다.
 # /etc/systemd/system/train.service
 [Service]
 WorkingDirectory=/opt/private_train
-EnvironmentFile=/etc/train.env      # KORAIL_ID=... 등 (chmod 600)
-ExecStart=/opt/private_train/venv/bin/python headless.py
+EnvironmentFile=/etc/train.env      # KORAIL_ID, KORAIL_PW, TELEGRAM_BOT_TOKEN … (chmod 600)
+ExecStart=/opt/private_train/venv/bin/python main.py --headless
 Restart=on-failure
 ```
 
@@ -328,8 +354,7 @@ private_train/
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
 ├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
 ├── .github/workflows/          # 태그 푸시 시 Windows/macOS 실행 파일 자동 빌드
-├── main.py                     # 진입점 (웹)
-├── headless.py                 # 진입점 (화면 없이 매크로만)
+├── main.py                     # 진입점 (웹 / --headless 로 매크로만)
 ├── VERSION                     # 버전 단일 출처
 ├── LICENSE                     # 개인 사용 라이선스 (재배포·상업이용 금지)
 ├── THIRD-PARTY-NOTICES.md      # 번들 오픈소스 고지

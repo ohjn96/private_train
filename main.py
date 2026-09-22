@@ -2,6 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 KTX/SRT Train Reservation System - Unified Entry Point
+
+기본은 웹 서버, --headless 를 붙이면 화면 없이 예약 매크로만 돌린다.
+헤드리스 쪽 인자는 그대로 app.headless 로 넘어간다 (--headless --help 로 확인).
+
+    python main.py                                  웹 UI
+    python main.py --headless --telegram-token ...  텔레그램으로 조종
+    python main.py --headless --dep 서울 --arr 부산 --date 20261003
 """
 import os
 import sys
@@ -92,7 +99,23 @@ def open_browser(port: int) -> None:
 
 app = create_app()
 
-if __name__ == '__main__':
+
+def wants_headless(argv: list[str]) -> bool:
+    """--headless 인자 또는 HEADLESS 환경변수(도커/서비스용)."""
+    if '--headless' in argv:
+        return True
+    return os.environ.get('HEADLESS', '').lower() in ('1', 'true', 'yes')
+
+
+def run_headless(argv: list[str]) -> int:
+    """헤드리스 러너에 넘긴다. --headless 자체만 빼고 그대로 전달한다."""
+    from app.headless import main as headless_main
+
+    return headless_main([arg for arg in argv if arg != '--headless'])
+
+
+def run_web() -> None:
+    """웹 서버로 띄운다 (기본 동작)."""
     # 기본 포트를 5050으로 변경 (macOS AirPlay가 5000 사용)
     port = int(os.environ.get('PORT', 5050))
     # exe 로 실행할 때는 reloader 가 프로세스를 두 번 띄우므로 debug 기본 off
@@ -114,3 +137,10 @@ if __name__ == '__main__':
         print("\n⏹️  Server stopped by user")
     finally:
         cleanup_cache()
+
+
+if __name__ == '__main__':
+    argv = sys.argv[1:]
+    if wants_headless(argv):
+        sys.exit(run_headless(argv))
+    run_web()

@@ -2,10 +2,18 @@
 """헤드리스 예약 러너.
 
 화면도 브라우저도 없는 환경(클라우드 인스턴스, 라즈베리파이, 도커)에서 예약
-매크로만 돌린다. 설정은 명령행 인자 또는 환경변수로 받고, 진행 상황은 표준출력과
-(설정했다면) 텔레그램으로 나간다.
+매크로만 돌린다. 진행 상황은 표준출력과 (설정했다면) 텔레그램으로 나간다.
+두 가지 모드가 있다.
 
-    python headless.py --dep 서울 --arr 부산 --date 20261003 --from 08:00 --to 12:00
+**대기 모드** — 열차 정보 없이 텔레그램 토큰만 주고 띄워두면, 검색부터 예약까지
+전부 텔레그램에서 시킨다. 서버에 상주시키는 경우 이쪽이 편하다.
+
+    python main.py --headless --telegram-token <토큰>
+
+**한 방 모드** — 노릴 열차를 인자로 주면 즉시 매크로를 시작한다. 예매 오픈처럼
+시각이 정해진 경우에 쓴다.
+
+    python main.py --headless --dep 서울 --arr 부산 --date 20261003 --from 08:00
 
 매크로 본체는 웹 UI 가 쓰는 것과 같은 함수다. 예약 로직이 두 벌로 갈라지지
 않도록 app.routes.reservation 의 루프를 그대로 가져다 쓴다.
@@ -16,6 +24,8 @@ import argparse
 import os
 import signal
 import sys
+import threading
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from app.services.base_service import SeatOption, TrainInfo
@@ -35,6 +45,31 @@ EXIT_LOGIN = 2
 EXIT_NO_TRAIN = 3
 
 LOG_ICONS = {'success': '✅', 'error': '❌', 'warning': '⚠️', 'stopped': '⏹️'}
+
+
+class ConfigError(Exception):
+    """설정이 잘못됐다. 로그인 시도 전에 걸러진다."""
+
+
+@dataclass
+class Trip:
+    """한 방 모드에서 노릴 구간. 대기 모드에서는 None 이다."""
+    dep: str
+    arr: str
+    date: str
+    since: str
+    until: str
+    numbers: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Plan:
+    """검증을 마친 실행 계획."""
+    trip: Trip | None
+    card: dict | None
+    seat_option: SeatOption
+    passengers: int
+    sequential: bool
 
 
 # ──────────────────────────────────────────────── 입력 파싱
@@ -155,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
     """명령행 파서. 모든 옵션은 환경변수로도 줄 수 있다."""
     env = os.environ.get
     parser = argparse.ArgumentParser(
-        prog='headless.py',
+        prog='main.py --headless',
         description='화면 없이 돌리는 예약 매크로 (환경변수로도 설정 가능)',
         epilog=(
             '환경변수: KORAIL_ID, KORAIL_PW, TRAIN_DEP, TRAIN_ARR, TRAIN_DATE, '
@@ -220,8 +255,53 @@ def log(message: str) -> None:
     print(f"[{datetime.now():%H:%M:%S}] {message}", flush=True)
 
 
+def build_plan(args: argparse.Namespace) -> Plan:
+    """인자를 검증해 실행 계획으로 바꾼다.
+
+    열차 정보(--dep/--arr/--date)를 다 주면 한 방 모드, 하나도 안 주고 텔레그램
+    토큰만 주면 대기 모드다. 어중간하게 주면 오타일 가능성이 높으니 막는다.
+    """
+    missing_account = [
+        flag for flag, value in (
+            ('--id (KORAIL_ID)', args.user_id),
+            ('--pw (KORAIL_PW)', args.password),
+        ) if not value
+    ]
+    if missing_account:
+        raise ConfigError(f"다음 설정이 빠졌습니다: {', '.join(missing_account)}")
+
+    card = build_card(args)
+    seat_option = SeatOption(args.seat)
+    passengers = max(1, min(2, args.passengers))
+    sequential = args.sequential and passengers > 1
+
+    given = [bool(args.dep), bool(args.arr), bool(args.date)]
+    if not any(given):
+        if not args.telegram_token:
+            raise ConfigError(
+                "노릴 열차(--dep/--arr/--date)를 주거나, 텔레그램으로 조종하려면 "
+                "--telegram-token 을 주세요."
+            )
+        return Plan(None, card, seat_option, passengers, sequential)
+
+    if not all(given):
+        raise ConfigError("--dep, --arr, --date 는 셋 다 주거나 셋 다 빼야 합니다.")
+
+    date = parse_date(args.date)
+    since = parse_time(args.time_from, '시작')
+    until = (
+        parse_time(args.time_to, '종료') if args.time_to
+        else shift_time(since, DEFAULT_WINDOW_HOURS)
+    )
+    if until < since:
+        raise ConfigError(f"종료 시각({until})이 시작 시각({since})보다 빠릅니다.")
+
+    trip = Trip(args.dep, args.arr, date, since, until, parse_numbers(args.trains))
+    return Plan(trip, card, seat_option, passengers, sequential)
+
+
 def connect_telegram(args: argparse.Namespace) -> TelegramService:
-    """텔레그램을 붙인다. 실패해도 매크로는 그대로 진행한다."""
+    """텔레그램을 붙인다. 한 방 모드에서는 실패해도 그대로 진행한다."""
     telegram = TelegramService.get_instance()
     telegram.set_log_sink(
         lambda kind, message: print(f"{LOG_ICONS.get(kind, '·')} {message}", flush=True)
@@ -232,75 +312,56 @@ def connect_telegram(args: argparse.Namespace) -> TelegramService:
 
     result = telegram.configure(args.telegram_token, args.telegram_chat_id or '')
     if not result.get('success'):
-        log(f"⚠️  텔레그램 연결 실패: {result.get('message')} — 알림 없이 계속합니다")
+        log(f"⚠️  텔레그램 연결 실패: {result.get('message')}")
         return telegram
 
     log(f"텔레그램 연결됨: {result.get('message')}")
-    if not telegram.chat_id:
-        log("⚠️  채팅 ID 가 없습니다. 봇에게 /start 를 한 번 보내주세요 (알림은 그 뒤부터).")
     telegram.start_polling()
     return telegram
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def wire_telegram(telegram: TelegramService, args: argparse.Namespace, card: dict | None):
+    """원격 명령(/reserve, /stop, /status)이 동작하도록 배선한다.
 
-    # ── 설정 검증
-    missing = [
-        flag
-        for flag, value in (
-            ('--id (KORAIL_ID)', args.user_id),
-            ('--pw (KORAIL_PW)', args.password),
-            ('--dep (TRAIN_DEP)', args.dep),
-            ('--arr (TRAIN_ARR)', args.arr),
-            ('--date (TRAIN_DATE)', args.date),
-        )
-        if not value
-    ]
-    if missing:
-        print(f"!! 다음 설정이 빠졌습니다: {', '.join(missing)}", file=sys.stderr)
-        print("   자세한 사용법은 --help 를 보세요.", file=sys.stderr)
-        return EXIT_CONFIG
+    _setup_telegram_callbacks 는 웹 세션을 읽으려다 요청 컨텍스트가 없어 조용히
+    넘어가므로, 자격증명과 카드 설정은 뒤에서 직접 채워 넣는다.
+    """
+    from app.routes import reservation
 
-    try:
-        date = parse_date(args.date)
-        since = parse_time(args.time_from, '시작')
-        until = (
-            parse_time(args.time_to, '종료') if args.time_to
-            else shift_time(since, DEFAULT_WINDOW_HOURS)
-        )
-        card = build_card(args)
-    except ValueError as error:
-        print(f"!! {error}", file=sys.stderr)
-        return EXIT_CONFIG
+    reservation._setup_telegram_callbacks()
+    telegram.store_web_session(
+        PROVIDER, {'user_id': args.user_id, 'password': args.password}
+    )
+    telegram.store_card_settings(card)
 
-    if until < since:
-        print(f"!! 종료 시각({until})이 시작 시각({since})보다 빠릅니다.", file=sys.stderr)
-        return EXIT_CONFIG
 
-    numbers = parse_numbers(args.trains)
-    passengers = max(1, min(2, args.passengers))
-    sequential = args.sequential and passengers > 1
-    seat_option = SeatOption(args.seat)
+def install_signal_handlers(stop: threading.Event) -> None:
+    """Ctrl+C / SIGTERM 에 매크로와 대기 루프를 함께 세운다."""
+    from app.routes import reservation
 
-    print(f"🚄 헤드리스 예약 러너 v{get_version()}")
-    log(f"{args.dep} → {args.arr}  {date}  {since[:2]}:{since[2:4]}~{until[:2]}:{until[2:4]}")
+    def request_stop(signum, frame):
+        log("중단 신호를 받았습니다. 정리 중...")
+        reservation.STOP_MACRO = True
+        stop.set()
 
-    # ── 로그인
-    service = KorailService()
-    log(f"코레일 로그인: {mask(args.user_id)}")
-    if not service.login(args.user_id, args.password):
-        print("!! 로그인 실패. 아이디/비밀번호를 확인하세요.", file=sys.stderr)
-        return EXIT_LOGIN
-    log("로그인 성공")
+    signal.signal(signal.SIGINT, request_stop)
+    if hasattr(signal, 'SIGTERM'):
+        signal.signal(signal.SIGTERM, request_stop)
 
-    # ── 조회
+
+def run_oneshot(
+    service, telegram: TelegramService, plan: Plan, dry_run: bool = False
+) -> int:
+    """지정한 구간을 조회해 바로 매크로를 돌린다. dry_run 이면 조회까지만."""
+    from app.routes import reservation
+
+    trip = plan.trip
     log("열차 조회 중...")
     trains = service.search(
-        dep=args.dep, arr=args.arr, date=date, time=since,
-        include_no_seats=True, until_time=until,
+        dep=trip.dep, arr=trip.arr, date=trip.date, time=trip.since,
+        include_no_seats=True, until_time=trip.until,
     )
-    targets = select_trains(trains, numbers, since, until)
+    targets = select_trains(trains, trip.numbers, trip.since, trip.until)
 
     if not targets:
         print("!! 조건에 맞는 열차가 없습니다.", file=sys.stderr)
@@ -314,50 +375,98 @@ def main(argv: list[str] | None = None) -> int:
     for train in targets:
         print(f"    {format_train(train)}", flush=True)
 
-    if args.dry_run:
+    if dry_run:
         log("--dry-run 이므로 여기서 끝냅니다.")
         return EXIT_OK
-
-    # ── 매크로. 웹과 같은 루프를 쓴다 (flask 를 끌고 오므로 여기서 import)
-    from app.routes import reservation
-
-    telegram = connect_telegram(args)
-    # 텔레그램 원격 명령(/stop, /status, /reserve) 배선. 웹 세션을 읽으려 시도하다
-    # 컨텍스트가 없어 조용히 넘어가므로, 자격증명은 아래에서 직접 채워 넣는다.
-    reservation._setup_telegram_callbacks()
-    telegram.store_web_session(PROVIDER, {'user_id': args.user_id, 'password': args.password})
-    telegram.store_card_settings(card)
-
-    def request_stop(signum, frame):
-        log("중단 신호를 받았습니다. 정리 중...")
-        reservation.STOP_MACRO = True
-
-    signal.signal(signal.SIGINT, request_stop)
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, request_stop)
 
     if not telegram.try_start_macro():
         print("!! 이미 매크로가 실행 중입니다.", file=sys.stderr)
         return EXIT_CONFIG
 
     note = ''
-    if passengers > 1:
-        note = ' (1인씩 순차)' if sequential else ' (2인 동시)'
+    if plan.passengers > 1:
+        note = ' (1인씩 순차)' if plan.sequential else ' (2인 동시)'
     log(f"예약 매크로 시작{note}. 중단하려면 Ctrl+C 또는 텔레그램 /stop")
 
     reservation.run_reservation_loop(
         service,
         PROVIDER,
         [train.to_dict(index) for index, train in enumerate(targets)],
-        seat_option,
-        card,
-        passenger_count=passengers,
-        sequential=sequential,
+        plan.seat_option,
+        plan.card,
+        passenger_count=plan.passengers,
+        sequential=plan.sequential,
     )
-
-    telegram.set_log_sink(None)
-    log("종료합니다.")
     return EXIT_OK
+
+
+def run_standby(telegram: TelegramService, stop: threading.Event) -> int:
+    """아무것도 하지 않고 텔레그램 명령을 기다린다."""
+    if not telegram.is_connected:
+        print("!! 텔레그램에 연결하지 못해 대기 모드를 쓸 수 없습니다.", file=sys.stderr)
+        print("   토큰을 확인하거나, 열차를 인자로 지정해 한 방 모드로 쓰세요.", file=sys.stderr)
+        return EXIT_CONFIG
+
+    if not telegram.chat_id:
+        log("봇에게 /start 를 보내주세요. 채팅 ID 가 등록되면 조종할 수 있습니다.")
+
+    print("", flush=True)
+    log("대기 중입니다. 텔레그램에서 시키세요:")
+    print("      /reserve 서울 부산 2026-10-03 08:00   검색 → 번호로 선택하면 매크로 시작", flush=True)
+    print("      /trains   마지막 검색 결과      /status   상태 확인", flush=True)
+    print("      /stop     매크로 중단           /restart  최신 데이터로 재시작", flush=True)
+    print("      (이 프로세스를 끄려면 Ctrl+C)", flush=True)
+    print("", flush=True)
+
+    stop.wait()
+    return EXIT_OK
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+
+    try:
+        plan = build_plan(args)
+    except (ConfigError, ValueError) as error:
+        print(f"!! {error}", file=sys.stderr)
+        print("   자세한 사용법은 --help 를 보세요.", file=sys.stderr)
+        return EXIT_CONFIG
+
+    mode = '대기 모드' if plan.trip is None else '한 방 모드'
+    print(f"🚄 헤드리스 예약 러너 v{get_version()} — {mode}")
+    if plan.trip:
+        trip = plan.trip
+        log(
+            f"{trip.dep} → {trip.arr}  {trip.date}  "
+            f"{trip.since[:2]}:{trip.since[2:4]}~{trip.until[:2]}:{trip.until[2:4]}"
+        )
+
+    service = KorailService()
+    log(f"코레일 로그인: {mask(args.user_id)}")
+    if not service.login(args.user_id, args.password):
+        print("!! 로그인 실패. 아이디/비밀번호를 확인하세요.", file=sys.stderr)
+        return EXIT_LOGIN
+    log("로그인 성공")
+
+    if plan.trip and args.dry_run:
+        # 조회 결과만 보여주고 끝낸다. 텔레그램도 붙이지 않는다.
+        return run_oneshot(service, TelegramService.get_instance(), plan, dry_run=True)
+
+    telegram = connect_telegram(args)
+    wire_telegram(telegram, args, plan.card)
+
+    stop = threading.Event()
+    install_signal_handlers(stop)
+
+    try:
+        if plan.trip is None:
+            return run_standby(telegram, stop)
+        return run_oneshot(service, telegram, plan)
+    finally:
+        telegram.set_log_sink(None)
+        if telegram.is_connected:
+            telegram.stop_polling()
+        log("종료합니다.")
 
 
 if __name__ == '__main__':

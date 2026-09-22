@@ -68,6 +68,13 @@ jobs:
           if (-not $ok) { throw "exe 가 60초 안에 응답하지 않았습니다." }
           Write-Host "OK: exe 정상 기동 확인"
 
+          # 헤드리스 모드가 번들에 들어갔는지 (app.headless 누락 시 여기서 죽는다)
+          $help = & $exe --headless --help 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $help -notmatch '--telegram-token') {
+            throw "헤드리스 모드가 동작하지 않습니다: $help"
+          }
+          Write-Host "OK: --headless 확인"
+
       - name: 아티팩트 업로드 (수동 실행용)
         uses: actions/upload-artifact@v7
         with:
@@ -134,6 +141,13 @@ jobs:
             exit 1
           fi
           echo "OK: 바이너리 정상 기동 확인"
+
+          # 헤드리스 모드가 번들에 들어갔는지 (app.headless 누락 시 여기서 죽는다)
+          if ! "$app" --headless --help | grep -q -- '--telegram-token'; then
+            echo "헤드리스 모드가 동작하지 않습니다." >&2
+            exit 1
+          fi
+          echo "OK: --headless 확인"
 
       - name: 아카이브 (더블클릭 런처 동봉)
         run: |

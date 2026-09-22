@@ -10,12 +10,14 @@
 import io
 import os
 import sys
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import main as main_module
 from app import headless
 from app.services.base_service import SeatOption, TrainInfo, TrainProvider
 from app.services.telegram_service import TelegramService
@@ -298,6 +300,113 @@ class ToDictTest(unittest.TestCase):
                     'arr_station', 'train_name'):
             self.assertIn(key, data)
         self.assertEqual(data['dep_time_formatted'], '08:30')
+
+
+class BuildPlanTest(unittest.TestCase):
+    """열차를 다 주면 한 방 모드, 하나도 안 주고 토큰만 주면 대기 모드."""
+
+    def plan(self, *extra_args):
+        args = headless.build_parser().parse_args(list(extra_args))
+        return headless.build_plan(args)
+
+    def test_account_is_required(self):
+        with self.assertRaises(headless.ConfigError) as caught:
+            self.plan('--dep', '서울', '--arr', '부산', '--date', '20261003')
+        self.assertIn('--id (KORAIL_ID)', str(caught.exception))
+
+    def test_full_trip_is_oneshot(self):
+        plan = self.plan(*BASE_ARGS, '--from', '08:00', '--to', '10:00')
+        self.assertIsNotNone(plan.trip)
+        self.assertEqual(plan.trip.dep, '서울')
+        self.assertEqual((plan.trip.since, plan.trip.until), ('080000', '100000'))
+
+    def test_token_without_trip_is_standby(self):
+        plan = self.plan('--id', 'tester', '--pw', 'secret', '--telegram-token', 'T')
+        self.assertIsNone(plan.trip)
+
+    def test_nothing_at_all_is_rejected(self):
+        with self.assertRaises(headless.ConfigError) as caught:
+            self.plan('--id', 'tester', '--pw', 'secret')
+        self.assertIn('--telegram-token', str(caught.exception))
+
+    def test_partial_trip_is_rejected(self):
+        with self.assertRaises(headless.ConfigError) as caught:
+            self.plan('--id', 'tester', '--pw', 'secret', '--dep', '서울',
+                      '--telegram-token', 'T')
+        self.assertIn('셋 다', str(caught.exception))
+
+    def test_default_window_is_three_hours(self):
+        plan = self.plan(*BASE_ARGS, '--from', '08:00')
+        self.assertEqual(plan.trip.until, '110000')
+
+
+class StandbyTest(unittest.TestCase):
+    """대기 모드는 텔레그램이 붙어 있어야만 의미가 있다."""
+
+    def test_refuses_without_a_connection(self):
+        telegram = mock.Mock()
+        telegram.is_connected = False
+        out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(out):
+            code = headless.run_standby(telegram, threading.Event())
+        self.assertEqual(code, headless.EXIT_CONFIG)
+        self.assertIn('대기 모드를 쓸 수 없습니다', out.getvalue())
+
+    def test_waits_until_stopped(self):
+        telegram = mock.Mock()
+        telegram.is_connected = True
+        telegram.chat_id = '123'
+        stop = threading.Event()
+        threading.Timer(0.05, stop.set).start()
+
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = headless.run_standby(telegram, stop)
+
+        self.assertEqual(code, headless.EXIT_OK)
+        self.assertIn('/reserve', out.getvalue())
+
+    def test_main_enters_standby_and_wires_telegram(self):
+        service = mock.Mock()
+        service.login.return_value = True
+        telegram = TelegramService.get_instance()
+
+        with mock.patch.object(headless, 'KorailService', return_value=service), \
+             mock.patch.object(headless, 'connect_telegram', return_value=telegram), \
+             mock.patch.object(headless, 'run_standby', return_value=headless.EXIT_OK) as standby:
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = headless.main([
+                    '--id', 'tester', '--pw', 'secret', '--telegram-token', 'T',
+                ])
+
+        self.assertEqual(code, headless.EXIT_OK)
+        standby.assert_called_once()
+        self.assertIn('대기 모드', out.getvalue())
+        # /reserve 가 스스로 로그인할 수 있도록 자격증명이 넘어가 있어야 한다
+        self.assertEqual(
+            telegram._stored_credentials, {'user_id': 'tester', 'password': 'secret'}
+        )
+        service.search.assert_not_called()
+
+
+class EntryPointTest(unittest.TestCase):
+    """main.py 하나로 웹과 헤드리스를 모두 띄운다."""
+
+    def test_flag_selects_headless(self):
+        self.assertTrue(main_module.wants_headless(['--headless', '--id', 'x']))
+        self.assertFalse(main_module.wants_headless([]))
+
+    def test_env_selects_headless(self):
+        with mock.patch.dict(os.environ, {'HEADLESS': '1'}):
+            self.assertTrue(main_module.wants_headless([]))
+        with mock.patch.dict(os.environ, {'HEADLESS': 'no'}):
+            self.assertFalse(main_module.wants_headless([]))
+
+    def test_flag_is_stripped_before_handoff(self):
+        with mock.patch('app.headless.main', return_value=0) as headless_main:
+            main_module.run_headless(['--headless', '--id', 'x', '--pw', 'y'])
+        headless_main.assert_called_once_with(['--id', 'x', '--pw', 'y'])
 
 
 if __name__ == '__main__':
