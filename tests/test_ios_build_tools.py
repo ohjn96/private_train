@@ -232,6 +232,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(conf['bundle'], 'com.ohjn96')
         self.assertEqual(app['formal_name'], 'TrainReservation')
         self.assertEqual(app['iOS']['info']['NSAppTransportSecurity'], {'NSAllowsLocalNetworking': True})
+        # 매크로 중 소리 없는 오디오로 백그라운드 유지 (Info.plist 키, entitlement 아님)
+        self.assertEqual(app['iOS']['info']['UIBackgroundModes'], ['audio'])
         self.assertEqual(app['iOS']['requirement_installer_args'], ['--find-links', './wheels'])
 
     def test_workflow(self):
@@ -258,6 +260,21 @@ class ConfigTest(unittest.TestCase):
         self.assertNotIn('APP_PORT', wf['env'])
         for needle in ('get_app_container', 'Documents/$PORT_FILE', '/__hello?nonce=', '/__health'):
             self.assertIn(needle, script)
+        # .ipa 에 백그라운드 오디오 설정과 소리 없는 파일이 실렸는지 CI 가 확인한다
+        for needle in ('UIBackgroundModes', '"audio"', 'trainreservation/resources/silence.wav'):
+            self.assertIn(needle, script)
+
+    def test_silence_file_is_real_silence(self):
+        import wave
+        path = IOS / 'src' / 'trainreservation' / 'resources' / 'silence.wav'
+        native = (IOS / 'src' / 'trainreservation' / 'ios_native.py').read_text(encoding='utf-8')
+        self.assertIn("'resources' / 'silence.wav'", native)  # 앱이 찾는 경로와 같다
+        with wave.open(str(path), 'rb') as w:
+            self.assertGreaterEqual(w.getnframes() / w.getframerate(), 0.5)  # 너무 짧으면 반복이 잦다
+            frames = w.readframes(w.getnframes())
+        self.assertTrue(frames)
+        self.assertEqual(frames.count(0), len(frames))  # 샘플이 전부 0
+        self.assertLess(path.stat().st_size, 64 * 1024)
 
 
 if __name__ == '__main__':

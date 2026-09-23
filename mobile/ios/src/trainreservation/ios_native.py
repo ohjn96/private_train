@@ -8,12 +8,18 @@ UIKit 을 만지는 함수(set_idle_timer_disabled, notify)는 메인 스레드�
 - 앱을 켤 때 권한을 한 번 묻는다 (거절하면 조용히 넘어간다. 웹 화면에도 결과 배너가 뜬다).
 - 앱이 화면에 떠 있을 때도 배너가 보이도록 delegate 의 willPresentNotification 에서
   배너·목록·소리를 허용한다. delegate 는 약한 참조라 이 모듈이 붙잡아 둔다.
+
+백그라운드 유지(AudioKeepAlive): 매크로가 도는 동안 소리 없는 파일을 무한 반복 재생한다
+(AVAudioSession Playback + MixWithOthers, Info.plist 의 UIBackgroundModes=audio).
+상태 판단은 ios_bridge.BackgroundKeeper 가 하고, 여기는 AVFoundation 호출만 한다.
 """
 import itertools
 import logging
 
-from rubicon.objc import Block, NSObject, NSUInteger, ObjCBlock, ObjCClass, ObjCProtocol, objc_id, objc_method
-from rubicon.objc.api import ns_from_py
+from pathlib import Path
+
+from rubicon.objc import SEL, Block, NSObject, NSUInteger, ObjCBlock, ObjCClass, ObjCProtocol, objc_id, objc_method
+from rubicon.objc.api import ns_from_py, objc_const
 from rubicon.objc.runtime import load_library
 
 logger = logging.getLogger(__name__)
@@ -148,6 +154,138 @@ def open_external(url: str) -> None:
     if ns_url is None:
         return
     UIApplication.sharedApplication.openURL_options_completionHandler_(ns_url, ns_from_py({}), None)
+
+
+# ── 백그라운드 유지 (소리 없는 오디오)
+
+#: 앱에 싣는 소리 없는 파일 (1초, 8kHz 모노 16비트, 샘플이 전부 0). 패키지 폴더 안에 있어야 앱에 실린다.
+SILENCE_FILE = Path(__file__).resolve().parent / 'resources' / 'silence.wav'
+
+_MIX_WITH_OTHERS = 0x1              # AVAudioSessionCategoryOptionMixWithOthers
+_NOTIFY_OTHERS_ON_DEACTIVATION = 0x1  # AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
+_INTERRUPTION_BEGAN = 1             # AVAudioSessionInterruptionTypeBegan (Ended = 0)
+
+_avf = {}
+
+
+def _avfoundation():
+    """AVFoundation 을 한 번 불러 클래스·상수를 돌려준다. 상수를 못 찾으면 이름 문자열을 쓴다
+    (이 상수들의 값은 이름과 같은 NSString 이다)."""
+    if not _avf:
+        lib = load_library('AVFoundation')
+
+        def const(name):
+            try:
+                return objc_const(lib, name)
+            except Exception:  # noqa: BLE001
+                return name
+
+        _avf.update(
+            session=ObjCClass('AVAudioSession'),
+            player=ObjCClass('AVAudioPlayer'),
+            playback=const('AVAudioSessionCategoryPlayback'),
+            interruption=const('AVAudioSessionInterruptionNotification'),
+            reset=const('AVAudioSessionMediaServicesWereResetNotification'),
+            type_key=const('AVAudioSessionInterruptionTypeKey'),
+        )
+    return _avf
+
+
+_observer_class = []
+
+
+def _make_observer_class():
+    """NSNotificationCenter 가 부를 옵저버. 클래스는 한 번만 등록할 수 있어 붙잡아 둔다."""
+    if _observer_class:
+        return _observer_class[0]
+
+    class TrainAudioObserver(NSObject):
+        @objc_method
+        def interruption_(self, notification) -> None:
+            _dispatch_audio_event('interruption', notification)
+
+        @objc_method
+        def mediaReset_(self, notification) -> None:
+            _dispatch_audio_event('reset', notification)
+
+    _observer_class.append(TrainAudioObserver)
+    return TrainAudioObserver
+
+
+_audio_handlers = []
+
+
+def _dispatch_audio_event(kind, notification) -> None:
+    """iOS 가 부르는 스레드(메인이 아닐 수 있음)에서 온다. 파이썬 쪽 handler 는 스레드와 무관해야 한다."""
+    try:
+        began = None
+        if kind == 'interruption':
+            info = notification.userInfo
+            value = info.objectForKey_(_avfoundation()['type_key']) if info is not None else None
+            began = value is not None and int(value.unsignedIntegerValue) == _INTERRUPTION_BEGAN
+        for handler in list(_audio_handlers):
+            handler(kind, began)
+    except Exception:  # noqa: BLE001 - ObjC 콜백에서 예외가 새면 앱이 죽는다
+        logger.exception('audio session event failed')
+
+
+class AudioKeepAlive:
+    """소리 없는 파일을 무한 반복 재생해 앱을 깨워 둔다 (메인 스레드).
+
+    on_event(kind, began): 'interruption'(began=True/False), 'reset'(began=None).
+    아무 스레드에서나 불리므로 app.py 가 메인 스레드로 넘긴다.
+    start() 는 실패하면 예외를 던진다 (BackgroundKeeper 가 받아 로그를 남기고 화면 켜 두기로 돌아간다).
+    """
+
+    def __init__(self, sound_path=SILENCE_FILE, on_event=None):
+        self.sound_path = Path(sound_path)
+        self._on_event = on_event
+        self._player = None
+        self._observer = None
+
+    def start(self) -> None:
+        avf = _avfoundation()
+        session = avf['session'].sharedInstance()
+        self._observe(session, avf)
+        if not session.setCategory_withOptions_error_(avf['playback'], _MIX_WITH_OTHERS, None):
+            raise OSError('AVAudioSession setCategory failed')
+        if not session.setActive_error_(True, None):
+            raise OSError('AVAudioSession setActive failed')
+        if self._player is None:
+            if not self.sound_path.is_file():
+                raise FileNotFoundError(self.sound_path)
+            url = NSURL.fileURLWithPath(str(self.sound_path))
+            player = avf['player'].alloc().initWithContentsOfURL_error_(url, None)
+            if player is None:
+                raise OSError('AVAudioPlayer init failed')
+            player.numberOfLoops = -1  # 무한 반복
+            player.prepareToPlay()
+            self._player = player
+        if not self._player.play():
+            raise OSError('AVAudioPlayer play failed')
+        logger.info('background keep-alive audio playing')
+
+    def stop(self) -> None:
+        player, self._player = self._player, None
+        if player is not None:
+            player.stop()
+        try:
+            session = _avfoundation()['session'].sharedInstance()
+            session.setActive_withOptions_error_(False, _NOTIFY_OTHERS_ON_DEACTIVATION, None)
+        except Exception:  # noqa: BLE001
+            logger.warning('AVAudioSession deactivate failed', exc_info=True)
+        logger.info('background keep-alive audio stopped')
+
+    def _observe(self, session, avf) -> None:
+        if self._observer is not None:
+            return
+        observer = _make_observer_class().alloc().init()
+        center = ObjCClass('NSNotificationCenter').defaultCenter
+        center.addObserver_selector_name_object_(observer, SEL('interruption:'), avf['interruption'], session)
+        center.addObserver_selector_name_object_(observer, SEL('mediaReset:'), avf['reset'], session)
+        self._observer = observer  # 알림 센터는 옵저버를 붙잡지 않는다
+        if self._on_event is not None:
+            _audio_handlers.append(self._on_event)
 
 
 class NativeAPI:

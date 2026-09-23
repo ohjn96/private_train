@@ -7,9 +7,10 @@
 토큰은 그 포트의 서버가 /__hello 로 우리 서버임을 증명한 뒤에만 보내고(ServerHost.verify),
 WebView 는 확인한 http://127.0.0.1:<포트> 만 연다. 바깥 링크는 사파리로 넘긴다.
 
-iPhone 의 한계: 앱이 화면에 떠 있는 동안에만 돈다 (iOS 는 뒤로 간 앱을 몇 초 안에 멈춘다).
-그래서 매크로가 도는 동안엔 화면 자동 잠금을 끈다 (IOSBridge.onMacroState).
-앱을 뒤로 보내면 "매크로가 멈춰요" 알림을 띄워 다시 열도록 안내한다.
+iPhone 의 한계: iOS 는 뒤로 간 앱을 몇 초 안에 멈춘다. 그래서 매크로가 도는 동안엔
+소리 없는 오디오를 반복 재생해 앱을 깨워 둔다 (BackgroundKeeper, Info.plist UIBackgroundModes=audio).
+그러면 화면을 꺼도 돈다. 오디오를 못 켜면 예전처럼 화면 자동 잠금을 끄고, 앱이 뒤로 가거나
+전화 등으로 재생이 끊기면 "백그라운드 유지가 끊겼어요" 알림으로 다시 열도록 안내한다.
 """
 import asyncio
 import logging
@@ -19,7 +20,9 @@ from pathlib import Path
 import toga
 from toga.style import Pack
 
-from .ios_bridge import IOSBridge, JobStore, ServerHost, is_external_web_url, is_own_url, load_or_create_token
+from .ios_bridge import (
+    BackgroundKeeper, IOSBridge, JobStore, ServerHost, is_external_web_url, is_own_url, load_or_create_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +52,13 @@ class TrainReservationApp(toga.App):
         token = load_or_create_token(data_dir / 'app_token', protect=native.protect_file)
         self.host = ServerHost(mobile_runtime, data_dir, PORT, token, str(self.version or '0'),
                                port_file=data_dir / PORT_FILE)
+        # 매크로가 도는 동안 소리 없는 오디오로 백그라운드에서도 깨워 둔다 (실패하면 화면 켜 두기로)
+        self.keeper = BackgroundKeeper(native.AudioKeepAlive(on_event=self._on_audio_event),
+                                       native.set_idle_timer_disabled, native.notify,
+                                       is_foreground=native.is_active)
         self.bridge = IOSBridge(store, native.NativeAPI, self._call_on_main,
-                                on_state=self._show_state, on_server_ready=self.host.set_port)
+                                on_state=self._show_state, on_server_ready=self.host.set_port,
+                                keeper=self.keeper)
         self.webview = None
         self._checking = threading.Lock()
 
@@ -85,15 +93,24 @@ class TrainReservationApp(toga.App):
     def _show_state(self, running, summary):
         self.main_window.title = f'{DISPLAY_NAME} · 매크로 실행 중' if running else DISPLAY_NAME
 
+    def _on_audio_event(self, kind, began=None):
+        """AVAudioSession 알림 (아무 스레드에서나 온다) → 메인 스레드의 keeper 로."""
+        if kind == 'interruption':
+            self._call_on_main(self.keeper.on_interruption, began)
+        elif kind == 'reset':
+            self._call_on_main(self.keeper.on_media_reset)
+
     def _on_background(self, window, **kwargs):
-        """앱이 뒤로 갔다. iOS 가 곧 앱을 멈추므로 매크로도 멈춘다고 알린다."""
+        """앱이 뒤로 갔다 (applicationDidEnterBackground). 매크로가 돌면 백그라운드 유지가 켜져 있는지
+        다시 보고, 켤 수 없으면 iOS 가 곧 앱을 멈추므로 알린다 (keeper 가 알림을 띄운다).
+        유지가 켜져 있으면 조용히 계속 돈다."""
         if self.bridge.macro_running:
-            _try(self.native.notify, 'background',
-                 '⏸ 예약 매크로가 멈춰요',
-                 '아이폰은 앱이 화면에 떠 있을 때만 매크로가 돌아요. 앱을 다시 열어 주세요.')
+            _try(self.keeper.on_background)
 
     def _on_foreground(self, window, **kwargs):
         """다시 앞으로 왔다. 멈춰 있는 동안 iOS 가 서버 소켓을 회수했으면 다시 연다."""
+        if self.bridge.macro_running:
+            _try(self.keeper.on_foreground)  # 끊긴 백그라운드 유지를 다시 켠다
         if self.webview is None or not self._checking.acquire(blocking=False):
             return  # 아직 첫 화면 준비 중이거나 이미 확인 중
 
