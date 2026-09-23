@@ -4,11 +4,12 @@
 - JobStore        되살릴 매크로 작업을 앱 데이터 폴더의 JSON 파일에 원자적으로 저장
 - load_or_create_token  설치마다 만든 무작위 토큰 (WebView 만 서버에 붙게)
 - IOSBridge       mobile_runtime.set_bridge() 에 꽂는 객체 (안드로이드 Bridge.kt 와 같은 네 메서드)
+- BackgroundKeeper 매크로가 도는 동안 소리 없는 오디오로 앱을 백그라운드에서 깨워 두는 상태 관리
 - ServerHost      공통 런타임을 무작위 포트로 띄우고, /__hello 로 우리 서버인지 확인한 뒤에만 토큰을 쓰고,
                   필요하면 소켓을 다시 연다
 - is_own_url      WebView 안에서 열어도 되는 주소 (확인한 포트의 127.0.0.1 만)
 
-iOS 호출(절전 방지, 알림, 파일 보호)은 native 객체로 주입한다 (실제 구현은 ios_native.py).
+iOS 호출(절전 방지, 알림, 파일 보호, 오디오)은 native 객체로 주입한다 (실제 구현은 ios_native.py).
 """
 import hashlib
 import hmac
@@ -114,6 +115,136 @@ def load_or_create_token(path, protect=None) -> str:
     return token
 
 
+#: 백그라운드 유지(소리 없는 오디오)가 끊겨 곧 iOS 가 앱을 멈출 때 띄우는 알림
+KEEPALIVE_LOST_TITLE = '⏸ 백그라운드 유지가 끊겼어요'
+KEEPALIVE_LOST_BODY = '앱을 열면 이어서 찾아요.'
+
+
+class BackgroundKeeper:
+    """매크로가 도는 동안 앱이 백그라운드(화면 꺼짐 포함)에서도 돌게 한다.
+
+    iOS 는 뒤로 간 앱을 몇 초 안에 멈추지만, 오디오를 재생 중인 앱(Info.plist 의
+    UIBackgroundModes=audio)은 멈추지 않는다. 그래서 소리 없는 파일을 무한 반복 재생한다
+    (다른 앱 음악은 끊지 않게 MixWithOthers). 재생이 켜져 있으면 화면이 잠겨도 되므로
+    자동 잠금 끄기(idleTimerDisabled)는 재생에 실패했을 때만 쓴다.
+
+    메인 스레드에서만 부른다 (IOSBridge·app.py 가 call_on_main 으로 넘겨 준다).
+    audio: start() (실패하면 예외), stop() (여러 번 불러도 됨) — ios_native.AudioKeepAlive.
+    set_idle_timer_disabled(bool), notify(kind, title, body), is_foreground() -> bool.
+    어느 것이 실패해도 로그만 남기고 계속한다 (오디오가 안 되면 예전처럼 화면을 켜 둔다).
+    """
+
+    def __init__(self, audio, set_idle_timer_disabled, notify, is_foreground=lambda: True):
+        self.audio = audio
+        self._set_idle = set_idle_timer_disabled
+        self._notify = notify
+        self._is_foreground = is_foreground
+        self.wanted = False    # 매크로가 돈다 → 깨워 두고 싶다
+        self.active = False    # 지금 소리 없는 오디오가 재생 중
+        self._engaged = False  # audio.start 를 부른 뒤 아직 stop 하지 않았다
+        self._warned = False   # 이번에 끊긴 건 이미 알렸다
+
+    # ── 매크로 상태
+
+    def set_running(self, running) -> None:
+        self.wanted = bool(running)
+        if self.wanted:
+            if not self._activate():
+                self._warn_if_background()
+        else:
+            self._release()
+            self._warned = False
+        self._apply_idle()
+
+    # ── iOS 가 알려 주는 일
+
+    def on_interruption(self, began) -> None:
+        """전화·시리·다른 앱의 독점 오디오. 시작되면 iOS 가 재생을 멈추고, 끝나면 다시 켠다."""
+        if began:
+            self.active = False
+            if self.wanted and not self._foreground():
+                self._warn()  # 끝났다는 알림을 못 받고 멈출 수 있다
+        elif self.wanted and not self._activate():
+            self._warn_if_background()
+        self._apply_idle()
+
+    def on_media_reset(self) -> None:
+        """미디어 서비스가 다시 시작됐다: 세션·플레이어를 새로 만들어야 한다."""
+        self.active = False
+        if self.wanted:
+            self._release()
+            if not self._activate():
+                self._warn_if_background()
+        self._apply_idle()
+
+    def on_background(self) -> bool:
+        """앱이 뒤로 갔다. 재생 중이면 True. 매크로가 도는데 재생을 못 켜면 알린다."""
+        if not self.wanted:
+            return False
+        if not self._activate():
+            self._warn()
+        self._apply_idle()
+        return self.active
+
+    def on_foreground(self) -> None:
+        """다시 앞으로 왔다. 끊겨 있었으면 다시 켠다 (끝남 알림을 못 받은 경우)."""
+        if self.wanted:
+            self._activate()
+        self._apply_idle()
+
+    # ──
+
+    def _activate(self) -> bool:
+        if self.active:
+            return True
+        self._engaged = True
+        try:
+            self.audio.start()
+        except Exception:  # noqa: BLE001 - 오디오가 안 되면 예전처럼 화면을 켜 두고 계속
+            logger.warning('background audio start failed', exc_info=True)
+            return False
+        self.active = True
+        self._warned = False
+        return True
+
+    def _release(self) -> None:
+        self.active = False
+        if not self._engaged:
+            return
+        self._engaged = False
+        try:
+            self.audio.stop()
+        except Exception:  # noqa: BLE001
+            logger.warning('background audio stop failed', exc_info=True)
+
+    def _apply_idle(self) -> None:
+        # 재생 중이면 화면을 잠가도 된다 (배터리). 재생이 안 되면 화면에 떠 있어야 돌므로 켜 둔다.
+        try:
+            self._set_idle(self.wanted and not self.active)
+        except Exception:  # noqa: BLE001
+            logger.warning('idle timer update failed', exc_info=True)
+
+    def _foreground(self) -> bool:
+        try:
+            return bool(self._is_foreground())
+        except Exception:  # noqa: BLE001
+            return True
+
+    def _warn_if_background(self) -> None:
+        # 앱이 앞에 있으면 알리지 않는다 (화면이 켜진 채로 계속 돈다). 뒤로 갈 때 on_background 가 다시 본다.
+        if not self._foreground():
+            self._warn()
+
+    def _warn(self) -> None:
+        if self._warned:
+            return
+        self._warned = True
+        try:
+            self._notify('keepalive', KEEPALIVE_LOST_TITLE, KEEPALIVE_LOST_BODY)
+        except Exception:  # noqa: BLE001
+            logger.warning('keep-alive notification failed', exc_info=True)
+
+
 class IOSBridge:
     """mobile_runtime 이 부르는 플랫폼 연결부. 어느 스레드에서든 불린다.
 
@@ -122,10 +253,14 @@ class IOSBridge:
     call_on_main: 메인 스레드에서 fn(*args) 를 돌리게 예약하는 함수 (app.loop.call_soon_threadsafe).
     on_state: 매크로 상태가 바뀔 때 메인 스레드에서 부를 콜백 (제목 표시 등). 없어도 된다.
     on_server_ready: 서버가 실제로 연 포트를 받을 콜백 (ServerHost.set_port). 없어도 된다.
+    keeper: BackgroundKeeper. 있으면 매크로 상태를 여기로 넘기고(소리 없는 오디오 + 필요할 때만
+            자동 잠금 끄기), 없으면 매크로가 도는 동안 자동 잠금만 끈다.
     """
 
-    def __init__(self, store: JobStore, native, call_on_main, on_state=None, on_server_ready=None):
+    def __init__(self, store: JobStore, native, call_on_main, on_state=None, on_server_ready=None,
+                 keeper=None):
         self.store = store
+        self.keeper = keeper
         self.native = native
         self._call_on_main = call_on_main
         self._on_state = on_state
@@ -136,10 +271,14 @@ class IOSBridge:
     # ── mobile_runtime 이 부르는 네 메서드 (이름은 안드로이드 Bridge 와 같다)
 
     def onMacroState(self, running, summary):  # noqa: N802 - 공통 bridge 인터페이스
-        """매크로가 도는 동안 화면이 저절로 꺼지지 않게 한다 (꺼지면 iOS 가 앱을 멈춘다)."""
+        """매크로가 도는 동안 앱이 멈추지 않게 한다: 소리 없는 오디오로 깨워 두고(keeper),
+        그게 안 되면 화면이 저절로 꺼지지 않게 한다 (꺼지면 iOS 가 앱을 멈춘다)."""
         self.macro_running = bool(running)
         self.macro_summary = str(summary or '')
-        self._on_main(self.native.set_idle_timer_disabled, self.macro_running)
+        if self.keeper is not None:
+            self._on_main(self.keeper.set_running, self.macro_running)
+        else:
+            self._on_main(self.native.set_idle_timer_disabled, self.macro_running)
         if self._on_state is not None:
             self._on_main(self._on_state, self.macro_running, self.macro_summary)
 

@@ -66,3 +66,6 @@ requirement_installer_args = ["--find-links", "./wheels"]
 # Info.plist 에 들어간다. WebView 가 http://127.0.0.1 (폰 안 서버)을 열 수 있게.
 [tool.briefcase.app.trainreservation.iOS.info]
 NSAppTransportSecurity = { NSAllowsLocalNetworking = true }
+# 매크로가 도는 동안 소리 없는 오디오를 반복 재생해 백그라운드(화면 꺼짐 포함)에서도 돌게 한다
+# (ios_native.AudioKeepAlive). Info.plist 키일 뿐 entitlement 가 아니라 무료 Apple ID·Sideloadly 로도 된다.
+UIBackgroundModes = ["audio"]

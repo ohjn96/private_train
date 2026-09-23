@@ -177,8 +177,12 @@ jobs:
           test -x "$DEVICE_APP/$NAME" || { echo "실행 파일이 없습니다: $DEVICE_APP/$NAME" >&2; exit 1; }
           lipo -info "$DEVICE_APP/$NAME"
           plutil -p "$DEVICE_APP/Info.plist" | grep -E 'CFBundleDisplayName|CFBundleShortVersionString|CFBundleIdentifier|NSAllowsLocalNetworking'
+          # 백그라운드 유지(소리 없는 오디오): Info.plist 에 UIBackgroundModes=audio 가 있어야 iOS 가 앱을 안 멈춘다
+          MODES=$(plutil -extract UIBackgroundModes json -o - "$DEVICE_APP/Info.plist" || true)
+          echo "UIBackgroundModes: ${MODES:-없음}"
+          echo "$MODES" | grep -q '"audio"' || { echo "Info.plist 의 UIBackgroundModes 에 audio 가 없습니다" >&2; exit 1; }
           # 앱 안에 파이썬 코드·패키지가 실렸는지 (위치는 템플릿이 정하므로 찾아서 확인)
-          for f in markupsafe/_native.py pyaes/aes.py webui/templates/base.html mobile_runtime.py trainreservation/app.py; do
+          for f in markupsafe/_native.py pyaes/aes.py webui/templates/base.html mobile_runtime.py trainreservation/app.py trainreservation/resources/silence.wav; do
             find "$DEVICE_APP" -path "*/$f" | grep -q . || { echo "앱에 $f 가 없습니다" >&2; exit 1; }
           done
           if find "$DEVICE_APP" -path '*/markupsafe/_speedups*' | grep -q .; then

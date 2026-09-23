@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(IOS_SRC))
 
 from trainreservation.ios_bridge import (  # noqa: E402
-    TOKEN_COOKIE, IOSBridge, JobStore, ServerHost, hello_mac, is_external_web_url, is_own_url,
+    KEEPALIVE_LOST_BODY, KEEPALIVE_LOST_TITLE, TOKEN_COOKIE, BackgroundKeeper, IOSBridge, JobStore, ServerHost, hello_mac, is_external_web_url, is_own_url,
     load_or_create_token,
 )
 
@@ -191,6 +191,158 @@ class IOSBridgeTest(unittest.TestCase):
         bridge.onServerReady(54321)
         self.assertEqual(ports, [54321])
         IOSBridge(self.store, self.native, run_now).onServerReady(1)  # 콜백이 없어도 괜찮다
+
+
+class FakeAudio:
+    """ios_native.AudioKeepAlive 대신. fail 을 켜면 start 가 실패한다."""
+
+    def __init__(self):
+        self.calls = []
+        self.fail = False
+
+    def start(self):
+        self.calls.append('start')
+        if self.fail:
+            raise OSError('session busy')
+
+    def stop(self):
+        self.calls.append('stop')
+
+
+class BackgroundKeeperTest(unittest.TestCase):
+    """소리 없는 오디오로 백그라운드 유지 — ObjC 없이 상태만."""
+
+    def setUp(self):
+        self.audio = FakeAudio()
+        self.idle = []
+        self.notes = []
+        self.foreground = True
+        self.keeper = BackgroundKeeper(self.audio, self.idle.append,
+                                       lambda *a: self.notes.append(a),
+                                       is_foreground=lambda: self.foreground)
+
+    def test_start_stop_idempotent_and_screen_may_lock(self):
+        self.keeper.set_running(True)
+        self.keeper.set_running(True)
+        self.assertTrue(self.keeper.active)
+        self.assertEqual(self.audio.calls, ['start'])  # 두 번 켜도 한 번만
+        self.assertEqual(self.idle, [False, False])    # 재생 중이면 자동 잠금을 끄지 않는다
+        self.keeper.set_running(False)
+        self.keeper.set_running(False)
+        self.assertFalse(self.keeper.active)
+        self.assertEqual(self.audio.calls, ['start', 'stop'])  # 두 번 꺼도 한 번만
+        self.assertEqual(self.idle[-1], False)
+        self.assertEqual(self.notes, [])
+
+    def test_stop_without_start_does_nothing(self):
+        self.keeper.set_running(False)
+        self.assertEqual(self.audio.calls, [])
+
+    def test_audio_failure_falls_back_to_idle_timer(self):
+        self.audio.fail = True
+        with self.assertLogs('trainreservation.ios_bridge', 'WARNING'):
+            self.keeper.set_running(True)
+        self.assertFalse(self.keeper.active)
+        self.assertEqual(self.idle, [True])  # 예전처럼 화면을 켜 둔다
+        self.assertEqual(self.notes, [])     # 앱이 앞에 있으면 알리지 않는다
+        # 뒤로 가면 다시 켜 보고, 안 되면 한 번만 알린다
+        self.foreground = False
+        with self.assertLogs('trainreservation.ios_bridge', 'WARNING'):
+            self.assertFalse(self.keeper.on_background())
+            self.assertFalse(self.keeper.on_background())
+        self.assertEqual(self.notes, [('keepalive', KEEPALIVE_LOST_TITLE, KEEPALIVE_LOST_BODY)])
+        self.keeper.set_running(False)
+        self.assertEqual(self.audio.calls[-1], 'stop')  # 실패했어도 세션을 정리한다
+
+    def test_background_while_playing_is_quiet(self):
+        self.keeper.set_running(True)
+        self.foreground = False
+        self.assertTrue(self.keeper.on_background())
+        self.assertEqual(self.audio.calls, ['start'])
+        self.assertEqual(self.notes, [])
+
+    def test_background_without_macro(self):
+        self.foreground = False
+        self.assertFalse(self.keeper.on_background())
+        self.assertEqual(self.audio.calls, [])
+        self.assertEqual(self.notes, [])
+
+    def test_interruption_then_resume(self):
+        self.keeper.set_running(True)
+        self.keeper.on_interruption(True)  # 앞에 있을 때 전화 → 화면 켜 두기로
+        self.assertFalse(self.keeper.active)
+        self.assertEqual(self.idle[-1], True)
+        self.keeper.on_interruption(False)
+        self.assertTrue(self.keeper.active)
+        self.assertEqual(self.audio.calls, ['start', 'start'])
+        self.assertEqual(self.idle[-1], False)
+        self.assertEqual(self.notes, [])
+
+    def test_interruption_in_background_warns_and_resume_failure_warns_once(self):
+        self.keeper.set_running(True)
+        self.foreground = False
+        self.keeper.on_interruption(True)  # 끝남 알림 전에 멈출 수 있으니 미리 알린다
+        self.assertEqual(len(self.notes), 1)
+        self.audio.fail = True
+        with self.assertLogs('trainreservation.ios_bridge', 'WARNING'):
+            self.keeper.on_interruption(False)
+        self.assertEqual(len(self.notes), 1)  # 같은 끊김은 한 번만
+        # 앱을 다시 열면 다시 켜고, 다음 끊김은 또 알린다
+        self.audio.fail = False
+        self.foreground = True
+        self.keeper.on_foreground()
+        self.assertTrue(self.keeper.active)
+        self.foreground = False
+        self.keeper.on_interruption(True)
+        self.assertEqual(len(self.notes), 2)
+
+    def test_resume_failure_in_background_notifies(self):
+        self.keeper.set_running(True)
+        self.keeper.on_interruption(True)  # 앞에서 시작
+        self.foreground = False            # 끝날 땐 뒤에 있다
+        self.audio.fail = True
+        with self.assertLogs('trainreservation.ios_bridge', 'WARNING'):
+            self.keeper.on_interruption(False)
+        self.assertEqual(self.notes, [('keepalive', KEEPALIVE_LOST_TITLE, KEEPALIVE_LOST_BODY)])
+        self.assertEqual(self.idle[-1], True)
+
+    def test_interruption_ignored_when_macro_stopped(self):
+        self.keeper.on_interruption(True)
+        self.keeper.on_interruption(False)
+        self.keeper.on_media_reset()
+        self.assertEqual(self.audio.calls, [])
+        self.assertEqual(self.notes, [])
+
+    def test_media_reset_rebuilds_player(self):
+        self.keeper.set_running(True)
+        self.keeper.on_media_reset()
+        self.assertEqual(self.audio.calls, ['start', 'stop', 'start'])
+        self.assertTrue(self.keeper.active)
+        self.foreground = False
+        self.audio.fail = True
+        with self.assertLogs('trainreservation.ios_bridge', 'WARNING'):
+            self.keeper.on_media_reset()
+        self.assertEqual(len(self.notes), 1)
+
+    def test_broken_idle_or_notify_do_not_raise(self):
+        def boom(*a):
+            raise RuntimeError('uikit')
+
+        keeper = BackgroundKeeper(self.audio, boom, boom, is_foreground=boom)
+        self.audio.fail = True
+        with self.assertLogs('trainreservation.ios_bridge', 'WARNING'):
+            keeper.set_running(True)
+            keeper.on_background()
+
+    def test_bridge_routes_macro_state_to_keeper(self):
+        store = JobStore(Path(tempfile.mkdtemp()) / 'job.json')
+        native = FakeNative()
+        bridge = IOSBridge(store, native, run_now, keeper=self.keeper)
+        bridge.onMacroState(True, 'KTX')
+        self.assertTrue(self.keeper.active)
+        self.assertEqual(native.calls, [])  # 자동 잠금은 keeper 가 정한다
+        bridge.onMacroState(False, '')
+        self.assertEqual(self.audio.calls, ['start', 'stop'])
 
 
 class IOSSupervisorTest(unittest.TestCase):
@@ -463,6 +615,12 @@ class AppWiringTest(unittest.TestCase):
         self.native.setup_notifications = lambda: self.native.calls.append(('setup',))
         self.native.notify = lambda *a: self.native.calls.append(('notify',) + a)
         self.native.open_external = lambda url: self.native.calls.append(('open', url))
+        self.native.set_idle_timer_disabled = lambda v: self.native.calls.append(('idle', v))
+        self.foreground = True
+        self.native.is_active = lambda: self.foreground
+        self.audio = FakeAudio()
+        self.native.AudioKeepAlive = lambda on_event=None: (setattr(self.audio, 'on_event', on_event)
+                                                            or self.audio)
         self.native.NativeAPI = types.SimpleNamespace(set_idle_timer_disabled=lambda v: None,
                                                       notify=self.native.notify)
         self.runtime = types.ModuleType('mobile_runtime')
@@ -556,15 +714,54 @@ class AppWiringTest(unittest.TestCase):
             fn(*a)
         self.assertIn('실행 중', app.main_window.title)
 
-    def test_background_notice_only_while_macro_runs(self):
+    def run_scheduled(self, app):
+        while app.scheduled:
+            fn, a = app.scheduled.pop(0)
+            fn(*a)
+
+    def test_macro_keeps_app_alive_with_audio(self):
+        app = self.make_app()
+        with mock.patch.object(ServerHost, 'start'):
+            app.startup()
+        self.assertIs(app.bridge.keeper, app.keeper)
+        app.bridge.onMacroState(True, 'KTX 101')
+        self.run_scheduled(app)
+        self.assertEqual(self.audio.calls, ['start'])
+        self.assertIn(('idle', False), self.native.calls)  # 재생 중이면 화면을 잠가도 된다
+        self.foreground = False
+        app._on_background(app.main_window)
+        self.assertFalse([c for c in self.native.calls if c[0] == 'notify'])  # 계속 도니 조용히
+        self.foreground = True
+        # 전화 → 끝남 (AVAudioSession 알림은 아무 스레드에서나 와서 메인 루프로 넘어간다)
+        self.audio.on_event('interruption', True)
+        self.audio.on_event('interruption', False)
+        self.assertEqual(self.audio.calls, ['start'])  # 아직 메인 루프에서 안 돌았다
+        self.run_scheduled(app)
+        self.assertEqual(self.audio.calls, ['start', 'start'])
+        self.audio.on_event('reset', None)
+        self.run_scheduled(app)
+        self.assertEqual(self.audio.calls, ['start', 'start', 'stop', 'start'])
+        app.bridge.onMacroState(False, '')
+        self.run_scheduled(app)
+        self.assertEqual(self.audio.calls[-1], 'stop')
+        self.assertEqual(self.native.calls[-1], ('idle', False))
+
+    def test_background_notice_only_when_keepalive_fails(self):
         app = self.make_app()
         with mock.patch.object(ServerHost, 'start'):
             app.startup()
         app._on_background(app.main_window)
         self.assertFalse([c for c in self.native.calls if c[0] == 'notify'])
-        app.bridge.macro_running = True
-        app._on_background(app.main_window)
-        self.assertEqual([c[1] for c in self.native.calls if c[0] == 'notify'], ['background'])
+        self.audio.fail = True
+        app.bridge.onMacroState(True, 'KTX 101')
+        with self.assertLogs('trainreservation.ios_bridge', 'WARNING'):
+            self.run_scheduled(app)
+            self.assertFalse([c for c in self.native.calls if c[0] == 'notify'])  # 앞에 있을 땐 조용히
+            self.foreground = False
+            app._on_background(app.main_window)
+        self.assertIn(('idle', True), self.native.calls)  # 오디오가 안 되면 화면을 켜 둔다
+        notes = [c for c in self.native.calls if c[0] == 'notify']
+        self.assertEqual(notes, [('notify', 'keepalive', KEEPALIVE_LOST_TITLE, KEEPALIVE_LOST_BODY)])
 
     def test_foreground_reopens_dead_listener_and_reloads(self):
         app = self.make_app()
