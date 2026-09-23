@@ -18,6 +18,7 @@ from app.utils.session_helper import (
     get_card_settings,
 )
 
+from core.rate_limit import DEFAULT_MIN_INTERVAL, clamp_call_interval
 from core.reservation import (  # noqa: F401  (attempt_payment 는 예전 경로 호환)
     MAX_RECOVERY_ATTEMPTS,
     attempt_payment,
@@ -206,6 +207,7 @@ def reserve_select():
     except (TypeError, ValueError):
         passenger_count = 1
     sequential = request.form.get("sequential", "false") == "true"
+    call_interval = clamp_call_interval(request.form.get("call_interval", DEFAULT_MIN_INTERVAL))
 
     # 같은 열차가 두 번 넘어오면(데스크톱 행과 모바일 카드가 둘 다 DOM 에 있어서
     # 창 크기를 바꾸며 고르면 생길 수 있다) 같은 열차에 예약을 두 번 걸게 되므로
@@ -221,6 +223,8 @@ def reserve_select():
 
     # Store for this provider
     set_selected_indices(provider, indices, seat_option, passenger_count, sequential)
+    get_search_state(provider)["call_interval"] = call_interval
+    session.modified = True
 
     return jsonify({"success": True, "count": len(indices)})
 
@@ -274,7 +278,7 @@ def attempt_recovery(provider: str, service) -> tuple[bool, str]:
 
 def run_reservation_loop(
     service, provider: str, selected_trains: list, seat_option, card: dict | None,
-    passenger_count: int = 1, sequential: bool = False
+    passenger_count: int = 1, sequential: bool = False, call_interval: float | None = None
 ):
     """Run the reservation loop and always hand the macro slot back.
 
@@ -296,6 +300,7 @@ def run_reservation_loop(
             provider=provider,
             passenger_count=passenger_count,
             sequential=sequential,
+            call_interval=call_interval,
         )
     finally:
         # 성공·복구 포기로 끝났을 때도 /status 가 '대기 중' 을 보이도록
@@ -324,6 +329,7 @@ def start_reservation():
     trains_data = search_state.get("trains", [])
     passenger_count = max(1, min(2, search_state.get("passenger_count", 1)))
     sequential = bool(search_state.get("sequential", False)) and passenger_count > 1
+    call_interval = clamp_call_interval(search_state.get("call_interval", DEFAULT_MIN_INTERVAL))
 
     selected_trains = [
         trains_data[idx] for idx in selected_indices if idx < len(trains_data)
@@ -359,7 +365,11 @@ def start_reservation():
     macro_thread = threading.Thread(
         target=run_reservation_loop,
         args=(service, provider, selected_trains, seat_option, card),
-        kwargs={"passenger_count": passenger_count, "sequential": sequential},
+        kwargs={
+            "passenger_count": passenger_count,
+            "sequential": sequential,
+            "call_interval": call_interval,
+        },
         daemon=True,
         name="web-macro",
     )

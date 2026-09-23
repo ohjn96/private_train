@@ -144,6 +144,7 @@ python main.py --headless ... --dry-run
 | `--from` / `--to` | `TRAIN_FROM` / `TRAIN_TO` | 노릴 시간대. `--to` 생략 시 `--from` +3시간 |
 | `--trains` | `TRAIN_NUMBERS` | 특정 열차번호만 (`101,103`). 주면 시간대는 무시 |
 | `--passengers` | `PASSENGERS` | 좌석 수 1 또는 2 |
+| `--interval` | `CALL_INTERVAL` | 코레일 호출 간격(초, 1~3). 기본 2 |
 | `--sequential` | `SEQUENTIAL` | 2석을 한 석씩 순차로 (같은 열차 고정) |
 | `--telegram-token` | `TELEGRAM_BOT_TOKEN` | 알림 + 원격 조종 (대기 모드에서 필수) |
 | `--card-number` 외 | `CARD_*` | 예약 성공 시 자동결제 |
@@ -242,7 +243,7 @@ python -m unittest discover -s tests -v
 검사하는 것:
 
 - 조회 페이징 (선택한 열차가 전부 조회 범위에 들어오는지)
-- API 호출 간격 1.5초 유지, 단 좌석을 찾은 직후의 예약만 즉시 실행
+- API 호출 간격은 예약 화면에서 1~3초 중 선택 (기본 2초, 1초 미만 불가), 단 좌석을 찾은 직후의 예약만 즉시 실행
 - 여러 열차를 선택해도 시도당 조회는 한 번, 좌석 있는 열차만 예약
 - 2인 동시 예약 / 2인 순차 예약 (순차 예약은 첫 좌석을 잡은 열차로 고정)
 - 매크로 이중 실행 차단, 예외로 죽어도 실행 슬롯 반납

@@ -15,7 +15,25 @@ import threading
 import time
 
 #: 호출 사이 최소 간격(초). 1초 제한에 여유를 둔 기본값.
-DEFAULT_MIN_INTERVAL = 1.5
+DEFAULT_MIN_INTERVAL = 2.0
+
+#: 어떤 설정으로도 내려갈 수 없는 하한 (코레일 1초 제한)
+HARD_MIN_INTERVAL = 1.0
+
+#: 예약 화면에서 고를 수 있는 호출 간격 범위(초)
+CALL_INTERVAL_CHOICES = (1.0, 3.0)
+
+
+def clamp_call_interval(value) -> float:
+    """사용자가 고른 호출 간격을 허용 범위(1~3초)로 맞춘다. 이상한 값이면 기본값."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_MIN_INTERVAL
+    if value != value:  # NaN
+        return DEFAULT_MIN_INTERVAL
+    low, high = CALL_INTERVAL_CHOICES
+    return min(max(value, low), high)
 
 
 def _configured_interval() -> float:
@@ -24,7 +42,7 @@ def _configured_interval() -> float:
         value = float(os.environ.get('KORAIL_MIN_API_INTERVAL', DEFAULT_MIN_INTERVAL))
     except ValueError:
         value = DEFAULT_MIN_INTERVAL
-    return max(1.0, value)
+    return max(HARD_MIN_INTERVAL, value)
 
 
 class RateLimiter:
@@ -42,6 +60,11 @@ class RateLimiter:
     @property
     def min_interval(self) -> float:
         return self._min_interval
+
+    def set_interval(self, seconds: float) -> None:
+        """간격을 바꾼다. 1초 하한은 여기서도 지킨다."""
+        with self._lock:
+            self._min_interval = max(HARD_MIN_INTERVAL, float(seconds))
 
     def wait(self) -> float:
         """호출이 허용될 때까지 대기하고, 실제로 기다린 시간(초)을 돌려준다."""

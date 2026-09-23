@@ -17,7 +17,7 @@ from core.base_service import (
     ReservationResult
 )
 from core.stations import ALL_STATIONS
-from core.rate_limit import korail_api
+from core.rate_limit import RateLimiter, korail_api
 
 
 #: 한 번의 search() 가 넘길 수 있는 최대 페이지 수 (= 최대 API 호출 횟수)
@@ -27,17 +27,28 @@ MAX_SEARCH_PAGES = 5
 class KorailService(BaseTrainService):
     """Korail train service implementation."""
 
-    def __init__(self):
+    def __init__(self, limiter: RateLimiter | None = None):
+        # 호출 간격 게이트. 데스크톱은 전역 게이트 하나를 같이 쓰고,
+        # 서버는 사용자마다 따로 넘겨 받는다.
+        self._limiter = limiter or korail_api
         self._client: Korail | None = None
         self._user_id: str | None = None
         self._password: str | None = None
         self.last_error: str | None = None
 
+    @property
+    def call_interval(self) -> float:
+        """코레일 API 호출 사이 최소 간격(초)."""
+        return self._limiter.min_interval
+
+    def set_call_interval(self, seconds: float) -> None:
+        self._limiter.set_interval(seconds)
+
     def login(self, user_id: str, password: str) -> bool:
         """Login to Korail."""
         self.last_error = None
         try:
-            korail_api.wait()
+            self._limiter.wait()
             self._client = Korail(user_id, password, auto_login=True, want_feedback=False)
             self._user_id = user_id
             self._password = password
@@ -50,7 +61,7 @@ class KorailService(BaseTrainService):
     def logout(self) -> None:
         """Logout from Korail."""
         if self._client:
-            korail_api.wait()
+            self._limiter.wait()
             self._client.logout()
         self._client = None
         self._user_id = None
@@ -99,7 +110,7 @@ class KorailService(BaseTrainService):
 
         for _ in range(pages):
             try:
-                korail_api.wait()
+                self._limiter.wait()
                 trains = self._client.search_train(
                     dep=dep,
                     arr=arr,
@@ -160,7 +171,7 @@ class KorailService(BaseTrainService):
             passengers = [AdultPassenger(count=passenger_count)]
             # 좌석을 발견한 직후이므로 간격을 기다리지 않고 바로 예약을 건다.
             # (기다리는 사이 좌석이 사라진다) 대신 호출 시각은 게이트에 기록한다.
-            korail_api.note_call()
+            self._limiter.note_call()
             reservation = self._client.reserve(original_train, passengers=passengers, option=korail_option)
 
             return ReservationResult(
@@ -199,7 +210,7 @@ class KorailService(BaseTrainService):
             return ReservationResult(success=False, message="로그인이 필요합니다.")
 
         try:
-            korail_api.wait()
+            self._limiter.wait()
             success = self._client.pay_with_card(
                 reservation,
                 card_number,

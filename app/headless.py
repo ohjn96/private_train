@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 
 from app.services.base_service import SeatOption, TrainInfo
 from app.services.korail_service import KorailService
+from core.rate_limit import clamp_call_interval, korail_api
 from app.services.telegram_service import TelegramService
 from app.version import get_version
 
@@ -225,6 +226,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--sequential', action='store_true',
                         default=env('SEQUENTIAL', '').lower() in ('1', 'true', 'yes'),
                         help='2석일 때 한 석씩 순차로 잡는다 (같은 열차로 고정)')
+    parser.add_argument('--interval', type=float, default=env('CALL_INTERVAL'),
+                        help='코레일 호출 간격(초, 1~3). 기본 2')
 
     parser.add_argument('--telegram-token', default=env('TELEGRAM_BOT_TOKEN'),
                         help='텔레그램 봇 토큰 (알림 + 원격 /stop)')
@@ -440,6 +443,11 @@ def main(argv: list[str] | None = None) -> int:
             f"{trip.dep} → {trip.arr}  {trip.date}  "
             f"{trip.since[:2]}:{trip.since[2:4]}~{trip.until[:2]}:{trip.until[2:4]}"
         )
+
+    if args.interval is not None:
+        # 텔레그램 /reserve 로 시작한 매크로에도 적용되도록 게이트 자체를 바꾼다
+        korail_api.set_interval(clamp_call_interval(args.interval))
+    log(f"호출 간격: {korail_api.min_interval:g}초")
 
     service = KorailService()
     log(f"코레일 로그인: {mask(args.user_id)}")

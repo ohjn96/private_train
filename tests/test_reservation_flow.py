@@ -189,8 +189,8 @@ class SearchPagingTest(unittest.TestCase):
 # ---------------------------------------------------------------- 호출 간격
 
 class RateLimitTest(unittest.TestCase):
-    def test_default_is_1_5_seconds(self):
-        self.assertEqual(DEFAULT_MIN_INTERVAL, 1.5)
+    def test_default_is_2_seconds(self):
+        self.assertEqual(DEFAULT_MIN_INTERVAL, 2.0)
 
     def test_never_goes_below_one_second(self):
         os.environ['KORAIL_MIN_API_INTERVAL'] = '0.1'

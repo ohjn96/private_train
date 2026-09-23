@@ -18,6 +18,8 @@ import time
 from datetime import datetime
 from typing import Callable, Protocol
 
+from core.rate_limit import clamp_call_interval
+
 try:
     from korail2 import NeedToLoginError as KorailLoginError
 except ImportError:
@@ -85,6 +87,7 @@ def run_reservation(
     passenger_count: int = 1,
     sequential: bool = False,
     pay: Callable[[object, dict, object], tuple[bool, str]] = attempt_payment,
+    call_interval: float | None = None,
 ) -> None:
     """Reservation retry loop, run on a background daemon thread.
 
@@ -97,7 +100,27 @@ def run_reservation(
         both together in a single call - each success is paid immediately and the loop
         keeps going for the remaining seat(s). Aimed at catching sporadic single-seat
         cancellations, which show up far more often than two seats freeing up at once.
+    :param call_interval: 코레일 API 호출 사이 간격(초, 1~3). 주면 이번 실행 동안만
+        서비스의 호출 간격을 바꾸고 끝나면 되돌린다. None 이면 지금 설정 그대로.
     """
+    previous_interval = None
+    if call_interval is not None and hasattr(service, "set_call_interval"):
+        previous_interval = service.call_interval
+        service.set_call_interval(clamp_call_interval(call_interval))
+    try:
+        _run(
+            service, selected_trains, seat_option, card, reporter, should_stop, recover,
+            provider, passenger_count, sequential, pay,
+        )
+    finally:
+        if previous_interval is not None:
+            service.set_call_interval(previous_interval)
+
+
+def _run(
+    service, selected_trains, seat_option, card, reporter, should_stop, recover,
+    provider, passenger_count, sequential, pay,
+) -> None:
     tg = reporter
 
     # Reservations already confirmed this run (only ever >1 entry in sequential mode -
@@ -133,7 +156,9 @@ def run_reservation(
     mode_note = ""
     if passenger_count > 1:
         mode_note = " (1인씩 순차 예약)" if sequential else f" ({passenger_count}인 동시 예약)"
-    tg.push_log("log", f"예약 매크로를 시작합니다{mode_note}. 대상: {trains_summary}")
+    interval = getattr(service, "call_interval", None)
+    interval_note = f", 호출 간격 {interval:g}초" if interval else ""
+    tg.push_log("log", f"예약 매크로를 시작합니다{mode_note}{interval_note}. 대상: {trains_summary}")
 
     attempt = 0
     consecutive_errors = 0
@@ -307,9 +332,10 @@ def run_reservation(
                     tg.send_message(f"⚠️ {msg}")
                 time.sleep(1)
 
-        # 시도 사이의 간격. API 호출 간 최소 간격 자체는 korail_api 게이트가
-        # 따로 보장하므로, 여기 sleep 은 재시도 주기를 조절하는 용도다.
-        time.sleep(random.uniform(1, 1.5))
+        # 재시도 주기는 서비스의 호출 간격 게이트(사용자가 고른 1~3초)가 정한다.
+        # 다음 조회가 게이트에서 그만큼 기다리므로, 여기선 기계적인 박자로 보이지
+        # 않게 약간만 흔든다.
+        time.sleep(random.uniform(0, 0.3))
 
     tg.set_macro_state(False)
     tg.send_macro_stopped()

@@ -154,6 +154,17 @@
                         <option value="SPECIAL_FIRST">특실 우선</option>
                         <option value="SPECIAL_ONLY">특실만</option>
                     </select>
+
+                    <label for="callInterval" class="text-sm text-gray-600">호출 간격:</label>
+                    <select id="callInterval" data-testid="call-interval"
+                            title="코레일에 조회를 보내는 간격. 짧을수록 빨리 잡지만 차단 위험이 커집니다."
+                            class="px-3 py-1 border border-gray-300 rounded-lg text-sm">
+                        <option value="1">1초 (빠름)</option>
+                        <option value="1.5">1.5초</option>
+                        <option value="2" selected>2초 (기본)</option>
+                        <option value="2.5">2.5초</option>
+                        <option value="3">3초 (안전)</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -641,6 +652,20 @@ function getSelectedTrainIndices() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // 호출 간격은 한 번 고르면 다음에도 그대로 (브라우저에만 기억)
+    const callIntervalEl = document.getElementById('callInterval');
+    if (callIntervalEl) {
+        try {
+            const saved = localStorage.getItem('callInterval');
+            if (saved && callIntervalEl.querySelector(`option[value="${saved}"]`)) {
+                callIntervalEl.value = saved;
+            }
+            callIntervalEl.addEventListener('change', function() {
+                try { localStorage.setItem('callInterval', callIntervalEl.value); } catch (e) {}
+            });
+        } catch (e) {}
+    }
+
     // Initialize Flatpickr for date input
     const dateInput = document.getElementById('dateInput');
     if (dateInput) {
@@ -1031,6 +1056,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const formData = new FormData();
             selectedIndices.forEach(idx => formData.append('train_indices[]', idx));
             formData.append('seat_option', seatOption);
+            formData.append('call_interval', document.getElementById('callInterval').value);
             formData.append('passenger_count', passengerCount);
             formData.append('sequential', passengerCount === '2' && passengerMode === 'sequential' ? 'true' : 'false');
 
