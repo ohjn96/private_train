@@ -33,7 +33,14 @@ import kotlin.concurrent.thread
 class ServerService : Service() {
 
     companion object {
-        const val PORT = 17650
+        /**
+         * 파이썬 서버의 포트. 0 을 넘겨 운영체제가 빈 포트를 고르게 하고, 실제 포트는
+         * 파이썬이 Bridge.onServerReady 로 알려준다 (아직 모르면 0).
+         * 고정 포트는 다른 앱이 먼저 차지하고 우리 행세를 할 수 있어 쓰지 않는다.
+         */
+        @Volatile
+        var port: Int = 0
+            internal set
         const val ACTION_STOP = "com.ohjn96.trainreservation.STOP"
         const val ACTION_STOP_MACRO = "com.ohjn96.trainreservation.STOP_MACRO"
         private const val TAG = "ServerService"
@@ -89,12 +96,9 @@ class ServerService : Service() {
         }
         val job = SecureStore.loadJob(this)
         if (job != null) {
-            // 돌던 매크로가 있었다 (프로세스가 죽었거나 폰을 재부팅함): 이어서 돌린다
+            // 돌던 매크로가 있었다 (프로세스가 죽었거나 폰을 재부팅함): 이어서 돌린다.
+            // "다시 시작했어요" 알림은 파이썬이 로그인하고 매크로를 실제로 띄운 뒤에 보낸다.
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply()
-            Notifications.showEvent(
-                this, "resumed", "🔄 예약 매크로를 다시 시작했어요",
-                "휴대폰이 앱을 정리했거나 재부팅돼서, 하던 매크로를 자동으로 이어서 돌려요."
-            )
         } else {
             warnIfMacroWasLost()
         }
@@ -161,7 +165,8 @@ class ServerService : Service() {
                 val module = Python.getInstance().getModule("android_main")
                 // 자동 재개는 서버가 준비되길 기다렸다가 따로 돈다 (start 는 돌아오지 않는다)
                 if (job != null) module.callAttr("resume_job", job)
-                module.callAttr("start", filesDir, PORT, token, BuildConfig.VERSION_NAME, BuildConfig.DEBUG)
+                // 포트 0 = 무작위. 실제 포트는 Bridge.onServerReady 로 온다
+                module.callAttr("start", filesDir, 0, token, BuildConfig.VERSION_NAME, BuildConfig.DEBUG)
             } catch (e: Throwable) {
                 Log.e(TAG, "python server crashed", e)
                 serverStarted.set(false)
@@ -183,11 +188,15 @@ class ServerService : Service() {
     }
 
     private fun checkHealth() {
+        val token = AppToken.get(this)
+        val port = ServerService.port
         val status = try {
-            val conn = URL("http://127.0.0.1:$PORT/__health").openConnection() as HttpURLConnection
+            // 토큰을 싣기 전에 그 포트의 서버가 우리 것인지 확인한다
+            if (!LocalServer.verify(port, token)) throw IllegalStateException("hello failed")
+            val conn = URL("${LocalServer.baseUrl(port)}/__health").openConnection() as HttpURLConnection
             conn.connectTimeout = 3000
             conn.readTimeout = 5000
-            conn.setRequestProperty("Cookie", "app_token=${AppToken.get(this)}")
+            conn.setRequestProperty("Cookie", "app_token=$token")
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
             JSONObject(body)
@@ -256,6 +265,14 @@ class ServerService : Service() {
             // 매크로가 도는 중엔 [매크로 중단] (결제 도중에 프로세스를 죽이지 않게), 쉴 땐 [종료]
             .addAction(0, if (macroRunning) "매크로 중단" else "종료", stopIntent())
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            // 잠금 화면에는 노리는 열차 대신 일반 문구만
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                Notifications.publicVersion(
+                    this, Notifications.CHANNEL_SERVICE,
+                    if (macroRunning) "예약 매크로 실행 중" else "열차 예약 대기 중"
+                )
+            )
             .build()
 
     private fun stopIntent(): PendingIntent {

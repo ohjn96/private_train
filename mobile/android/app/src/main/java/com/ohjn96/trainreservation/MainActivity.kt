@@ -16,6 +16,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
@@ -50,12 +51,18 @@ class MainActivity : Activity() {
     private lateinit var content: FrameLayout
     private lateinit var loading: View
     private lateinit var loadingText: TextView
-    private val baseUrl = "http://127.0.0.1:${ServerService.PORT}"
+    /** 확인을 마친 서버 주소 (http://127.0.0.1:<포트>). 확인 전에는 null. */
+    @Volatile
+    private var baseUrl: String? = null
+    @Volatile
+    private var serverPort: Int = 0
     private val main = Handler(Looper.getMainLooper())
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 최근 앱 목록 미리보기·화면 녹화에 예약 정보·카드 입력칸이 찍히지 않게
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         @Suppress("DEPRECATION")  // Android 15+ 는 무시하고 아래 여백 색을 쓴다
         window.statusBarColor = Color.parseColor(GROUND)
         // 밝은 바탕이므로 상태바 아이콘을 어둡게
@@ -84,12 +91,7 @@ class MainActivity : Activity() {
         setContentView(root)
 
         val token = AppToken.get(this)
-        CookieManager.getInstance().apply {
-            setAcceptCookie(true)
-            // HttpOnly: 화면의 스크립트가 토큰을 읽지 못하게
-            setCookie(baseUrl, "app_token=$token; Path=/; SameSite=Strict; HttpOnly")
-            flush()
-        }
+        CookieManager.getInstance().setAcceptCookie(true)
 
         requestNotificationPermission()
         ServerService.start(this)
@@ -108,9 +110,18 @@ class MainActivity : Activity() {
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val url = request.url
-                    if (url.host == "127.0.0.1") return false
+                    if (url.host == "127.0.0.1" || url.host == "localhost") {
+                        // 우리 서버(확인한 포트)만 화면 안에서 연다. 같은 호스트의 다른 포트는
+                        // 다른 앱일 수 있고, 쿠키는 포트를 가리지 않아 토큰이 그쪽으로 간다.
+                        return !(url.scheme == "http" && url.host == "127.0.0.1" &&
+                            serverPort != 0 && url.port == serverPort)
+                    }
                     // 바깥 링크는 브라우저로
-                    startActivity(Intent(Intent.ACTION_VIEW, url))
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, url))
+                    } catch (e: Exception) {
+                        Log.w("MainActivity", "no app for $url")
+                    }
                     return true
                 }
 
@@ -123,7 +134,7 @@ class MainActivity : Activity() {
                     webView = createWebView().apply { visibility = View.VISIBLE }
                     content.addView(webView, 0, ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-                    webView.loadUrl("$baseUrl/")
+                    baseUrl?.let { webView.loadUrl("$it/") }
                     return true
                 }
             }
@@ -203,9 +214,19 @@ class MainActivity : Activity() {
         thread(name = "wait-server", isDaemon = true) {
             val deadline = System.currentTimeMillis() + 90_000
             while (System.currentTimeMillis() < deadline) {
-                if (ping(token)) {
+                val port = ServerService.port
+                // 포트를 알고, 그 서버가 토큰을 안다고 증명한 뒤에만 쿠키(토큰)를 싣는다
+                if (port != 0 && LocalServer.verify(port, token) && ping(port, token)) {
+                    val url = LocalServer.baseUrl(port)
                     main.post {
-                        webView.loadUrl("$baseUrl/")
+                        serverPort = port
+                        baseUrl = url
+                        CookieManager.getInstance().apply {
+                            // HttpOnly: 화면의 스크립트가 토큰을 읽지 못하게
+                            setCookie(url, "app_token=$token; Path=/; SameSite=Strict; HttpOnly")
+                            flush()
+                        }
+                        webView.loadUrl("$url/")
                         webView.visibility = View.VISIBLE
                         loading.visibility = View.GONE
                     }
@@ -217,8 +238,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun ping(token: String): Boolean = try {
-        val conn = URL("$baseUrl/manifest.webmanifest").openConnection() as HttpURLConnection
+    private fun ping(port: Int, token: String): Boolean = try {
+        val conn = URL("${LocalServer.baseUrl(port)}/manifest.webmanifest").openConnection() as HttpURLConnection
         conn.connectTimeout = 1000
         conn.readTimeout = 2000
         conn.setRequestProperty("Cookie", "app_token=$token")

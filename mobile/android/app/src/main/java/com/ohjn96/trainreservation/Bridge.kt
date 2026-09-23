@@ -27,7 +27,13 @@ object Bridge {
         appContext?.let { SecureStore.clearJob(it) }
     }
 
-    /** 예약 성공·결제·중단. kind: reserved / paid / pay_failed / stopped */
+    /** 파이썬 서버가 실제로 연 포트 (무작위). 화면·헬스체크는 이 포트로 붙는다. */
+    @JvmStatic
+    fun onServerReady(port: Int) {
+        ServerService.port = port
+    }
+
+    /** 예약 성공·결제·중단. kind: reserved / paid / pay_failed / stopped / resumed / gave_up */
     @JvmStatic
     fun notifyEvent(kind: String, title: String, body: String) {
         appContext?.let { Notifications.showEvent(it, kind, title, body) }
