@@ -107,7 +107,8 @@ def set_search_trains(provider: str, trains: List[Dict]) -> None:
 
 def set_selected_indices(
     provider: str, indices: List[int], seat_option: str,
-    passenger_count: int = 1, sequential: bool = False
+    passenger_count: int = 1, sequential: bool = False,
+    call_interval: float | None = None
 ) -> None:
     """Store selected train indices and reservation options for a provider."""
     state = get_search_state(provider)
@@ -115,6 +116,7 @@ def set_selected_indices(
     state['seat_option'] = seat_option
     state['passenger_count'] = passenger_count
     state['sequential'] = sequential
+    state['call_interval'] = call_interval
     session.modified = True
 
 

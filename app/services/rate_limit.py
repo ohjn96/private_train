@@ -27,6 +27,22 @@ def _configured_interval() -> float:
     return max(1.0, value)
 
 
+#: 사용자가 고를 수 있는 호출 간격 범위(초).
+MIN_CALL_INTERVAL = 1.0
+MAX_CALL_INTERVAL = 3.0
+
+
+def clamp_call_interval(value, default: float = DEFAULT_MIN_INTERVAL) -> float:
+    """사용자가 보낸 간격 값을 1~3초 안으로 맞춘다. 숫자가 아니면 default."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return default
+    if seconds != seconds:  # NaN
+        return default
+    return min(MAX_CALL_INTERVAL, max(MIN_CALL_INTERVAL, seconds))
+
+
 class RateLimiter:
     """마지막 호출로부터 min_interval 이 지날 때까지 막아 세우는 게이트.
 
@@ -42,6 +58,11 @@ class RateLimiter:
     @property
     def min_interval(self) -> float:
         return self._min_interval
+
+    def set_interval(self, seconds: float) -> None:
+        """간격을 바꾼다. 1초 하한은 여기서도 지킨다."""
+        with self._lock:
+            self._min_interval = max(1.0, float(seconds))
 
     def wait(self) -> float:
         """호출이 허용될 때까지 대기하고, 실제로 기다린 시간(초)을 돌려준다."""

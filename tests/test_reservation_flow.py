@@ -388,6 +388,44 @@ class SelectionTest(unittest.TestCase):
         state = self.post(['4'], passenger_count='9')
         self.assertEqual(state['passenger_count'], 2)
 
+    def test_call_interval_is_stored_and_clamped(self):
+        self.assertEqual(self.post(['4'], call_interval='2.5')['call_interval'], 2.5)
+        self.assertEqual(self.post(['4'], call_interval='0.2')['call_interval'], 1.0)
+        self.assertEqual(self.post(['4'], call_interval='9')['call_interval'], 3.0)
+        self.assertEqual(self.post(['4'], call_interval='abc')['call_interval'], 1.5)
+        self.assertEqual(self.post(['4'])['call_interval'], 1.5)
+
+
+class CallIntervalTest(unittest.TestCase):
+    """조회 간격(1~3초)은 그냥 쉬는 시간이 아니라 '보낸 시각'부터 재는 최소 간격이다."""
+
+    def test_clamp(self):
+        from app.services.rate_limit import clamp_call_interval
+        self.assertEqual(clamp_call_interval('1'), 1.0)
+        self.assertEqual(clamp_call_interval(-3), 1.0)
+        self.assertEqual(clamp_call_interval(10), 3.0)
+        self.assertEqual(clamp_call_interval(None), 1.5)
+        self.assertEqual(clamp_call_interval(float('nan')), 1.5)
+
+    def test_slow_response_is_not_followed_by_extra_wait(self):
+        limiter = RateLimiter(1.0)
+        limiter.wait()
+        time.sleep(1.05)            # 응답이 간격보다 늦게 옴
+        self.assertEqual(limiter.wait(), 0.0)
+
+    def test_interval_applies_for_the_run_and_is_restored(self):
+        seen = []
+        original = reservation._run_reservation_loop
+        reservation._run_reservation_loop = lambda *a, **k: seen.append(korail_api.min_interval)
+        before = korail_api.min_interval
+        try:
+            reservation.run_reservation_loop(None, 'korail', [], SeatOption.GENERAL_FIRST, None,
+                                             call_interval=2.5)
+        finally:
+            reservation._run_reservation_loop = original
+        self.assertEqual(seen, [2.5])
+        self.assertEqual(korail_api.min_interval, before)
+
 
 class ServiceReuseTest(unittest.TestCase):
     """페이지를 열 때마다 코레일에 로그인하면 안 된다."""

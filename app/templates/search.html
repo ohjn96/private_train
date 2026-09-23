@@ -154,6 +154,23 @@
                         <option value="SPECIAL_FIRST">특실 우선</option>
                         <option value="SPECIAL_ONLY">특실만</option>
                     </select>
+
+                    <label class="text-sm text-gray-600" for="callInterval"
+                           title="코레일 조회 사이 최소 간격. 응답이 늦게 오면 그만큼 덜 기다립니다.">조회 간격:</label>
+                    <select id="callInterval" data-testid="call-interval" class="px-3 py-1 border border-gray-300 rounded-lg text-sm">
+                        <option value="1">1초</option>
+                        <option value="1.5" selected>1.5초</option>
+                        <option value="2">2초</option>
+                        <option value="2.5">2.5초</option>
+                        <option value="3">3초</option>
+                    </select>
+                    <script>
+                        try {
+                            const saved = localStorage.getItem('call_interval');
+                            const sel = document.getElementById('callInterval');
+                            if (saved && sel && [...sel.options].some(o => o.value === saved)) sel.value = saved;
+                        } catch (e) {}
+                    </script>
                 </div>
             </div>
         </div>
@@ -1033,6 +1050,9 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('seat_option', seatOption);
             formData.append('passenger_count', passengerCount);
             formData.append('sequential', passengerCount === '2' && passengerMode === 'sequential' ? 'true' : 'false');
+            const callInterval = document.getElementById('callInterval')?.value || '1.5';
+            formData.append('call_interval', callInterval);
+            try { localStorage.setItem('call_interval', callInterval); } catch (e) {}
 
             await fetch('/reserve_select', { method: 'POST', body: formData });
 

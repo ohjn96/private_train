@@ -9,6 +9,7 @@ from flask import Blueprint, request, session, redirect, url_for, Response, json
 
 from app.services import ServiceManager, SeatOption
 from app.services.telegram_service import TelegramService
+from app.services.rate_limit import korail_api, clamp_call_interval
 from app.utils.session_helper import (
     get_current_provider,
     is_logged_in,
@@ -216,6 +217,7 @@ def reserve_select():
     except (TypeError, ValueError):
         passenger_count = 1
     sequential = request.form.get("sequential", "false") == "true"
+    call_interval = clamp_call_interval(request.form.get("call_interval"))
 
     # 같은 열차가 두 번 넘어오면(데스크톱 행과 모바일 카드가 둘 다 DOM 에 있어서
     # 창 크기를 바꾸며 고르면 생길 수 있다) 같은 열차에 예약을 두 번 걸게 되므로
@@ -230,7 +232,7 @@ def reserve_select():
             indices.append(idx)
 
     # Store for this provider
-    set_selected_indices(provider, indices, seat_option, passenger_count, sequential)
+    set_selected_indices(provider, indices, seat_option, passenger_count, sequential, call_interval)
 
     return jsonify({"success": True, "count": len(indices)})
 
@@ -289,9 +291,17 @@ def run_reservation_loop(*args, **kwargs):
     남아 다시는 매크로를 시작하지 못하는 일이 없도록 해제를 보장한다.
     """
     tg = TelegramService.get_instance()
+    call_interval = kwargs.pop("call_interval", None)
+    previous = korail_api.min_interval
+    if call_interval is not None:
+        # 이번 실행 동안만 사용자가 고른 간격으로. 간격은 "지난 호출을 보낸 시각"부터 재므로
+        # 응답이 늦게 오면 그만큼 덜 기다린다 (그냥 쉬는 시간이 아니라 최소 호출 간격).
+        korail_api.set_interval(clamp_call_interval(call_interval))
     try:
         _run_reservation_loop(*args, **kwargs)
     finally:
+        if call_interval is not None:
+            korail_api.set_interval(previous)
         tg.set_macro_state(False)
 
 
@@ -350,7 +360,7 @@ def _run_reservation_loop(
     mode_note = ""
     if passenger_count > 1:
         mode_note = " (1인씩 순차 예약)" if sequential else f" ({passenger_count}인 동시 예약)"
-    tg.push_log("log", f"예약 매크로를 시작합니다{mode_note}. 대상: {trains_summary}")
+    tg.push_log("log", f"예약 매크로를 시작합니다{mode_note}, 호출 간격 {korail_api.min_interval:g}초. 대상: {trains_summary}")
 
     attempt = 0
     consecutive_errors = 0
@@ -587,6 +597,7 @@ def start_reservation():
     trains_data = search_state.get("trains", [])
     passenger_count = max(1, min(2, search_state.get("passenger_count", 1)))
     sequential = bool(search_state.get("sequential", False)) and passenger_count > 1
+    call_interval = clamp_call_interval(search_state.get("call_interval"))
 
     selected_trains = [
         trains_data[idx] for idx in selected_indices if idx < len(trains_data)
@@ -622,7 +633,8 @@ def start_reservation():
     macro_thread = threading.Thread(
         target=run_reservation_loop,
         args=(service, provider, selected_trains, seat_option, card),
-        kwargs={"passenger_count": passenger_count, "sequential": sequential},
+        kwargs={"passenger_count": passenger_count, "sequential": sequential,
+                "call_interval": call_interval},
         daemon=True,
         name="web-macro",
     )
