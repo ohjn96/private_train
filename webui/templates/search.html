@@ -1039,6 +1039,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // Since I'm editing inside the block, I will just call observeLastItem() at the end of loadMoreTrains
     }
 
+    // 서버에서 온 글자(열차 이름·역 이름 등)를 HTML 로 끼워 넣을 때는 꼭 이스케이프한다
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, ch => (
+            {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
+    }
+
     function appendTrains(trains) {
         const tableBody = document.getElementById('trainTableBody');
         const cardContainer = document.getElementById('trainCardContainer');
@@ -1057,22 +1063,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 : '<span class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-medium bg-rail-offSoft text-rail-off">매진</span>';
             row.innerHTML = `
                 <td class="px-6 py-4">
-                    <div class="text-[15px] font-semibold text-rail-ink">${train.train_name}</div>
-                    <div class="text-xs text-rail-muted tabular">#${train.train_number}</div>
+                    <div class="text-[15px] font-semibold text-rail-ink">${esc(train.train_name)}</div>
+                    <div class="text-xs text-rail-muted tabular">#${esc(train.train_number)}</div>
                 </td>
                 <td class="px-6 py-4">
                     <div class="flex items-center gap-5 tabular">
                         <div class="text-center">
-                            <div class="text-xl font-bold tracking-tight text-rail-ink">${train.dep_time_formatted}</div>
-                            <div class="text-xs text-rail-muted">${train.dep_station}</div>
+                            <div class="text-xl font-bold tracking-tight text-rail-ink">${esc(train.dep_time_formatted)}</div>
+                            <div class="text-xs text-rail-muted">${esc(train.dep_station)}</div>
                         </div>
                         <div class="w-20 flex flex-col items-center gap-0.5">
-                            <span class="text-xs text-rail-muted whitespace-nowrap">${train.duration_formatted}</span>
+                            <span class="text-xs text-rail-muted whitespace-nowrap">${esc(train.duration_formatted)}</span>
                             <span class="w-full h-px bg-[#D6D0C8]"></span>
                         </div>
                         <div class="text-center">
-                            <div class="text-xl font-bold tracking-tight text-rail-ink">${train.arr_time_formatted}</div>
-                            <div class="text-xs text-rail-muted">${train.arr_station}</div>
+                            <div class="text-xl font-bold tracking-tight text-rail-ink">${esc(train.arr_time_formatted)}</div>
+                            <div class="text-xs text-rail-muted">${esc(train.arr_station)}</div>
                         </div>
                     </div>
                 </td>
@@ -1099,14 +1105,14 @@ document.addEventListener('DOMContentLoaded', function() {
             card.innerHTML = `
                 <div class="flex-1 min-w-0 flex flex-col gap-1.5">
                     <div class="flex items-baseline gap-2 tabular">
-                        <span class="text-[22px] font-bold tracking-tight">${train.dep_time_formatted}</span>
+                        <span class="text-[22px] font-bold tracking-tight">${esc(train.dep_time_formatted)}</span>
                         <span class="text-sm text-rail-muted">→</span>
-                        <span class="text-[22px] font-bold tracking-tight">${train.arr_time_formatted}</span>
-                        <span class="text-xs text-rail-muted">${train.duration_formatted}</span>
+                        <span class="text-[22px] font-bold tracking-tight">${esc(train.arr_time_formatted)}</span>
+                        <span class="text-xs text-rail-muted">${esc(train.duration_formatted)}</span>
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <span class="text-[13px] font-semibold">${train.train_name}</span>
-                        <span class="text-xs text-rail-muted">${train.train_number}</span>
+                        <span class="text-[13px] font-semibold">${esc(train.train_name)}</span>
+                        <span class="text-xs text-rail-muted">${esc(train.train_number)}</span>
                     </div>
                     <div class="flex gap-1.5">
                         ${seatPill('일반', train.general_seat_available)}
@@ -1223,7 +1229,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 await fetch('/reserve_select', { method: 'POST', body: formData });
                 // Kick off the macro on the server - it now runs on a background thread,
                 // independent of this page/tab, so closing or refreshing won't stop it.
-                const resp = await fetch('/start_reservation');
+                const resp = await fetch('/start_reservation', { method: 'POST' });
                 if (resp.redirected && resp.url.includes('/login')) {
                     alert('로그인이 만료됐어요. 다시 로그인해 주세요.');
                     window.location.href = '/login';
