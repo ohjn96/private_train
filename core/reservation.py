@@ -648,9 +648,8 @@ def _run(
                 time.sleep(1)
 
         # 재시도 주기는 서비스의 호출 간격 게이트(사용자가 고른 1~3초)가 정한다.
-        # 다음 조회가 게이트에서 그만큼 기다리므로, 여기선 기계적인 박자로 보이지
-        # 않게 약간만 흔든다.
-        time.sleep(random.uniform(0, 0.3))
+        # 게이트는 "지난 호출을 보낸 시각"부터 재므로, 응답이 늦게 온 만큼 덜 기다린다
+        # (응답에 2초 걸렸고 간격이 2초면 곧바로 다음 조회). 여기서 따로 쉬지 않는다.
 
     tg.send_macro_stopped()
     if seats_secured and seats_secured < passenger_count:
