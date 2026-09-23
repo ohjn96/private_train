@@ -25,8 +25,14 @@ try:
 except ImportError:
     KorailLoginError = None
 
-#: 로그인 오류 자동 복구 최대 횟수
+#: 로그인 오류 자동 복구 최대 횟수 (인터넷 문제로 실패한 건 세지 않는다)
 MAX_RECOVERY_ATTEMPTS = 5
+
+# run_reservation 이 돌려주는 "왜 끝났나"
+END_SUCCESS = "success"    # 원하는 좌석을 모두 잡았다
+END_STOPPED = "stopped"    # 중단 요청 (사용자, 알림 버튼 등)
+END_GAVE_UP = "gave_up"    # 다시 로그인하지 못했다 (비밀번호 변경·계정 차단 등)
+END_CRASH = "crash"        # 예기치 않은 오류 (부르는 쪽이 정한다)
 
 
 class Reporter(Protocol):
@@ -135,7 +141,7 @@ def run_reservation(
     *,
     reporter: Reporter,
     should_stop: Callable[[], bool],
-    recover: Callable[[], tuple[bool, str]],
+    recover: Callable[[], tuple[bool | None, str]],
     provider: str = "korail",
     passenger_count: int = 1,
     sequential: bool = False,
@@ -155,13 +161,16 @@ def run_reservation(
         cancellations, which show up far more often than two seats freeing up at once.
     :param call_interval: 코레일 API 호출 사이 간격(초, 1~3). 주면 이번 실행 동안만
         서비스의 호출 간격을 바꾸고 끝나면 되돌린다. None 이면 지금 설정 그대로.
+    :param recover: 재로그인. (True, 메시지) 성공 / (False, 메시지) 실패 /
+        (None, 메시지) 인터넷 문제 같은 일시적 실패 — 포기 횟수에 넣지 않고 계속 시도한다.
+    :return: 끝난 이유 (END_SUCCESS / END_STOPPED / END_GAVE_UP)
     """
     previous_interval = None
     if call_interval is not None and hasattr(service, "set_call_interval"):
         previous_interval = service.call_interval
         service.set_call_interval(clamp_call_interval(call_interval))
     try:
-        _run(
+        return _run(
             service, selected_trains, seat_option, card, reporter, should_stop, recover,
             provider, passenger_count, sequential, pay,
         )
@@ -173,8 +182,9 @@ def run_reservation(
 def _run(
     service, selected_trains, seat_option, card, reporter, should_stop, recover,
     provider, passenger_count, sequential, pay,
-) -> None:
+) -> str:
     tg = reporter
+    end_reason = END_STOPPED
 
     # Reservations already confirmed this run (only ever >1 entry in sequential mode -
     # a one-shot multi-seat reservation is a single entry that already covers every seat)
@@ -328,7 +338,7 @@ def _run(
                                 tg.push_log("log", f"총 {passenger_count}석 모두 확보 완료!")
                             # 실행 슬롯은 여기서 풀지 않는다. 부르는 쪽이 정리를 다 마친 뒤
                             # 맨 마지막에 푼다 (먼저 풀면 그 틈에 다음 매크로가 뜬다).
-                            return
+                            return END_SUCCESS
                         else:
                             # Sequential mode, still need more seats - keep the loop going.
                             tg.push_log(
@@ -363,6 +373,13 @@ def _run(
                 )
                 success, recovery_msg = recover()
 
+                if success is None:
+                    # 인터넷이 잠깐 끊긴 것: 포기 횟수에 넣지 않고 쉬었다가 계속 시도
+                    recovery_attempts -= 1
+                    tg.push_log("warning", f"[{timestamp}] {recovery_msg} - 잠시 후 다시 시도합니다")
+                    _sleep_unless_stopped(20, should_stop)
+                    continue
+
                 if success:
                     # "success" 로 남기면 화면이 예약 성공으로 착각한다
                     tg.push_log("log", f"[{timestamp}] {recovery_msg} - 예약을 계속합니다")
@@ -373,6 +390,7 @@ def _run(
                 tg.push_log("error", f"[{timestamp}] {recovery_msg}")
                 if recovery_attempts >= MAX_RECOVERY_ATTEMPTS:
                     tg.push_log("error", f"[{timestamp}] 다시 로그인하지 못해 예약을 멈춥니다. 앱에서 다시 로그인해 주세요.")
+                    end_reason = END_GAVE_UP
                     break
                 # 네트워크가 잠깐 끊긴 것일 수 있으니 점점 길게 쉬었다가 (중단은 바로 반영)
                 _sleep_unless_stopped(min(5 * recovery_attempts, 30), should_stop)
@@ -395,3 +413,4 @@ def _run(
         )
     else:
         tg.push_log("stopped", "예약이 중단되었습니다.")
+    return end_reason

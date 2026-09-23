@@ -3,6 +3,8 @@
 import json
 import logging
 import threading
+
+import requests
 from datetime import datetime
 from functools import wraps
 from flask import Blueprint, request, session, redirect, url_for, Response, jsonify
@@ -23,6 +25,7 @@ from webui.utils.session_helper import (
 
 from core.rate_limit import DEFAULT_MIN_INTERVAL, clamp_call_interval
 from core.reservation import (  # noqa: F401  (attempt_payment 는 예전 경로 호환)
+    END_CRASH,
     MAX_RECOVERY_ATTEMPTS,
     NotifyingReporter,
     attempt_payment,
@@ -299,7 +302,11 @@ def attempt_recovery(provider: str, service, credentials: dict | None = None) ->
             pass
 
         # Attempt re-login
-        success = service.login(credentials["user_id"], credentials["password"])
+        try:
+            success = service.login(credentials["user_id"], credentials["password"])
+        except requests.RequestException as e:
+            # 인터넷 문제는 비밀번호 오류와 다르다: 포기하지 말고 계속 시도하라고 알린다
+            return None, f"인터넷 연결 문제로 다시 로그인하지 못했습니다 ({type(e).__name__})"
         if success:
             try:
                 set_auth_state(provider, credentials["user_id"])
@@ -332,15 +339,27 @@ def run_reservation_loop(
     # (여기서 하면 스레드가 뜨기 전에 눌린 "중단" 이 지워진다)
     credentials = _recovery_credentials(provider, service)
 
-    reporter = tg
-    if owner and _macro_listeners:
-        def notify(kind, title, body):
+    # 앱을 다시 열었을 때 보여줄 "마지막 결과". 예약·결제·중단 순간을 NotifyingReporter 로 받는다.
+    result = {"reason": None, "reserved": None, "paid": None, "pay_message": None, "detail": None}
+
+    def notify(kind, title, body):
+        if kind == "reserved":
+            result["reserved"] = body.split("\n")[0]
+        elif kind == "paid":
+            result["paid"], result["pay_message"] = True, body
+        elif kind == "pay_failed":
+            result["paid"], result["pay_message"] = False, body.split("\n")[0]
+        elif kind == "stopped":
+            result["detail"] = body
+        if owner:
             for listener in list(_macro_listeners):
                 listener(owner, kind, title, body)
-        reporter = NotifyingReporter(tg, notify)
+
+    reporter = NotifyingReporter(tg, notify)
+    reason = END_CRASH
 
     try:
-        run_reservation(
+        reason = run_reservation(
             service, selected_trains, seat_option, card,
             reporter=reporter,
             should_stop=lambda: STOP_MACRO,
@@ -352,6 +371,7 @@ def run_reservation_loop(
         )
     except Exception as e:  # noqa: BLE001 - 스레드가 조용히 죽지 않게
         logger.exception("reservation loop crashed")
+        result["detail"] = str(e)
         try:
             tg.push_log("error", f"예약 매크로가 예기치 않게 멈췄습니다: {e}")
             reporter.send_macro_stopped()
@@ -359,9 +379,13 @@ def run_reservation_loop(
         except Exception:  # noqa: BLE001
             pass
     finally:
+        result["reason"] = reason
+        result["ended_at"] = datetime.now().isoformat(timespec="seconds")
+        tg.last_result = result
         # 성공·복구 포기로 끝났을 때도 /status 가 '대기 중' 을 보이도록
         STOP_MACRO = True
         tg.set_macro_state(False)
+    return reason
 
 
 @bp.route("/start_reservation")

@@ -685,10 +685,25 @@ class SoldOutError(KorailError):
         KorailError.__init__(self, "Sold out", code)
 
 
+#: 코레일 요청의 (연결, 응답) 대기 한도(초). 없으면 네트워크가 끊겼을 때 영원히 기다려
+#: 매크로가 멈춘 채로 남는다.
+REQUEST_TIMEOUT = (10, 20)
+
+
+class _TimeoutSession(requests.Session):
+    """timeout 을 따로 주지 않은 요청에도 REQUEST_TIMEOUT 을 건다."""
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault('timeout', REQUEST_TIMEOUT)
+        return super().request(method, url, **kwargs)
+
+
 # noinspection PyUnresolvedReferences,PyRedeclaration
 class Korail(object):
     """Korail object"""
-    _session = requests.session()
+    # 인스턴스마다 따로 만든다 (__init__). 클래스 변수로 두면 모든 로그인이 쿠키 저장소
+    # 하나를 같이 써서, 여러 계정이 동시에 로그인하면 서로의 세션을 덮어쓴다.
+    _session = None
 
     _device = 'AD'
     _version = '250601002'
@@ -703,6 +718,7 @@ class Korail(object):
     email = None
 
     def __init__(self, korail_id, korail_pw, auto_login=True, want_feedback=False):
+        self._session = _TimeoutSession()
         self._session.headers.update({'User-Agent': DEFAULT_USER_AGENT})
         self._engine = DynaPathMasterEngine()
         self.korail_id = korail_id

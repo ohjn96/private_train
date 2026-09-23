@@ -35,6 +35,23 @@
         </div>
     </section>
 
+    <!-- 마지막 결과 (매크로가 끝난 뒤 앱을 다시 열었을 때) -->
+    <section id="lastResult" data-testid="last-result" class="hidden bg-white border border-rail-line rounded-[20px] p-5" aria-live="polite">
+        <div class="flex items-start gap-3">
+            <span id="lastResultIcon" class="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" aria-hidden="true"></span>
+            <div class="flex-1 min-w-0">
+                <p id="lastResultTime" class="text-xs text-rail-muted"></p>
+                <h2 id="lastResultTitle" class="text-lg font-bold tracking-tight"></h2>
+                <p id="lastResultBody" class="text-sm text-rail-muted mt-0.5 break-words"></p>
+            </div>
+            <button type="button" id="lastResultClose" aria-label="닫기"
+                    class="w-11 h-11 -mr-2 -mt-2 flex items-center justify-center text-rail-muted">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </div>
+        <p id="lastResultNote" class="hidden mt-4 p-3.5 rounded-2xl text-[13px] leading-relaxed"></p>
+    </section>
+
     <!-- 매크로 실행 중 (상태 폴링이 채운다) -->
     <section id="macroHero" data-testid="macro-hero" class="hidden bg-rail-ink text-white rounded-[22px] p-5 space-y-4" aria-live="polite">
         <div class="flex items-center gap-2">
@@ -47,6 +64,7 @@
             <span class="text-[15px] text-[#C9C2B8] pb-2">번째 조회</span>
         </div>
         <p id="heroCurrent" class="text-sm text-[#E8E2D9] min-h-[1.25rem]"></p>
+        <p id="heroResumed" class="hidden text-[13px] text-[#FDE68A]"></p>
         <p class="text-[13px] leading-relaxed text-[#C9C2B8]">앱을 닫거나 화면을 꺼도 계속 찾아요. 좌석을 잡으면 알림으로 알려드려요.</p>
         <button type="button" id="heroStopBtn" data-testid="hero-stop"
                 class="w-full h-12 rounded-2xl bg-white text-rail-ink font-bold flex items-center justify-center gap-2">
@@ -1284,8 +1302,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     log(data.message, 'success');
                     // 백그라운드에서 성공하고 끝난 뒤 앱을 열면 기록 재생(isLive=false)으로 온다.
                     // 그때도 무엇이 예약됐고 결제가 남았는지는 보여줘야 한다. 소리만 뺀다.
-                    showSuccess(data.message, !isLive);
-                    if (isLive) playSound();
+                    if (isLive) {
+                        showSuccess(data.message);
+                        playSound();
+                    }
                     break;
                 case 'error':
                     log(data.message, 'error');
@@ -1406,7 +1426,72 @@ document.addEventListener('DOMContentLoaded', function() {
             current = `대상: ${info.trains}`;
         }
         document.getElementById('heroCurrent').textContent = current;
+        const resumedEl = document.getElementById('heroResumed');
+        if (status.resumed_at) {
+            resumedEl.textContent = `휴대폰이 앱을 정리해서 ${status.resumed_at.slice(11, 16)}에 자동으로 다시 시작했어요`;
+            resumedEl.classList.remove('hidden');
+        } else {
+            resumedEl.classList.add('hidden');
+        }
     }
+
+    // ─── 마지막 결과 카드 ───────────────────────────────────
+    const RESULT_VIEWS = {
+        success: { title: '예약했어요', icon: 'bg-rail-ok', svg: '<path d="M5 12l5 5 9-10"/>' },
+        stopped: { title: '매크로를 멈췄어요', icon: 'bg-rail-muted', svg: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>' },
+        gave_up: { title: '로그인이 계속 실패해서 멈췄어요', icon: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
+        crash: { title: '오류로 멈췄어요', icon: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
+    };
+
+    function updateLastResult(result) {
+        const card = document.getElementById('lastResult');
+        if (!card) return;
+        const view = result && RESULT_VIEWS[result.reason];
+        let dismissed = null;
+        try { dismissed = localStorage.getItem('dismissedResult'); } catch (e) {}
+        if (!view || dismissed === result.ended_at) {
+            card.classList.add('hidden');
+            return;
+        }
+        card.dataset.endedAt = result.ended_at;
+        document.getElementById('lastResultIcon').className =
+            `w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${view.icon}`;
+        document.getElementById('lastResultIcon').innerHTML =
+            `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${view.svg}</svg>`;
+        document.getElementById('lastResultTitle').textContent = view.title;
+        document.getElementById('lastResultTime').textContent = (result.ended_at || '').replace('T', ' ').slice(5, 16);
+
+        let body = '', note = '', noteClass = '';
+        if (result.reason === 'success') {
+            body = result.reserved || '';
+            if (result.paid === true) {
+                note = '💳 자동결제 완료';
+                noteClass = 'bg-rail-okSoft text-rail-ok font-semibold';
+            } else {
+                note = (result.pay_message ? result.pay_message + ' — ' : '') +
+                    '결제 기한 안에 코레일 앱에서 결제하지 않으면 예약이 취소돼요.';
+                noteClass = 'bg-[#FDF1DD] text-[#6B4A1E]';
+            }
+        } else if (result.reason === 'gave_up') {
+            body = '코레일 비밀번호가 바뀌었거나 계정이 잠겼을 수 있어요. 다시 로그인한 뒤 시작해 주세요.';
+        } else if (result.reason === 'crash') {
+            body = result.detail || '알 수 없는 오류';
+        } else {
+            body = result.detail && !result.detail.startsWith('매크로가 멈췄') ? result.detail : '';
+        }
+        document.getElementById('lastResultBody').textContent = body;
+        const noteEl = document.getElementById('lastResultNote');
+        noteEl.textContent = note;
+        noteEl.className = `mt-4 p-3.5 rounded-2xl text-[13px] leading-relaxed ${noteClass}`;
+        noteEl.classList.toggle('hidden', !note);
+        card.classList.remove('hidden');
+    }
+
+    document.getElementById('lastResultClose')?.addEventListener('click', function() {
+        const card = document.getElementById('lastResult');
+        card.classList.add('hidden');
+        try { localStorage.setItem('dismissedResult', card.dataset.endedAt || ''); } catch (e) {}
+    });
 
     document.getElementById('heroStopBtn')?.addEventListener('click', async function() {
         // 검색 결과가 없는 화면(텔레그램으로 시작한 매크로 등)에서도 멈출 수 있게 직접 부른다
@@ -1479,9 +1564,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     updateCurrentAttempt(data.macro_info);
                     updateMacroHero(data);
+                    updateLastResult(null);
                 } else {
                     updateCurrentAttempt(null);
                     updateMacroHero(null);
+                    updateLastResult(forThisProvider ? data.last_result : null);
                     // Nothing running right now - but if the last run's log is still in the
                     // buffer and we haven't shown it yet (e.g. just loaded/refreshed the page
                     // after a reservation finished), replay it once instead of leaving the

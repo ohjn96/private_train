@@ -93,6 +93,10 @@ class TelegramService:
         # 지금(또는 마지막으로) 매크로를 돌린 코레일 ID. 로그 버퍼도 이 사람 것이다.
         # 여러 명이 쓰는 서버에서 남의 로그를 보거나 남의 매크로를 멈추지 못하게 쓴다.
         self._macro_owner: Optional[str] = None
+        # 마지막으로 끝난 매크로의 결과 (앱을 다시 열었을 때 보여준다) — reservation 래퍼가 채운다
+        self.last_result: Optional[dict] = None
+        # 폰 앱이 프로세스 재시작 뒤 매크로를 자동으로 다시 시작한 시각
+        self.resumed_at: Optional[str] = None
 
         # Stored web session for background thread usage
         self._stored_provider: Optional[str] = None
@@ -1002,4 +1006,6 @@ class TelegramService:
             'macro_info': self._macro_info,
             'macro_start_time': self._macro_start_time.isoformat() if self._macro_start_time else None,
             'has_logs': bool(self._macro_logs),
+            'last_result': self.last_result,
+            'resumed_at': self.resumed_at,
         }

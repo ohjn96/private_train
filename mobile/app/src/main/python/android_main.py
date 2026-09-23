@@ -8,11 +8,22 @@
 - ServerService 가 start() 를 백그라운드 스레드에서 부른다 (서버가 도는 동안 돌아오지 않음)
 - 매크로가 돌기 시작/멈추면 Bridge.onMacroState → 절전 방지 잠금, 상단 알림 문구
 - 예약 성공·결제·중단은 Bridge.notifyEvent → 안드로이드 알림
+
+자동 복구:
+- 매크로를 시작하면 작업 내용(열차·좌석·간격·로그인·카드)을 Bridge.saveJob 으로 넘긴다.
+  안드로이드가 Keystore 로 암호화해 저장한다.
+- 정상적으로 끝나면(예약 성공·사용자 중단·로그인 포기) Bridge.clearJob.
+- 예기치 않은 오류로 끝나면 잠시 뒤 같은 작업으로 다시 시작한다 (횟수 제한).
+- 프로세스가 죽었다 살아나면 ServerService 가 저장된 작업으로 resume_job() 을 부른다.
+- /__health 로 서버가 살아 있는지, 매크로가 멈춰 있지 않은지 알려준다 (ServerService 가 30초마다 확인).
 """
 import hmac
+import json
 import logging
 import os
 import threading
+import time
+from datetime import date, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +31,16 @@ logger = logging.getLogger(__name__)
 TOKEN_COOKIE = 'android_token'
 
 _started = threading.Event()
+#: _wire_android 가 끝났다 (자동 재개는 이걸 기다린 뒤 시작한다)
+_ready = threading.Event()
+
+#: 예기치 않은 오류로 끝난 매크로를 다시 시작하는 한도: CRASH_WINDOW 초 안에 CRASH_LIMIT 번
+CRASH_LIMIT = 3
+CRASH_WINDOW = 30 * 60
+_crash_times: list[float] = []
+
+#: 마지막으로 조회를 시도한 시각 (헬스체크가 "멈췄는지" 판단하는 데 쓴다)
+_last_progress = {'at': time.monotonic()}
 
 
 def start(files_dir: str, port: int, token: str, version: str, debug: bool = False) -> None:
@@ -39,12 +60,25 @@ def start(files_dir: str, port: int, token: str, version: str, debug: bool = Fal
     app = create_app(server_mode=False)
     _require_token(app, token)
     _wire_android()
+    _add_health_route(app)
     if debug:
         _add_debug_routes(app)
+    _ready.set()
 
     server = make_server('127.0.0.1', int(port), app, threaded=True)
     logger.info('android server on 127.0.0.1:%s', port)
     server.serve_forever()
+
+
+def resume_job(job_json: str) -> None:
+    """프로세스가 다시 뜬 뒤 저장돼 있던 매크로를 이어서 돌린다 (ServerService 가 부른다)."""
+    try:
+        job = json.loads(job_json)
+    except ValueError:
+        logger.warning('저장된 작업을 읽지 못했습니다')
+        _bridge().clearJob()
+        return
+    threading.Thread(target=_start_job, args=(job, True), daemon=True, name='resume-job').start()
 
 
 def stop_macro() -> None:
@@ -105,8 +139,22 @@ def _wire_android() -> None:
             report()
         return started
 
+    original_attempt = tg.update_attempt
+
+    def update_attempt(attempt):
+        _last_progress['at'] = time.monotonic()
+        original_attempt(attempt)
+
+    def try_start_macro_tracked(owner=None):
+        started = try_start_macro(owner=owner)
+        if started:
+            _last_progress['at'] = time.monotonic()
+        return started
+
     tg.set_macro_state = set_macro_state
-    tg.try_start_macro = try_start_macro
+    tg.try_start_macro = try_start_macro_tracked
+    tg.update_attempt = update_attempt
+    _supervise_macros()
 
 
 def _add_debug_routes(app) -> None:
@@ -126,6 +174,21 @@ def _add_debug_routes(app) -> None:
             tg.set_macro_state(False)
         return {'running': tg._macro_running}
 
+    @app.route('/__debug/fake_job')
+    def debug_fake_job():
+        """코레일 없이 가짜 매크로를 띄운다 (자동 복구 시험). ?stall=1 이면 조회가 멈춘 흉내."""
+        _FakeService.stall = request.args.get('stall') == '1'
+        today = date.today().strftime('%Y%m%d')
+        job = {
+            'user_id': 'debug', 'password': 'debug', 'owner': 'debug', 'fake': True,
+            'trains': [{'train_name': 'KTX', 'train_number': '101', 'dep_date': today,
+                        'dep_time': '235900', 'dep_station': '서울', 'arr_station': '부산'}],
+            'seat_option': 'GENERAL_FIRST', 'card': None, 'passenger_count': 1,
+            'sequential': False, 'call_interval': 1,
+        }
+        threading.Thread(target=_start_job, args=(job, False), daemon=True).start()
+        return {'started': True, 'stall': _FakeService.stall}
+
     @app.route('/__debug/net')
     def debug_net():
         """폰 안의 파이썬이 지금 바깥(코레일)에 닿는지. 절전(Doze) 시험용, 요청 1번."""
@@ -143,3 +206,180 @@ def _add_debug_routes(app) -> None:
         for listener in list(_macro_listeners):
             listener('debug', 'reserved', '🎉 예약 성공', 'KTX 101 08:00 서울→부산\n결제 기한 안에 결제를 확인하세요.')
         return {'sent': len(_macro_listeners)}
+
+
+# ──────────────────────────────────────────────── 자동 복구
+
+def _bridge():
+    from java import jclass
+    return jclass('com.ohjn96.trainreservation.Bridge')
+
+
+def _job_from(service, selected_trains, seat_option, card, passenger_count, sequential,
+              call_interval, owner) -> dict | None:
+    credentials = getattr(service, 'credentials', None)
+    if not credentials:
+        return None  # 로그인 정보가 없으면 되살릴 수 없다
+    return {
+        'user_id': credentials['user_id'],
+        'password': credentials['password'],
+        'trains': selected_trains,
+        'seat_option': getattr(seat_option, 'value', seat_option),
+        'card': card,
+        'passenger_count': passenger_count,
+        'sequential': sequential,
+        'call_interval': call_interval,
+        'owner': owner,
+        'fake': isinstance(service, _FakeService),
+    }
+
+
+def _job_is_stale(job: dict) -> bool:
+    """이미 떠난 날짜의 열차라면 되살리지 않는다."""
+    today = date.today().strftime('%Y%m%d')
+    return all(t.get('dep_date', today) < today for t in job.get('trains') or [{}])
+
+
+def _start_job(job: dict, resumed: bool) -> None:
+    """저장된 작업으로 로그인하고 매크로를 띄운다. 인터넷이 없으면 생길 때까지 기다린다."""
+    import requests
+
+    import webui.routes.reservation as reservation
+    from core.base_service import SeatOption
+    from core.korail_service import KorailService
+    from webui.services import ServiceManager
+    from webui.services.telegram_service import TelegramService
+
+    _ready.wait(60)
+    if _job_is_stale(job):
+        logger.info('지난 날짜의 작업이라 되살리지 않습니다')
+        _bridge().clearJob()
+        return
+
+    service = _FakeService() if job.get('fake') else KorailService()
+    wait = 5
+    while True:
+        try:
+            if service.login(job['user_id'], job['password']):
+                break
+            # 비밀번호가 바뀌었거나 계정이 막혔다: 계속 시도하면 계정만 잠긴다
+            _bridge().clearJob()
+            _bridge().notifyEvent('gave_up', '⚠️ 예약 매크로를 다시 시작하지 못했어요',
+                                  '코레일 로그인이 거부됐어요. 앱을 열어 다시 로그인해 주세요.')
+            return
+        except requests.RequestException:
+            time.sleep(wait)  # 인터넷이 돌아올 때까지 (최대 5분 간격)
+            wait = min(wait * 2, 300)
+
+    uid = job['user_id']
+    with ServiceManager._cache_lock:
+        ServiceManager._services[('korail', uid)] = service  # 다시 로그인하면 이 인스턴스를 같이 쓴다
+    tg = TelegramService.get_instance()
+    tg.store_web_session('korail', {'user_id': uid, 'password': job['password']})
+    tg.store_card_settings(job.get('card'))
+    if resumed:
+        tg.resumed_at = datetime.now().isoformat(timespec='seconds')
+    if not tg.try_start_macro(owner=job.get('owner') or uid):
+        return
+    reservation.STOP_MACRO = False
+    reservation.run_reservation_loop(
+        service, 'korail', job['trains'], SeatOption(job.get('seat_option') or 'GENERAL_FIRST'),
+        job.get('card'),
+        passenger_count=job.get('passenger_count') or 1,
+        sequential=bool(job.get('sequential')),
+        call_interval=job.get('call_interval'),
+        owner=job.get('owner') or uid,
+    )
+
+
+def _crash_budget_left() -> bool:
+    now = time.monotonic()
+    _crash_times[:] = [t for t in _crash_times if now - t < CRASH_WINDOW]
+    if len(_crash_times) >= CRASH_LIMIT:
+        return False
+    _crash_times.append(now)
+    return True
+
+
+def _supervise_macros() -> None:
+    """모든 매크로 시작을 감싸서 작업을 저장하고, 끝난 이유에 따라 지우거나 다시 시작한다."""
+    import webui.routes.reservation as reservation
+    from core.reservation import END_CRASH
+    from webui.services.telegram_service import TelegramService
+
+    original = reservation.run_reservation_loop
+
+    def supervised(service, provider, selected_trains, seat_option, card,
+                   passenger_count=1, sequential=False, call_interval=None, owner=None):
+        job = _job_from(service, selected_trains, seat_option, card, passenger_count,
+                        sequential, call_interval, owner)
+        if job:
+            _bridge().saveJob(json.dumps(job, ensure_ascii=False))
+        reason = original(service, provider, selected_trains, seat_option, card,
+                          passenger_count=passenger_count, sequential=sequential,
+                          call_interval=call_interval, owner=owner)
+        if reason == END_CRASH and job and _crash_budget_left():
+            tg = TelegramService.get_instance()
+            tg.push_log('warning', '10초 뒤 자동으로 다시 시작합니다...')
+            threading.Timer(10, _start_job, args=(job, False)).start()
+        else:
+            # 예약 성공·사용자 중단·로그인 포기, 또는 재시작 한도 초과: 되살리지 않는다
+            TelegramService.get_instance().resumed_at = None
+            _bridge().clearJob()
+        return reason
+
+    # 라우트와 텔레그램은 모듈 전역 이름으로 부르므로 여기만 바꾸면 모두 감싸진다
+    reservation.run_reservation_loop = supervised
+
+
+def _add_health_route(app) -> None:
+    from webui.services.telegram_service import TelegramService
+
+    @app.route('/__health')
+    def health():
+        tg = TelegramService.get_instance()
+        running = bool(tg._macro_running)
+        return {
+            'ok': True,
+            'macro_running': running,
+            'attempt': tg._macro_attempt,
+            'stalled_seconds': round(time.monotonic() - _last_progress['at']) if running else 0,
+        }
+
+
+class _FakeService:
+    """디버그 빌드 전용: 코레일 없이 복구·헬스체크를 시험하는 가짜 서비스."""
+
+    stall = False
+
+    def __init__(self):
+        from core.rate_limit import RateLimiter
+        self._limiter = RateLimiter(2.0)
+        self._user_id = self._password = None
+
+    @property
+    def call_interval(self):
+        return self._limiter.min_interval
+
+    def set_call_interval(self, seconds):
+        self._limiter.set_interval(seconds)
+
+    @property
+    def credentials(self):
+        return {'user_id': self._user_id, 'password': self._password} if self._user_id else None
+
+    def login(self, user_id, password):
+        self._user_id, self._password = user_id, password
+        return True
+
+    def logout(self):
+        pass
+
+    def is_logged_in(self):
+        return True
+
+    def search(self, **kwargs):
+        while _FakeService.stall:
+            time.sleep(1)  # 네트워크가 멈춘 흉내
+        self._limiter.wait()
+        return []

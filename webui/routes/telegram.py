@@ -95,7 +95,7 @@ def status():
                 'since': status['macro_start_time'],
             }
         status.update(macro_running=False, macro_info={}, macro_attempt=0,
-                      macro_start_time=None, has_logs=False)
+                      macro_start_time=None, has_logs=False, last_result=None, resumed_at=None)
     return jsonify(status)
 
 

@@ -15,6 +15,18 @@ object Bridge {
         ServerService.instance?.onMacroState(running, summary)
     }
 
+    /** 매크로 작업을 암호화해 저장 (프로세스가 죽어도 이어서 돌리려고) */
+    @JvmStatic
+    fun saveJob(json: String) {
+        appContext?.let { SecureStore.saveJob(it, json) }
+    }
+
+    /** 매크로가 정상적으로 끝났다: 되살릴 작업을 지운다 */
+    @JvmStatic
+    fun clearJob() {
+        appContext?.let { SecureStore.clearJob(it) }
+    }
+
     /** 예약 성공·결제·중단. kind: reserved / paid / pay_failed / stopped */
     @JvmStatic
     fun notifyEvent(kind: String, title: String, body: String) {

@@ -14,6 +14,12 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
@@ -37,6 +43,14 @@ class ServerService : Service() {
         private const val KEY_ACTIVE = "active"
         private const val KEY_SUMMARY = "summary"
 
+        // 헬스체크: 30초마다, 시작 뒤 90초는 기다린다 (파이썬이 뜨는 시간)
+        private const val HEALTH_FIRST_DELAY_S = 90L
+        private const val HEALTH_INTERVAL_S = 30L
+        /** 연속으로 이만큼 응답이 없으면(약 2분) 프로세스를 다시 띄운다 */
+        private const val HEALTH_MAX_FAILURES = 4
+        /** 매크로가 이 시간(초) 동안 한 번도 조회하지 못하면 멈춘 것으로 본다 */
+        private const val STALL_LIMIT_S = 180
+
         @Volatile
         var instance: ServerService? = null
             private set
@@ -53,6 +67,8 @@ class ServerService : Service() {
         }
     }
 
+    private var health: ScheduledExecutorService? = null
+    private var healthFailures = 0
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var macroRunning = false
@@ -71,8 +87,19 @@ class ServerService : Service() {
             stopSelf()
             return
         }
-        warnIfMacroWasLost()
-        startPythonServer()
+        val job = SecureStore.loadJob(this)
+        if (job != null) {
+            // 돌던 매크로가 있었다 (프로세스가 죽었거나 폰을 재부팅함): 이어서 돌린다
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply()
+            Notifications.showEvent(
+                this, "resumed", "🔄 예약 매크로를 다시 시작했어요",
+                "휴대폰이 앱을 정리했거나 재부팅돼서, 하던 매크로를 자동으로 이어서 돌려요."
+            )
+        } else {
+            warnIfMacroWasLost()
+        }
+        startPythonServer(job)
+        startHealthChecks()
     }
 
     /**
@@ -118,25 +145,74 @@ class ServerService : Service() {
     }
 
     override fun onDestroy() {
+        health?.shutdownNow()
         releaseLocks()
         instance = null
         super.onDestroy()
     }
 
-    private fun startPythonServer() {
+    private fun startPythonServer(job: String?) {
         if (!serverStarted.compareAndSet(false, true)) return
         val filesDir = filesDir.absolutePath
         val token = AppToken.get(this)
         thread(name = "python-server", isDaemon = true) {
             try {
                 if (!Python.isStarted()) Python.start(AndroidPlatform(applicationContext))
-                Python.getInstance().getModule("android_main")
-                    .callAttr("start", filesDir, PORT, token, BuildConfig.VERSION_NAME, BuildConfig.DEBUG)
+                val module = Python.getInstance().getModule("android_main")
+                // 자동 재개는 서버가 준비되길 기다렸다가 따로 돈다 (start 는 돌아오지 않는다)
+                if (job != null) module.callAttr("resume_job", job)
+                module.callAttr("start", filesDir, PORT, token, BuildConfig.VERSION_NAME, BuildConfig.DEBUG)
             } catch (e: Throwable) {
                 Log.e(TAG, "python server crashed", e)
                 serverStarted.set(false)
             }
         }
+    }
+
+    /**
+     * 헬스체크. 서버가 계속 응답하지 않거나 매크로가 오래 멈춰 있으면 프로세스를 다시 띄운다.
+     * 다시 뜨면 저장된 작업으로 자동 재개되므로, 사용자가 앱을 껐다 켤 필요가 없다.
+     */
+    private fun startHealthChecks() {
+        if (health != null) return
+        health = Executors.newSingleThreadScheduledExecutor().also {
+            it.scheduleWithFixedDelay(
+                ::checkHealth, HEALTH_FIRST_DELAY_S, HEALTH_INTERVAL_S, TimeUnit.SECONDS
+            )
+        }
+    }
+
+    private fun checkHealth() {
+        val status = try {
+            val conn = URL("http://127.0.0.1:$PORT/__health").openConnection() as HttpURLConnection
+            conn.connectTimeout = 3000
+            conn.readTimeout = 5000
+            conn.setRequestProperty("Cookie", "android_token=${AppToken.get(this)}")
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            conn.disconnect()
+            JSONObject(body)
+        } catch (e: Exception) {
+            null
+        }
+
+        if (status == null) {
+            healthFailures++
+            Log.w(TAG, "health check failed ($healthFailures/$HEALTH_MAX_FAILURES)")
+            if (healthFailures >= HEALTH_MAX_FAILURES) restartProcess("서버가 응답하지 않음")
+            return
+        }
+        healthFailures = 0
+        val stalled = status.optInt("stalled_seconds", 0)
+        if (status.optBoolean("macro_running") && stalled >= STALL_LIMIT_S) {
+            restartProcess("매크로가 ${stalled}초 동안 멈춤")
+        }
+    }
+
+    /** 프로세스를 끝낸다. START_STICKY 라 시스템이 곧 다시 띄우고, 저장된 작업이 이어진다. */
+    private fun restartProcess(reason: String) {
+        Log.w(TAG, "restarting process: $reason")
+        releaseLocks()
+        android.os.Process.killProcess(android.os.Process.myPid())
     }
 
     /** 파이썬이 부른다 (Bridge.onMacroState). 어느 스레드에서든 올 수 있다. */
@@ -218,8 +294,9 @@ class ServerService : Service() {
     }
 
     private fun shutdown() {
-        // 사용자가 직접 끈 것이므로 "멈췄어요" 알림을 띄우지 않게
+        // 사용자가 직접 끈 것이므로 "멈췄어요" 알림도, 자동 재개도 하지 않게
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().commit()
+        SecureStore.clearJob(this)
         releaseLocks()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
