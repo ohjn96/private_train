@@ -648,8 +648,6 @@
 
     {% else %}
     <!-- Telegram Settings Card (always visible) -->
-    {# TODO(pairing): 보안 담당이 GET /api/telegram/pairing (로그인 필요, 1회용 코드) 를 추가하면
-       여기에 코드를 보여주고 "봇에게 /start <코드> 를 보내세요" 안내를 붙인다. 지금 저장소엔 아직 없다. #}
     <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Header / Toggle -->
         <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
@@ -660,7 +658,7 @@
                 </div>
                 <div class="min-w-0">
                     <h3 class="text-base font-bold text-rail-ink">텔레그램 알림</h3>
-                    <p class="text-xs text-rail-muted">예약 성공 알림 및 원격 제어 (/stop, /status, /reserve)</p>
+                    <p class="text-xs text-rail-muted">예약 성공 알림 · 원격 제어 (/stop /status /reserve)</p>
                 </div>
             </div>
             <div class="flex items-center gap-3 flex-shrink-0">
@@ -693,7 +691,7 @@
                         </div>
                     </div>
                     <div>
-                        <label for="tgChatId" class="block text-xs font-medium text-rail-muted mb-1.5">Chat ID <span class="font-normal">(봇에 /start 보내면 자동 등록)</span></label>
+                        <label for="tgChatId" class="block text-xs font-medium text-rail-muted mb-1.5">Chat ID <span class="font-normal">(코드로 등록하면 자동으로 채워져요)</span></label>
                         <input type="text" id="tgChatId" placeholder="123456789"
                                class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
                     </div>
@@ -717,6 +715,18 @@
                     <span id="tgMessage" class="text-sm text-rail-muted basis-full mt-1"></span>
                 </div>
 
+                <!-- 채팅 등록: 봇에게 일회용 코드로 /start 를 보내면 그 채팅이 등록된다 -->
+                <div id="tgPairing" data-testid="tg-pairing" class="hidden rounded-2xl bg-rail-ground p-4 flex flex-col gap-2" aria-live="polite">
+                    <p class="text-sm font-semibold text-rail-ink">봇에게 아래 명령을 보내 주세요</p>
+                    <div class="flex items-center gap-2">
+                        <code id="tgPairingCommand" data-testid="tg-pairing-command"
+                              class="flex-1 min-w-0 truncate h-11 px-3 rounded-xl bg-white border border-rail-line font-mono text-[15px] font-semibold flex items-center select-all"></code>
+                        <button type="button" id="tgPairingCopy" onclick="copyPairingCommand()"
+                                class="h-11 px-4 rounded-xl border border-rail-line bg-white text-sm font-semibold text-rail-ink hover:border-rail-muted flex-shrink-0">복사</button>
+                    </div>
+                    <p id="tgPairingExpires" class="text-xs text-rail-muted"></p>
+                </div>
+
                 <!-- Help Section -->
                 <details class="mt-2">
                     <summary class="text-sm font-semibold text-rail-ink hover:text-ktx-primary cursor-pointer select-none">
@@ -729,7 +739,7 @@
                                 <li>텔레그램에서 <b class="text-rail-ink">@BotFather</b>를 검색하고 <code class="bg-white border border-rail-line px-1 rounded">/newbot</code> 명령어로 봇 생성</li>
                                 <li>발급받은 <b class="text-rail-ink">Bot Token</b>을 위 입력란에 붙여넣기</li>
                                 <li>"연결" 버튼 클릭</li>
-                                <li>생성한 봇의 대화창에서 <code class="bg-white border border-rail-line px-1 rounded">/start</code> 전송 → Chat ID 자동 등록</li>
+                                <li>생성한 봇의 대화창에 위에 나온 <code class="bg-white border border-rail-line px-1 rounded">/start 코드</code> 전송 → 이 채팅이 등록됨 (코드는 10분 동안 한 번만 쓸 수 있어요)</li>
                                 <li>"자동 연결" 체크 시 다음 접속부터 자동으로 연결됩니다</li>
                             </ol>
                         </div>
@@ -2245,6 +2255,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 renderRoute();
                 updateRunbarText();
+                // 같은 응답으로 설정 › 텔레그램 상태도 갱신 (채팅이 등록되면 '연결됨' 으로)
+                if (typeof updateTelegramUI === 'function' && document.getElementById('tgStatusDot')) updateTelegramUI(data);
             })
             .catch(() => {});
     }
@@ -2485,9 +2497,24 @@ function updateTelegramUI(status) {
 
     if (!dot) return;
 
+    // 봇은 붙었는데 채팅이 아직 없으면 등록 코드를 보여준다
+    if ((status.connected || status.configured) && !status.chat_id) {
+        if (!pairingShown()) refreshPairing();
+    } else {
+        if (pairingShown() && status.chat_id) {
+            const msgEl = document.getElementById('tgMessage');
+            if (msgEl) {
+                msgEl.textContent = '채팅이 등록됐어요. 이제 알림을 받을 수 있어요.';
+                msgEl.className = 'text-sm text-rail-ok basis-full mt-1';
+            }
+        }
+        hidePairing();
+    }
+
     if (status.connected) {
         dot.className = 'w-2.5 h-2.5 rounded-full bg-rail-ok animate-pulse';
-        text.textContent = status.chat_id ? `연결됨 (${status.chat_id})` : '연결됨 (Chat ID 대기 중)';
+        text.textContent = status.chat_id ? '연결됨' : '등록 대기';
+        text.title = status.chat_id ? `Chat ID ${status.chat_id}` : '봇에게 /start 코드를 보내면 연결돼요';
         text.className = 'text-sm text-rail-ok font-medium';
         testBtn?.classList.remove('hidden');
         disconnectBtn?.classList.remove('hidden');
@@ -2507,6 +2534,7 @@ function updateTelegramUI(status) {
         testBtn?.classList.remove('hidden');
         disconnectBtn?.classList.remove('hidden');
     } else {
+        hidePairing();
         dot.className = 'w-2.5 h-2.5 rounded-full bg-[#D6D0C8]';
         text.textContent = '미연결';
         text.className = 'text-sm text-rail-muted';
@@ -2551,6 +2579,7 @@ async function connectTelegram(silent = false) {
 
         if (data.success) {
             saveTelegramSettings();
+            if (data.pairing) showPairing(data.pairing);
             checkTelegramStatus();
         }
     } catch(e) {
@@ -2574,6 +2603,89 @@ async function testTelegram() {
     } catch(e) {
         msgEl.textContent = '전송 오류가 발생했습니다.';
         msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+    }
+}
+
+// ─── 텔레그램 채팅 등록 코드 ("/start ABCD2345") ─────────────
+let pairingTimer = null;
+let pairingDeadline = 0;
+
+function pairingShown() {
+    const box = document.getElementById('tgPairing');
+    return !!box && !box.classList.contains('hidden');
+}
+
+function hidePairing() {
+    document.getElementById('tgPairing')?.classList.add('hidden');
+    if (pairingTimer) { clearInterval(pairingTimer); pairingTimer = null; }
+}
+
+function showPairing(p) {
+    const box = document.getElementById('tgPairing');
+    if (!box || !p || !p.command) return;
+    document.getElementById('tgPairingCommand').textContent = p.command;
+    pairingDeadline = p.expires_in ? Date.now() + p.expires_in * 1000 : 0;
+    box.classList.remove('hidden');
+    renderPairingExpiry();
+    if (!pairingTimer) {
+        // 카드가 열려 있는 동안만 서버에 물어 본다 (등록되면 '연결됨' 으로)
+        pairingTimer = setInterval(() => {
+            renderPairingExpiry();
+            const body = document.getElementById('tgBody');
+            const visible = body && !body.classList.contains('hidden') && location.hash.startsWith('#/settings');
+            if (visible || (pairingDeadline && Date.now() > pairingDeadline)) refreshPairing();
+        }, 4000);
+    }
+}
+
+function renderPairingExpiry() {
+    const el = document.getElementById('tgPairingExpires');
+    if (!el) return;
+    if (!pairingDeadline) { el.textContent = '한 번만 쓸 수 있는 코드예요.'; return; }
+    const left = pairingDeadline - Date.now();
+    el.textContent = left > 0
+        ? `${Math.ceil(left / 60000)}분 안에 보내 주세요 · 한 번만 쓸 수 있어요`
+        : '코드가 만료돼서 새 코드를 받고 있어요...';
+}
+
+async function refreshPairing() {
+    try {
+        const resp = await fetch('/api/telegram/pairing');
+        if (!resp.ok) { hidePairing(); return; }
+        const data = await resp.json();
+        if (data.paired) {
+            hidePairing();
+            const msgEl = document.getElementById('tgMessage');
+            if (msgEl) {
+                msgEl.textContent = '채팅이 등록됐어요. 이제 알림을 받을 수 있어요.';
+                msgEl.className = 'text-sm text-rail-ok basis-full mt-1';
+            }
+            checkTelegramStatus();
+        } else if (data.success && data.command) {
+            showPairing(data);
+        } else {
+            hidePairing();
+        }
+    } catch (e) {}
+}
+
+async function copyPairingCommand() {
+    const text = document.getElementById('tgPairingCommand')?.textContent || '';
+    const btn = document.getElementById('tgPairingCopy');
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch (e) {
+        // http(비보안) 주소에서는 clipboard API 가 없다: 글자를 골라 두어 길게 눌러 복사하게
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById('tgPairingCommand'));
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        try { document.execCommand('copy'); } catch (e2) {}
+    }
+    if (btn) {
+        btn.textContent = '복사했어요';
+        setTimeout(() => { btn.textContent = '복사'; }, 1500);
     }
 }
 
