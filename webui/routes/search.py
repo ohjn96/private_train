@@ -22,6 +22,15 @@ def get_service(provider: str):
     return ServiceManager.get_service(provider)
 
 
+def korean_date_label(iso_date: str) -> str:
+    """'2026-10-03' -> '10월 3일 (토)'. 형식이 다르면 빈 문자열."""
+    try:
+        d = datetime.strptime(iso_date or '', '%Y-%m-%d')
+    except ValueError:
+        return ''
+    return f"{d.month}월 {d.day}일 ({'월화수목금토일'[d.weekday()]})"
+
+
 def login_required(f):
     """Decorator to require login."""
     @wraps(f)
@@ -294,6 +303,7 @@ def index():
                            provider=provider,
                            stations=stations,
                            form_data=form_data,
+                           date_label=korean_date_label(form_data.get('date', '')),
                            default_date=default_date,
                            trains=trains,
                            error_message=error_message)

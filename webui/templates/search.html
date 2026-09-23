@@ -3,7 +3,7 @@
 {% block title %}열차 검색 - KTX/SRT 예약{% endblock %}
 
 {% block content %}
-<div class="space-y-4 sm:space-y-6">
+<div class="flex flex-col gap-4 sm:gap-5">
     <!-- 예약 성공 (로그 스트림에서 성공이 오면 보인다) -->
     <section id="successBanner" data-testid="success-banner" class="hidden bg-white border border-rail-line rounded-[20px] p-5" role="status" aria-live="polite">
         <div class="flex items-start gap-3">
@@ -65,29 +65,51 @@
                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
             </button>
         </div>
-        <p id="lastResultNote" class="hidden mt-4 p-3.5 rounded-2xl text-[13px] leading-relaxed"></p>
+        <!-- 결제 안내: 성공 배너와 같은 모양 (아이콘 + 굵은 제목 + 안내) -->
+        <div id="lastResultNote" class="hidden mt-4 sm:ml-14 flex gap-3 items-start p-3.5 rounded-2xl">
+            <span id="lastResultNoteIcon" class="flex-shrink-0 mt-0.5" aria-hidden="true"></span>
+            <div class="min-w-0">
+                <p id="lastResultNoteTitle" class="text-[15px] font-bold"></p>
+                <p id="lastResultNoteBody" class="text-[13px] leading-relaxed [word-break:keep-all]"></p>
+            </div>
+        </div>
     </section>
 
-    <!-- 매크로 실행 중 (상태 폴링이 채운다) -->
-    <section id="macroHero" data-testid="macro-hero" class="hidden bg-rail-ink text-white rounded-[22px] p-5 space-y-4" aria-live="polite">
+    <!-- 매크로 실행 중 (상태 폴링이 채운다). PC 에선 왼쪽 카드 + 오른쪽 대상 열차·최근 기록 -->
+    <div id="macroHero" data-testid="macro-hero" class="hidden grid grid-cols-1 lg:grid-cols-[440px_minmax(0,1fr)] gap-4 lg:gap-5" aria-live="polite">
+    <section class="bg-rail-ink text-white rounded-[22px] p-5 lg:p-6 flex flex-col gap-4">
         <div class="flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full bg-[#4ADE80] shadow-[0_0_0_4px_rgba(74,222,128,0.25)] animate-pulse"></span>
             <span class="text-sm font-semibold">좌석 찾는 중</span>
             <span id="heroElapsed" class="ml-auto text-[13px] text-[#C9C2B8] tabular"></span>
         </div>
         <div class="flex items-end gap-2.5">
-            <span id="heroAttempt" class="text-[56px] leading-none font-bold tracking-tight tabular">0</span>
+            <span id="heroAttempt" class="text-[56px] lg:text-[64px] leading-none font-bold tracking-tight tabular">0</span>
             <span class="text-[15px] text-[#C9C2B8] pb-2">번째 조회</span>
         </div>
-        <p id="heroCurrent" class="text-sm text-[#E8E2D9] min-h-[1.25rem]"></p>
+        <p id="heroCurrent" class="text-sm lg:text-[15px] text-[#E8E2D9] min-h-[1.25rem]"></p>
         <p id="heroResumed" class="hidden text-[13px] text-[#FDE68A]"></p>
         <p class="text-[13px] leading-relaxed text-[#C9C2B8]">앱을 닫거나 화면을 꺼도 계속 찾아요. 좌석을 잡으면 알림으로 알려드려요.</p>
+        <div class="hidden lg:block flex-1"></div>
         <button type="button" id="heroStopBtn" data-testid="hero-stop"
-                class="w-full h-12 rounded-2xl bg-white text-rail-ink font-bold flex items-center justify-center gap-2">
+                class="w-full lg:w-40 h-12 rounded-2xl bg-white text-rail-ink font-bold flex items-center justify-center gap-2">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
             중단
         </button>
     </section>
+    <div class="hidden lg:flex flex-col gap-3 min-w-0">
+        <section class="bg-white border border-rail-line rounded-2xl">
+            <p id="heroTargetsTitle" class="px-[18px] pt-3 pb-1 text-[13px] font-semibold text-rail-muted">대상 열차</p>
+            <ul id="heroTargets" class="divide-y divide-[#EFEBE5] mx-[18px]"></ul>
+        </section>
+        <section class="flex-1 min-h-[140px] bg-white border border-rail-line rounded-2xl px-[18px] py-3 flex flex-col gap-1 overflow-hidden">
+            <p class="text-[13px] font-semibold text-rail-muted pb-0.5">최근 기록</p>
+            <div id="heroRecentLog" class="log-container flex flex-col gap-1 text-xs leading-relaxed text-[#4A443E] min-w-0">
+                <div data-empty class="text-rail-muted">기록을 기다리는 중...</div>
+            </div>
+        </section>
+    </div>
+    </div>
 
     <!-- Search Form Card -->
     <section class="bg-white border border-rail-line rounded-[20px] px-4 sm:px-6 pt-5 pb-4 sm:pb-6">
@@ -178,8 +200,8 @@
 
     <!-- Error Message -->
     {% if error_message %}
-    <div class="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <p class="text-sm text-red-600">{{ error_message }}</p>
+    <div role="alert" class="p-4 bg-rail-accentSoft border border-ktx-primary/40 rounded-2xl">
+        <p class="text-sm text-ktx-secondary">{{ error_message }}</p>
     </div>
     {% endif %}
 
@@ -189,40 +211,40 @@
         <div class="px-1 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
             <div>
                 <h2 class="text-lg font-bold tracking-tight">{{ form_data.dep }} → {{ form_data.arr }}</h2>
-                <p class="text-[13px] text-rail-muted">{{ form_data.date }} · {{ form_data.time[:2] }}시 이후 · 검색 결과 {{ trains|length }}건</p>
+                <p class="text-[13px] text-rail-muted tabular">{{ date_label or form_data.date }} · {{ form_data.time[:2] }}시 이후 · {{ trains|length }}편</p>
             </div>
 
-            <!-- 인원 / 좌석 / 호출 간격: 작은 알약 모양 선택 -->
-            <div class="flex flex-wrap gap-2">
-                <label class="h-10 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]">
+            <!-- 인원 / 좌석 / 호출 간격: 작은 알약 모양 선택 (390px 폰에서도 한 줄) -->
+            <div class="flex flex-wrap gap-1.5 sm:gap-2">
+                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0">
                     <span class="text-rail-muted whitespace-nowrap">인원</span>
                     <select id="passengerCount" data-testid="passenger-count"
-                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm"
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer"
                             onchange="updatePassengerModeVisibility()">
                         <option value="1" selected>1명</option>
                         <option value="2">2명</option>
                     </select>
                 </label>
-                <label class="h-10 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]">
+                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0">
                     <span class="text-rail-muted whitespace-nowrap">좌석</span>
                     <select id="seatOption" data-testid="seat-option"
-                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm">
-                        <option value="GENERAL_FIRST">일반실 우선</option>
-                        <option value="GENERAL_ONLY">일반실만</option>
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer">
+                        <option value="GENERAL_FIRST">일반 우선</option>
+                        <option value="GENERAL_ONLY">일반만</option>
                         <option value="SPECIAL_FIRST">특실 우선</option>
                         <option value="SPECIAL_ONLY">특실만</option>
                     </select>
                 </label>
-                <label class="h-10 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]"
-                       title="코레일에 조회를 보내는 간격. 짧을수록 빨리 잡지만 차단 위험이 커집니다.">
+                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0"
+                       title="코레일에 조회를 보내는 간격. 짧을수록(1초) 빨리 잡지만 차단 위험이 커지고, 길수록(3초) 안전합니다.">
                     <span class="text-rail-muted whitespace-nowrap">간격</span>
                     <select id="callInterval" data-testid="call-interval"
-                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm">
-                        <option value="1">1초 · 빠름</option>
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer">
+                        <option value="1">1초</option>
                         <option value="1.5">1.5초</option>
                         <option value="2" selected>2초</option>
                         <option value="2.5">2.5초</option>
-                        <option value="3">3초 · 안전</option>
+                        <option value="3">3초</option>
                     </select>
                 </label>
                 <select id="passengerMode" data-testid="passenger-mode"
@@ -237,75 +259,56 @@
     <div class="hidden lg:block bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Train Table (Desktop) -->
         <div class="hidden lg:block overflow-x-auto max-h-[600px] overflow-y-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50 sticky top-0 z-10">
+            <table class="min-w-full">
+                <thead class="bg-[#FAF8F5] sticky top-0 z-10 border-b border-[#EFEBE5]">
                     <tr>
-                        <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">열차</th>
-                        <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">시간</th>
-                        <th class="px-6 py-4 text-center text-sm font-semibold text-gray-700">특실</th>
-                        <th class="px-6 py-4 text-center text-sm font-semibold text-gray-700">일반실</th>
+                        <th class="px-6 py-3 text-left text-[13px] font-semibold text-rail-muted">열차</th>
+                        <th class="px-6 py-3 text-left text-[13px] font-semibold text-rail-muted">시간</th>
+                        <th class="px-6 py-3 text-center text-[13px] font-semibold text-rail-muted">특실</th>
+                        <th class="px-6 py-3 text-center text-[13px] font-semibold text-rail-muted">일반실</th>
                     </tr>
                 </thead>
-                <tbody id="trainTableBody" class="bg-white divide-y divide-gray-200">
+                <tbody id="trainTableBody" class="bg-white divide-y divide-[#EFEBE5]">
                     {% for train in trains %}
-                    <tr class="train-row cursor-pointer transition-all duration-150 hover:bg-gray-50"
+                    <tr class="train-row cursor-pointer transition-colors duration-150 hover:bg-[#FAF8F5]"
                         data-index="{{ train.index }}"
                         data-time="{{ train.dep_time }}"
                         data-testid="train-row-{{ train.index }}"
                         onclick="toggleTrainSelection(this)">
-                        <!-- Train Info with Type Badge -->
-                        <td class="px-6 py-5">
-                            <div class="flex items-center gap-3">
-                                {% if 'KTX' in train.train_name %}
-                                <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-red-100 text-red-700">KTX</span>
-                                {% else %}
-                                <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-gray-100 text-gray-600">일반</span>
-                                {% endif %}
-                                <div>
-                                    <div class="font-semibold text-gray-900">{{ train.train_name }}</div>
-                                    <div class="text-xs text-gray-500">#{{ train.train_number }}</div>
+                        <!-- 열차 이름 (KTX-산천 처럼 이름에 종류가 들어 있어 따로 뱃지는 달지 않는다) -->
+                        <td class="px-6 py-4">
+                            <div class="text-[15px] font-semibold text-rail-ink">{{ train.train_name }}</div>
+                            <div class="text-xs text-rail-muted tabular">#{{ train.train_number }}</div>
+                        </td>
+                        <!-- 출발 ─ 소요 ─ 도착 -->
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-5 tabular">
+                                <div class="text-center">
+                                    <div class="text-xl font-bold tracking-tight text-rail-ink">{{ train.dep_time_formatted }}</div>
+                                    <div class="text-xs text-rail-muted">{{ train.dep_station }}</div>
+                                </div>
+                                <div class="w-20 flex flex-col items-center gap-0.5">
+                                    <span class="text-xs text-rail-muted whitespace-nowrap">{{ train.duration_formatted }}</span>
+                                    <span class="w-full h-px bg-[#D6D0C8]"></span>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-xl font-bold tracking-tight text-rail-ink">{{ train.arr_time_formatted }}</div>
+                                    <div class="text-xs text-rail-muted">{{ train.arr_station }}</div>
                                 </div>
                             </div>
                         </td>
-                        <!-- Time Display with Duration -->
-                        <td class="px-6 py-5">
-                            <div class="flex items-center gap-4">
-                                <div class="text-center">
-                                    <div class="text-xl font-bold text-gray-900">{{ train.dep_time_formatted }}</div>
-                                    <div class="text-xs text-gray-500">{{ train.dep_station }}</div>
-                                </div>
-                                <div class="flex flex-col items-center text-gray-400 px-2">
-                                    <span class="text-xs whitespace-nowrap">{{ train.duration_formatted }}</span>
-                                    <span class="text-lg">→</span>
-                                </div>
-                                <div class="text-center">
-                                    <div class="text-xl font-bold text-gray-900">{{ train.arr_time_formatted }}</div>
-                                    <div class="text-xs text-gray-500">{{ train.arr_station }}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <!-- Special Seat Status -->
-                        <td class="px-6 py-5 text-center">
+                        <td class="px-6 py-4 text-center">
                             {% if train.special_seat_available %}
-                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-okSoft text-rail-ok">
-                                예약가능
-                            </span>
+                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-semibold bg-rail-okSoft text-rail-ok">있음</span>
                             {% else %}
-                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-offSoft text-rail-off">
-                                매진
-                            </span>
+                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-medium bg-rail-offSoft text-rail-off">매진</span>
                             {% endif %}
                         </td>
-                        <!-- General Seat Status -->
-                        <td class="px-6 py-5 text-center">
+                        <td class="px-6 py-4 text-center">
                             {% if train.general_seat_available %}
-                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-okSoft text-rail-ok">
-                                예약가능
-                            </span>
+                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-semibold bg-rail-okSoft text-rail-ok">있음</span>
                             {% else %}
-                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-offSoft text-rail-off">
-                                매진
-                            </span>
+                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-medium bg-rail-offSoft text-rail-off">매진</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -390,47 +393,45 @@
     {% if server_mode %}
     <!-- Web Push Card (서버 모드) -->
     <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden" data-testid="push-card">
-        <div class="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
              onclick="document.getElementById('pushBody').classList.toggle('hidden'); document.getElementById('pushChevron').classList.toggle('rotate-180');">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-                    </svg>
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-rail-ink" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
                 </div>
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-800">폰 알림</h3>
-                    <p class="text-xs text-gray-500">앱을 닫아도 예약 성공·결제·중단을 알려줍니다</p>
+                <div class="min-w-0">
+                    <h3 class="text-base font-bold text-rail-ink">폰 알림</h3>
+                    <p class="text-xs text-rail-muted">앱을 닫아도 예약 성공·결제·중단을 알려줍니다</p>
                 </div>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 flex-shrink-0">
                 <div class="flex items-center gap-2">
-                    <span id="pushStatusDot" class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
-                    <span id="pushStatusText" class="text-sm text-gray-500">확인 중...</span>
+                    <span id="pushStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="pushStatusText" class="text-sm text-rail-muted">확인 중...</span>
                 </div>
-                <svg id="pushChevron" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg id="pushChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
             </div>
         </div>
-        <div id="pushBody" class="hidden border-t">
-            <div class="p-6 space-y-4">
-                <p id="pushHint" class="hidden text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"></p>
-                <div class="flex flex-wrap items-center gap-3">
+        <div id="pushBody" class="hidden border-t border-rail-line">
+            <div class="p-4 sm:p-5 space-y-4">
+                <p id="pushHint" class="hidden text-sm text-[#7A4200] bg-[#FDF1DD] rounded-xl px-3 py-2"></p>
+                <div class="flex flex-wrap items-center gap-2">
                     <button type="button" id="pushEnableBtn" onclick="enablePush()"
-                            class="hidden px-5 py-2 rounded-lg bg-ktx-primary text-white text-sm font-medium hover:bg-ktx-secondary transition-colors">
+                            class="hidden h-11 px-5 rounded-xl bg-ktx-primary text-white text-sm font-semibold hover:bg-ktx-secondary transition-colors">
                         이 기기에서 알림 켜기
                     </button>
                     <button type="button" id="pushTestBtn" onclick="testPush()"
-                            class="hidden px-5 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition-colors">
+                            class="hidden h-11 px-5 rounded-xl border border-rail-line bg-white text-rail-ink text-sm font-semibold hover:border-rail-muted transition-colors">
                         테스트 알림
                     </button>
                     <button type="button" id="pushDisableBtn" onclick="disablePush()"
-                            class="hidden px-5 py-2 rounded-lg bg-red-100 text-red-600 text-sm font-medium hover:bg-red-200 transition-colors">
+                            class="hidden h-11 px-5 rounded-xl border border-rail-line bg-white text-ktx-primary text-sm font-semibold hover:border-ktx-primary transition-colors">
                         이 기기 알림 끄기
                     </button>
                 </div>
-                <p class="text-xs text-gray-400">
+                <p class="text-xs leading-relaxed text-rail-muted">
                     iPhone: Safari 공유 버튼 → <b>홈 화면에 추가</b> → 홈 화면 아이콘으로 열어서 켜세요 (iOS 16.4 이상).
                     Android: Chrome 에서 바로 켤 수 있습니다.
                 </p>
@@ -442,42 +443,40 @@
     <!-- Telegram Settings Card (always visible) -->
     <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Header / Toggle -->
-        <div class="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
              onclick="document.getElementById('tgBody').classList.toggle('hidden'); document.getElementById('tgChevron').classList.toggle('rotate-180');">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.03-1.97 1.25-5.55 3.67-.53.36-1.01.54-1.43.53-.47-.01-1.38-.27-2.05-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.74 3.99-1.74 6.65-2.89 7.99-3.45 3.8-1.58 4.59-1.86 5.1-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/>
-                    </svg>
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-rail-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4L3 11l6 2.5M21 4l-3.5 16-8.5-6.5M21 4L9 13.5v5.5l3-3"/></svg>
                 </div>
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-800">텔레그램 알림</h3>
-                    <p class="text-xs text-gray-500">예약 성공 알림 및 원격 제어 (/stop, /status, /reserve)</p>
+                <div class="min-w-0">
+                    <h3 class="text-base font-bold text-rail-ink">텔레그램 알림</h3>
+                    <p class="text-xs text-rail-muted">예약 성공 알림 및 원격 제어 (/stop, /status, /reserve)</p>
                 </div>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 flex-shrink-0">
                 <div id="tgStatus" class="flex items-center gap-2">
-                    <span id="tgStatusDot" class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
-                    <span id="tgStatusText" class="text-sm text-gray-500">미연결</span>
+                    <span id="tgStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="tgStatusText" class="text-sm text-rail-muted">미연결</span>
                 </div>
-                <svg id="tgChevron" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg id="tgChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
             </div>
         </div>
 
         <!-- Body (collapsible) -->
-        <div id="tgBody" class="hidden border-t">
-            <div class="p-6 space-y-4">
+        <div id="tgBody" class="hidden border-t border-rail-line">
+            <div class="p-4 sm:p-5 space-y-4">
                 <!-- Token + Chat ID inputs -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">Bot Token</label>
+                        <label for="tgBotToken" class="block text-xs font-medium text-rail-muted mb-1.5">Bot Token</label>
                         <div class="relative">
                             <input type="password" id="tgBotToken" placeholder="123456:ABC-DEF..."
-                                   class="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all text-sm font-mono">
-                            <button type="button" onclick="toggleTokenVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                                <svg id="tgEyeIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                   class="w-full h-11 pl-4 pr-11 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
+                            <button type="button" onclick="toggleTokenVisibility()" aria-label="토큰 보기" class="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-rail-muted hover:text-rail-ink">
+                                <svg id="tgEyeIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                                 </svg>
@@ -485,69 +484,69 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">Chat ID <span class="text-gray-400 normal-case font-normal">(봇에 /start 보내면 자동 등록)</span></label>
+                        <label for="tgChatId" class="block text-xs font-medium text-rail-muted mb-1.5">Chat ID <span class="font-normal">(봇에 /start 보내면 자동 등록)</span></label>
                         <input type="text" id="tgChatId" placeholder="123456789"
-                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all text-sm font-mono">
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
                     </div>
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="flex flex-wrap items-center gap-3">
+                <div class="flex flex-wrap items-center gap-2">
                     <button type="button" id="tgConnectBtn" onclick="connectTelegram()"
-                            class="px-5 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors flex items-center gap-2">
+                            class="h-11 px-5 rounded-xl bg-ktx-primary text-white text-sm font-semibold hover:bg-ktx-secondary transition-colors flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                         연결
                     </button>
-                    <button type="button" id="tgTestBtn" onclick="testTelegram()" class="hidden px-5 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition-colors flex items-center gap-2">
+                    <button type="button" id="tgTestBtn" onclick="testTelegram()" class="hidden h-11 px-5 rounded-xl border border-rail-line bg-white text-rail-ink text-sm font-semibold hover:border-rail-muted transition-colors flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                         테스트 전송
                     </button>
-                    <button type="button" id="tgDisconnectBtn" onclick="disconnectTelegram()" class="hidden px-5 py-2 rounded-lg bg-red-100 text-red-600 text-sm font-medium hover:bg-red-200 transition-colors flex items-center gap-2">
+                    <button type="button" id="tgDisconnectBtn" onclick="disconnectTelegram()" class="hidden h-11 px-5 rounded-xl border border-rail-line bg-white text-ktx-primary text-sm font-semibold hover:border-ktx-primary transition-colors flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
                         연결 해제
                     </button>
-                    <span id="tgMessage" class="text-sm text-gray-500 basis-full mt-1"></span>
+                    <span id="tgMessage" class="text-sm text-rail-muted basis-full mt-1"></span>
                 </div>
 
                 <!-- Help Section -->
                 <details class="mt-2">
-                    <summary class="text-sm text-blue-500 hover:text-blue-700 cursor-pointer select-none">
-                        📖 설정 방법 및 명령어 안내
+                    <summary class="text-sm font-semibold text-rail-ink hover:text-ktx-primary cursor-pointer select-none">
+                        설정 방법 및 명령어 안내
                     </summary>
-                    <div class="mt-3 p-4 bg-blue-50 rounded-lg text-sm text-gray-700 space-y-3">
+                    <div class="mt-3 p-4 bg-rail-ground rounded-2xl text-sm text-rail-ink space-y-4">
                         <div>
-                            <p class="font-semibold text-blue-800 mb-2">📋 설정 방법</p>
-                            <ol class="list-decimal list-inside space-y-1 text-gray-600">
-                                <li>텔레그램에서 <b>@BotFather</b>를 검색하고 <code class="bg-blue-100 px-1 rounded">/newbot</code> 명령어로 봇 생성</li>
-                                <li>발급받은 <b>Bot Token</b>을 위 입력란에 붙여넣기</li>
+                            <p class="font-semibold mb-2">설정 방법</p>
+                            <ol class="list-decimal list-inside space-y-1 text-rail-muted">
+                                <li>텔레그램에서 <b class="text-rail-ink">@BotFather</b>를 검색하고 <code class="bg-white border border-rail-line px-1 rounded">/newbot</code> 명령어로 봇 생성</li>
+                                <li>발급받은 <b class="text-rail-ink">Bot Token</b>을 위 입력란에 붙여넣기</li>
                                 <li>"연결" 버튼 클릭</li>
-                                <li>생성한 봇의 대화창에서 <code class="bg-blue-100 px-1 rounded">/start</code> 전송 → Chat ID 자동 등록</li>
+                                <li>생성한 봇의 대화창에서 <code class="bg-white border border-rail-line px-1 rounded">/start</code> 전송 → Chat ID 자동 등록</li>
                                 <li>"자동 연결" 체크 시 다음 접속부터 자동으로 연결됩니다</li>
                             </ol>
                         </div>
                         <div>
-                            <p class="font-semibold text-blue-800 mb-2">🎮 봇 명령어</p>
-                            <div class="bg-white rounded-lg overflow-hidden border border-blue-200">
+                            <p class="font-semibold mb-2">봇 명령어</p>
+                            <div class="bg-white rounded-xl overflow-hidden border border-rail-line">
                                 <table class="w-full text-sm">
-                                    <tbody class="divide-y divide-blue-100">
-                                        <tr><td class="px-3 py-2 font-mono text-blue-700 font-semibold">/start</td><td class="px-3 py-2 text-gray-600">봇 연결 및 Chat ID 자동 등록</td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-blue-700 font-semibold">/reserve</td><td class="px-3 py-2 text-gray-600">텔레그램에서 열차 검색 및 예약 시작<br><span class="text-xs text-gray-400">예: /reserve 수서 부산 2026-03-01 06:00</span></td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-blue-700 font-semibold">/stop</td><td class="px-3 py-2 text-gray-600">실행 중인 매크로 원격 중단</td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-blue-700 font-semibold">/restart</td><td class="px-3 py-2 text-gray-600">최신 데이터로 매크로 재시작</td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-blue-700 font-semibold">/status</td><td class="px-3 py-2 text-gray-600">현재 매크로 상태 상세 확인</td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-blue-700 font-semibold">/trains</td><td class="px-3 py-2 text-gray-600">마지막 검색된 열차 목록 보기</td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-blue-700 font-semibold">/chatid</td><td class="px-3 py-2 text-gray-600">현재 Chat ID 확인</td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-blue-700 font-semibold">/help</td><td class="px-3 py-2 text-gray-600">명령어 목록 표시</td></tr>
+                                    <tbody class="divide-y divide-[#EFEBE5]">
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/start</td><td class="px-3 py-2 text-rail-muted">봇 연결 및 Chat ID 자동 등록</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/reserve</td><td class="px-3 py-2 text-rail-muted">텔레그램에서 열차 검색 및 예약 시작<br><span class="text-xs">예: /reserve 수서 부산 2026-03-01 06:00</span></td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/stop</td><td class="px-3 py-2 text-rail-muted">실행 중인 매크로 원격 중단</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/restart</td><td class="px-3 py-2 text-rail-muted">최신 데이터로 매크로 재시작</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/status</td><td class="px-3 py-2 text-rail-muted">현재 매크로 상태 상세 확인</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/trains</td><td class="px-3 py-2 text-rail-muted">마지막 검색된 열차 목록 보기</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/chatid</td><td class="px-3 py-2 text-rail-muted">현재 Chat ID 확인</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/help</td><td class="px-3 py-2 text-rail-muted">명령어 목록 표시</td></tr>
                                     </tbody>
                                 </table>
                             </div>
                         </div>
                         <div>
-                            <p class="font-semibold text-blue-800 mb-2">💡 /reserve 사용 예시</p>
-                            <div class="bg-gray-800 text-green-400 rounded-lg p-3 font-mono text-xs space-y-1">
+                            <p class="font-semibold mb-2">/reserve 사용 예시</p>
+                            <div class="bg-rail-ink text-[#E8E2D9] rounded-xl p-3 font-mono text-xs space-y-1">
                                 <p>/reserve 수서 부산 2026-03-01 06:00</p>
-                                <p class="text-gray-500">→ 열차 목록이 표시되면 번호를 선택</p>
-                                <p class="text-gray-500">→ 예: "1,3,5" 입력 시 해당 열차 예약 시작</p>
+                                <p class="text-[#8A8279]">→ 열차 목록이 표시되면 번호를 선택</p>
+                                <p class="text-[#8A8279]">→ 예: "1,3,5" 입력 시 해당 열차 예약 시작</p>
                             </div>
                         </div>
                     </div>
@@ -561,65 +560,63 @@
     <!-- Card Auto-Payment Settings Card (always visible) -->
     <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Header / Toggle -->
-        <div class="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
              onclick="document.getElementById('cardBody').classList.toggle('hidden'); document.getElementById('cardChevron').classList.toggle('rotate-180');">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                    </svg>
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-rail-ink" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/><path d="M6 15h3"/></svg>
                 </div>
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-800">카드 자동결제</h3>
-                    <p class="text-xs text-gray-500">예매 성공 시 등록된 카드로 즉시 결제</p>
+                <div class="min-w-0">
+                    <h3 class="text-base font-bold text-rail-ink">카드 자동결제</h3>
+                    <p class="text-xs text-rail-muted">예매 성공 시 등록된 카드로 즉시 결제</p>
                 </div>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 flex-shrink-0">
                 <div id="cardStatus" class="flex items-center gap-2">
-                    <span id="cardStatusDot" class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
-                    <span id="cardStatusText" class="text-sm text-gray-500">미등록</span>
+                    <span id="cardStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="cardStatusText" class="text-sm text-rail-muted">미등록</span>
                 </div>
-                <svg id="cardChevron" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg id="cardChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
             </div>
         </div>
 
         <!-- Body (collapsible) -->
-        <div id="cardBody" class="hidden border-t">
-            <div class="p-6 space-y-4">
+        <div id="cardBody" class="hidden border-t border-rail-line">
+            <div class="p-4 sm:p-5 space-y-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">카드 번호</label>
+                        <label for="cardNumber" class="block text-xs font-medium text-rail-muted mb-1.5">카드 번호</label>
                         <input type="text" id="cardNumber" placeholder="1234567890123456" inputmode="numeric" autocomplete="off"
-                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm font-mono">
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">유효기간 (MM/YY)</label>
+                        <label for="cardExpire" class="block text-xs font-medium text-rail-muted mb-1.5">유효기간 (MM/YY)</label>
                         <input type="text" id="cardExpire" placeholder="09/30" maxlength="5" inputmode="numeric" autocomplete="off"
                                oninput="formatCardExpireInput(this)"
-                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm font-mono">
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">비밀번호 앞 2자리</label>
+                        <label for="cardPassword" class="block text-xs font-medium text-rail-muted mb-1.5">비밀번호 앞 2자리</label>
                         <input type="password" id="cardPassword" placeholder="12" maxlength="2" inputmode="numeric" autocomplete="off"
-                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm font-mono">
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">생년월일(YYMMDD) / 사업자번호</label>
+                        <label for="cardValidationNumber" class="block text-xs font-medium text-rail-muted mb-1.5">생년월일(YYMMDD) / 사업자번호</label>
                         <input type="text" id="cardValidationNumber" placeholder="981204" inputmode="numeric" autocomplete="off"
-                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm font-mono">
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">카드 타입</label>
-                        <select id="cardType" class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm">
+                        <label for="cardType" class="block text-xs font-medium text-rail-muted mb-1.5">카드 타입</label>
+                        <select id="cardType" class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm">
                             <option value="J">개인</option>
                             <option value="S">법인</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">할부</label>
-                        <select id="cardInstallment" class="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all text-sm">
+                        <label for="cardInstallment" class="block text-xs font-medium text-rail-muted mb-1.5">할부</label>
+                        <select id="cardInstallment" class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm">
                             <option value="0">일시불</option>
                             {% for m in [2,3,4,5,6,7,8,9,10,11,12,24] %}
                             <option value="{{ m }}">{{ m }}개월</option>
@@ -628,23 +625,23 @@
                     </div>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-3">
-                    <label class="inline-flex items-center gap-2">
-                        <input type="checkbox" id="cardAutoPay" checked class="rounded text-green-500 focus:ring-green-400">
-                        <span class="text-sm text-gray-600">예매 성공 시 자동으로 결제</span>
+                <div class="flex flex-wrap items-center gap-2">
+                    <label class="inline-flex items-center gap-2 mr-2 min-h-[44px]">
+                        <input type="checkbox" id="cardAutoPay" checked class="w-4 h-4 rounded accent-[#C8102E]">
+                        <span class="text-sm text-rail-ink">예매 성공 시 자동으로 결제</span>
                     </label>
                     <button type="button" id="cardSaveBtn" onclick="saveCardSettings()"
-                            class="px-5 py-2 rounded-lg bg-rail-okSoft text-rail-ok text-sm font-medium hover:bg-green-600 transition-colors">
+                            class="h-11 px-5 rounded-xl bg-ktx-primary text-white text-sm font-semibold hover:bg-ktx-secondary transition-colors">
                         저장
                     </button>
                     <button type="button" id="cardClearBtn" onclick="clearCardSettings()"
-                            class="px-5 py-2 rounded-lg bg-red-100 text-red-600 text-sm font-medium hover:bg-red-200 transition-colors">
+                            class="h-11 px-5 rounded-xl border border-rail-line bg-white text-ktx-primary text-sm font-semibold hover:border-ktx-primary transition-colors">
                         삭제
                     </button>
-                    <span id="cardMessage" class="text-sm text-gray-500 basis-full mt-1"></span>
+                    <span id="cardMessage" class="text-sm text-rail-muted basis-full mt-1"></span>
                 </div>
 
-                <p class="text-xs text-gray-400">
+                <p class="text-xs leading-relaxed text-rail-muted">
                     카드 정보는 로그인 세션 쿠키에 저장되며 로그아웃 시 삭제됩니다. DB 등에 영구 저장되지 않지만, 브라우저에는 남으니 개인 기기에서만 사용해주세요.
                 </p>
             </div>
@@ -657,39 +654,43 @@
      class="fixed bottom-0 left-0 right-0 z-40 transform transition-transform duration-300 ease-in-out"
      style="transform: translateY(calc(100% - 56px));">
 
-    <!-- Drawer Handle (Always Visible) -->
-    <div class="bg-rail-ink text-white h-14 px-4 rounded-t-2xl cursor-pointer flex items-center justify-between shadow-lg"
+    <!-- Drawer Handle (Always Visible): "예약 로그 · N개 선택됨 [예약 시작]" -->
+    <div class="bg-rail-ink text-white h-14 px-4 rounded-t-2xl cursor-pointer shadow-lg"
          onclick="toggleLogDrawer()" data-testid="log-toggle-button">
-        <div class="flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse" id="logStatusDot" data-testid="log-status-indicator"></span>
-            <span class="text-sm font-medium whitespace-nowrap">예약 로그</span>
-            <span id="logSourceBadge" class="hidden max-sm:!hidden text-xs px-1.5 py-0.5 rounded bg-blue-500 text-white whitespace-nowrap">TG</span>
-            <span id="selectedCount" class="text-xs text-[#C9C2B8] ml-2 whitespace-nowrap"></span>
+        <div class="mx-auto max-w-5xl h-full sm:px-2 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2 h-2 rounded-full bg-[#8A8279] flex-shrink-0" id="logStatusDot" data-testid="log-status-indicator"></span>
+            <span class="text-sm font-semibold whitespace-nowrap">예약 로그</span>
+            <span id="logSourceBadge" class="hidden max-sm:!hidden text-xs font-semibold px-2 py-0.5 rounded-md bg-[rgba(74,222,128,0.16)] text-[#86EFAC] whitespace-nowrap">진행 중</span>
+            <span id="selectedCount" class="text-[13px] text-[#C9C2B8] whitespace-nowrap"></span>
             <!-- 폰에선 위쪽 실행 중 카드가 보여주므로 숨긴다 -->
-            <span id="macroElapsed" class="hidden max-lg:!hidden text-xs text-[#C9C2B8] ml-2 whitespace-nowrap"></span>
-            <span id="currentAttempt" class="hidden max-lg:!hidden text-xs text-yellow-300 ml-2 truncate max-w-[240px]" title=""></span>
+            <span id="macroElapsed" class="hidden max-lg:!hidden text-[13px] text-[#C9C2B8] whitespace-nowrap tabular"></span>
+            <span id="currentAttempt" class="hidden max-lg:!hidden text-[13px] text-[#C9C2B8] truncate max-w-[320px]" title=""></span>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
-            <!-- 폰: 긴 열차 목록 맨 아래까지 내려가지 않아도 되게 여기서 시작/중단 -->
+            <!-- 긴 열차 목록 맨 아래까지 내려가지 않아도 되게 여기서 시작/중단 (폰·PC 모두) -->
             <button type="button" id="barStartBtn" data-testid="bar-start"
-                    class="hidden lg:!hidden h-10 px-4 rounded-xl bg-ktx-primary text-white text-sm font-semibold"
+                    class="hidden h-10 px-5 rounded-xl bg-ktx-primary hover:bg-ktx-secondary text-white text-sm font-bold transition-colors"
                     onclick="event.stopPropagation(); document.getElementById('startBtn')?.click();">
                 예약 시작
             </button>
             <button type="button" id="barStopBtn" data-testid="bar-stop"
-                    class="hidden lg:!hidden h-10 px-4 rounded-xl bg-white text-rail-ink text-sm font-semibold"
+                    class="hidden h-10 px-5 rounded-xl bg-white text-rail-ink text-sm font-bold"
                     onclick="event.stopPropagation(); document.getElementById('stopBtn')?.click();">
                 중단
             </button>
+            <span class="w-9 h-10 flex items-center justify-center" aria-hidden="true">
             <svg id="drawerIcon" class="w-5 h-5 transform rotate-180 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
             </svg>
+            </span>
+        </div>
         </div>
     </div>
 
     <!-- Drawer Content -->
     <div id="logContainer" data-testid="log-stream-container" class="log-container h-48 overflow-y-auto p-4 bg-[#12100E] text-[#E8E2D9] text-[13px]">
-        <div class="text-gray-500">대기 중...</div>
+        <div class="text-[#8A8279]">대기 중...</div>
     </div>
 </div>
 
@@ -735,12 +736,12 @@ function updateSelectedCount() {
     const selected = document.querySelectorAll('.train-row.selected');
     const countEl = document.getElementById('selectedCount');
     if (countEl) {
-        countEl.textContent = selected.length > 0 ? `${selected.length}개 선택됨` : '';
+        countEl.textContent = selected.length > 0 ? `· ${selected.length}개 선택됨` : '';
     }
     syncBarButtons();
 }
 
-// 아래 로그 바의 시작/중단 버튼(폰용)을 본래 버튼 상태에 맞춘다
+// 아래 로그 바의 시작/중단 버튼을 본래 버튼 상태에 맞춘다
 function syncBarButtons() {
     const start = document.getElementById('startBtn');
     const stop = document.getElementById('stopBtn');
@@ -800,7 +801,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (dateInput && window.flatpickr) {
         flatpickr(dateInput, {
             locale: 'ko',
-            dateFormat: 'Y-m-d',
+            dateFormat: 'Y-m-d',       // 서버로 보내는 값은 그대로 ISO
+            altInput: true,            // 보이는 칸은 "10월 3일 (토)"
+            altFormat: 'n월 j일 (D)',
             minDate: 'today',
             maxDate: new Date().fp_incr(30), // 30 days from today
             defaultDate: dateInput.value || 'today',
@@ -856,10 +859,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         function setActive(idx) {
             const vis = visibleOptions();
-            vis.forEach(o => o.classList.remove('bg-gray-100'));
+            vis.forEach(o => o.classList.remove('bg-rail-ground'));
             activeIndex = idx;
             if (idx >= 0 && idx < vis.length) {
-                vis[idx].classList.add('bg-gray-100');
+                vis[idx].classList.add('bg-rail-ground');
                 vis[idx].scrollIntoView({ block: 'nearest' });
             }
         }
@@ -948,7 +951,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Show loading state
             const originalBtnContent = loadMoreBtn.innerHTML;
             loadMoreBtn.disabled = true;
-            loadMoreBtn.innerHTML = '<span class="animate-spin mr-2">⏳</span> 로딩 중...';
+            loadMoreBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg><span>불러오는 중...</span>';
 
             try {
                 const formData = new FormData();
@@ -969,7 +972,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Re-observe the new sentinel if needed (not needed here as btn is sentinel)
                 } else {
                     loadMoreBtn.textContent = '마지막 열차입니다';
-                    loadMoreBtn.classList.add('bg-gray-100', 'text-gray-400', 'cursor-not-allowed');
+                    loadMoreBtn.classList.add('bg-rail-ground', 'text-rail-muted', 'cursor-not-allowed');
                     loadMoreBtn.disabled = true;
                     // Stop observing
                     if (observer) observer.disconnect();
@@ -1044,52 +1047,37 @@ document.addEventListener('DOMContentLoaded', function() {
             // ... (row creation logic same as before) ...
             // Desktop Row
             const row = document.createElement('tr');
-            row.className = 'train-row cursor-pointer transition-all duration-150 hover:bg-gray-50';
+            row.className = 'train-row cursor-pointer transition-colors duration-150 hover:bg-[#FAF8F5]';
             row.dataset.index = train.index;
             row.dataset.time = train.dep_time;
             row.onclick = function() { toggleTrainSelection(this); };
             
-            // 코레일 API가 SRT 열차도 'KTX-산천' 등으로 내려주므로 KTX 계열 여부만 구분한다
-            const isKtx = train.train_name.includes('KTX');
-            const badgeClass = isKtx ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600';
-            const badgeText = isKtx ? 'KTX' : '일반';
-            
+            const seatCell = (ok) => ok
+                ? '<span class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-semibold bg-rail-okSoft text-rail-ok">있음</span>'
+                : '<span class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-medium bg-rail-offSoft text-rail-off">매진</span>';
             row.innerHTML = `
-                <td class="px-6 py-5">
-                    <div class="flex items-center gap-3">
-                        <span class="px-2.5 py-1 text-xs font-bold rounded-md ${badgeClass}">${badgeText}</span>
-                        <div>
-                            <div class="font-semibold text-gray-900">${train.train_name}</div>
-                            <div class="text-xs text-gray-500">#${train.train_number}</div>
+                <td class="px-6 py-4">
+                    <div class="text-[15px] font-semibold text-rail-ink">${train.train_name}</div>
+                    <div class="text-xs text-rail-muted tabular">#${train.train_number}</div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-5 tabular">
+                        <div class="text-center">
+                            <div class="text-xl font-bold tracking-tight text-rail-ink">${train.dep_time_formatted}</div>
+                            <div class="text-xs text-rail-muted">${train.dep_station}</div>
+                        </div>
+                        <div class="w-20 flex flex-col items-center gap-0.5">
+                            <span class="text-xs text-rail-muted whitespace-nowrap">${train.duration_formatted}</span>
+                            <span class="w-full h-px bg-[#D6D0C8]"></span>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-xl font-bold tracking-tight text-rail-ink">${train.arr_time_formatted}</div>
+                            <div class="text-xs text-rail-muted">${train.arr_station}</div>
                         </div>
                     </div>
                 </td>
-                <td class="px-6 py-5">
-                    <div class="flex items-center gap-4">
-                        <div class="text-center">
-                            <div class="text-xl font-bold text-gray-900">${train.dep_time_formatted}</div>
-                            <div class="text-xs text-gray-500">${train.dep_station}</div>
-                        </div>
-                        <div class="flex flex-col items-center text-gray-400 px-2">
-                            <span class="text-xs whitespace-nowrap">${train.duration_formatted}</span>
-                            <span class="text-lg">→</span>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-xl font-bold text-gray-900">${train.arr_time_formatted}</div>
-                            <div class="text-xs text-gray-500">${train.arr_station}</div>
-                        </div>
-                    </div>
-                </td>
-                <td class="px-6 py-5 text-center">
-                    ${train.special_seat_available 
-                        ? '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-okSoft text-rail-ok">예약가능</span>' 
-                        : '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-offSoft text-rail-off">매진</span>'}
-                </td>
-                <td class="px-6 py-5 text-center">
-                    ${train.general_seat_available 
-                        ? '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-okSoft text-rail-ok">예약가능</span>' 
-                        : '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-offSoft text-rail-off">매진</span>'}
-                </td>
+                <td class="px-6 py-4 text-center">${seatCell(train.special_seat_available)}</td>
+                <td class="px-6 py-4 text-center">${seatCell(train.general_seat_available)}</td>
             `;
             tableBody.appendChild(row);
 
@@ -1151,10 +1139,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function log(message, type = 'info') {
         const colors = {
-            'info': 'text-gray-300',
-            'success': 'text-green-400',
-            'error': 'text-red-400',
-            'warning': 'text-yellow-400'
+            'info': 'text-[#E8E2D9]',
+            'success': 'text-[#86EFAC]',
+            'error': 'text-[#FCA5A5]',
+            'warning': 'text-[#FDE68A]'
         };
         const div = document.createElement('div');
         div.className = colors[type] || colors.info;
@@ -1162,6 +1150,26 @@ document.addEventListener('DOMContentLoaded', function() {
         logContainer.appendChild(div);
         while (logContainer.childElementCount > 500) logContainer.firstElementChild.remove();
         logContainer.scrollTop = logContainer.scrollHeight;
+        mirrorRecentLog(message, type);
+    }
+
+    // PC 실행 중 화면의 "최근 기록" (최신 줄이 위, 몇 줄만)
+    const RECENT_COLORS = { success: 'text-rail-ok', error: 'text-ktx-primary', warning: 'text-[#7A4200]' };
+    function mirrorRecentLog(message, type) {
+        const box = document.getElementById('heroRecentLog');
+        if (!box || !message) return;
+        const empty = box.querySelector('[data-empty]');
+        if (empty) empty.remove();
+        const line = document.createElement('div');
+        line.className = 'truncate ' + (RECENT_COLORS[type] || '');
+        line.title = message;
+        line.textContent = message;
+        box.prepend(line);
+        while (box.childElementCount > 6) box.lastElementChild.remove();
+    }
+    function clearRecentLog() {
+        const box = document.getElementById('heroRecentLog');
+        if (box) box.innerHTML = '<div data-empty class="text-rail-muted">기록을 기다리는 중...</div>';
     }
 
     function playSound() {
@@ -1262,6 +1270,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // connection this must not play the success sound, force the drawer open, or swap
     // the start/stop buttons (all of which would misleadingly look like a fresh macro
     // just started on its own).
+    const DOT_LIVE = 'w-2 h-2 rounded-full bg-[#4ADE80] shadow-[0_0_0_3px_rgba(74,222,128,0.25)] animate-pulse flex-shrink-0';
+    const DOT_IDLE = 'w-2 h-2 rounded-full bg-[#8A8279] flex-shrink-0';
     function connectMacroStream(showBadge = true, isLive = true) {
         if (macroStreamSource) return;  // already connected
 
@@ -1269,23 +1279,28 @@ document.addEventListener('DOMContentLoaded', function() {
         const dot = document.getElementById('logStatusDot');
 
         logContainer.innerHTML = '';
-        log(isLive ? '📡 매크로 로그에 연결 중...' : '📋 마지막 예약 기록을 불러옵니다...', 'info');
+        log(isLive ? '매크로 로그에 연결 중...' : '마지막 예약 기록을 불러옵니다...', 'info');
+        clearRecentLog();  // "연결 중" 같은 안내 줄은 최근 기록에 남기지 않는다
 
         if (showBadge && isLive && badge) {
-            badge.textContent = '진행중';
+            badge.textContent = '진행 중';
             badge.classList.remove('hidden');
         }
-        if (isLive && dot) dot.className = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse';
+        if (isLive && dot) dot.className = DOT_LIVE;
 
         // 넓은 화면에서만 로그 서랍을 저절로 연다. 폰은 위쪽 실행 중 카드가 상태를 보여주고,
-        // 서랍이 열리면 화면 절반을 가린다.
-        if (isLive && window.matchMedia('(min-width: 1024px)').matches) {
-            // Only an actually-active run should grab the user's attention like this.
+        // 서랍이 열리면 화면 절반을 가린다. "연결 중" 한 줄만 보이는 서랍은 쓸모가 없으니
+        // 실제 로그가 한 줄이라도 오면 그때 연다.
+        // Only an actually-active run should grab the user's attention like this.
+        let autoOpenPending = isLive && window.matchMedia('(min-width: 1024px)').matches;
+        const autoOpenDrawer = () => {
+            if (!autoOpenPending) return;
+            autoOpenPending = false;
             const drawer = document.getElementById('logDrawer');
             if (drawer) drawer.style.transform = 'translateY(0px)';
             const icon = document.getElementById('drawerIcon');
             if (icon) icon.classList.remove('rotate-180');
-        }
+        };
         if (isLive) {
 
             if (startBtn) startBtn.classList.add('hidden');
@@ -1300,7 +1315,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 macroStreamSource.close();
                 macroStreamSource = null;
                 if (badge) badge.classList.add('hidden');
-                if (dot) dot.className = 'w-2 h-2 rounded-full bg-green-400 animate-pulse';
+                if (dot) dot.className = DOT_IDLE;
                 if (isLive) {
                     if (startBtn) startBtn.classList.remove('hidden');
                     if (stopBtn) stopBtn.classList.add('hidden');
@@ -1308,6 +1323,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            if (['log', 'success', 'error', 'warning'].includes(data.type)) autoOpenDrawer();
             switch(data.type) {
                 case 'log':
                     log(data.message);
@@ -1335,6 +1351,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     macroStreamSource.close();
                     macroStreamSource = null;
                     if (badge) badge.classList.add('hidden');
+                    if (dot) dot.className = DOT_IDLE;
                     if (isLive) {
                         if (startBtn) startBtn.classList.remove('hidden');
                         if (stopBtn) stopBtn.classList.add('hidden');
@@ -1346,6 +1363,7 @@ document.addEventListener('DOMContentLoaded', function() {
             macroStreamSource.close();
             macroStreamSource = null;
             if (badge) badge.classList.add('hidden');
+            if (dot) dot.className = DOT_IDLE;
         };
     }
 
@@ -1357,9 +1375,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
         const seconds = totalSeconds % 60;
-        if (hours > 0) return `⏱ ${hours}시간 ${minutes}분째 실행 중`;
-        if (minutes > 0) return `⏱ ${minutes}분 ${seconds}초째 실행 중`;
-        return `⏱ ${seconds}초째 실행 중`;
+        if (hours > 0) return `· ${hours}시간 ${minutes}분째`;
+        if (minutes > 0) return `· ${minutes}분 ${seconds}초째`;
+        return `· ${seconds}초째`;
     }
 
     function startElapsedTimer(startTimeIso) {
@@ -1411,10 +1429,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (info.current_train && info.current_time) {
             const idx = (info.current_index && info.current_total)
                 ? ` (${info.current_index}/${info.current_total})` : '';
-            el.textContent = `🎯 ${info.current_train} ${info.current_time} 확인 중${idx}`;
+            el.textContent = `· ${info.current_train} ${info.current_time} 확인 중${idx}`;
             el.classList.remove('hidden');
         } else if (info.trains) {
-            el.textContent = `🔍 조회 중 (${info.trains})`;
+            el.textContent = `· 조회 중 (${info.trains})`;
             el.classList.remove('hidden');
         } else {
             el.classList.add('hidden');
@@ -1443,6 +1461,7 @@ document.addEventListener('DOMContentLoaded', function() {
             current = `대상: ${info.trains}`;
         }
         document.getElementById('heroCurrent').textContent = current;
+        renderHeroTargets(info);
         const resumedEl = document.getElementById('heroResumed');
         if (status.resumed_at) {
             resumedEl.textContent = `휴대폰이 앱을 정리해서 ${status.resumed_at.slice(11, 16)}에 자동으로 다시 시작했어요`;
@@ -1452,12 +1471,67 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // PC 실행 중 화면의 대상 열차 목록 ("KTX 103(07:00), KTX 107(08:00)" 을 줄마다)
+    function renderHeroTargets(info) {
+        const list = document.getElementById('heroTargets');
+        if (!list) return;
+        const items = (info.trains || '').split(',').map(t => t.trim()).filter(Boolean).map(t => {
+            const m = t.match(/^(.*?)\s*\((\d{1,2}:\d{2})\)$/);
+            return m ? { name: m[1], time: m[2] } : { name: t, time: '' };
+        });
+        const key = JSON.stringify([items, info.current_train, info.current_time]);
+        if (list.dataset.key === key) return;
+        list.dataset.key = key;
+        document.getElementById('heroTargetsTitle').textContent =
+            items.length ? `대상 열차 ${items.length}편` : '대상 열차';
+        list.innerHTML = '';
+        items.forEach(it => {
+            const now = it.name === info.current_train && (!it.time || it.time === info.current_time);
+            const li = document.createElement('li');
+            li.className = 'py-3 flex items-center gap-3.5';
+            const time = document.createElement('span');
+            time.className = 'text-lg font-bold tabular w-14';
+            time.textContent = it.time;
+            const name = document.createElement('span');
+            name.className = 'text-sm flex-1 min-w-0 truncate';
+            name.textContent = it.name;
+            const tag = document.createElement('span');
+            tag.className = now
+                ? 'px-2.5 py-0.5 rounded-lg bg-rail-accentSoft text-ktx-primary text-xs font-semibold'
+                : 'px-2.5 py-0.5 rounded-lg bg-rail-offSoft text-rail-off text-xs font-medium';
+            tag.textContent = now ? '조회 중' : '대기';
+            li.append(time, name, tag);
+            list.appendChild(li);
+        });
+    }
+
+    // '2026-10-03T14:14:00' -> '10월 3일 14:14'
+    function formatResultTime(iso) {
+        const m = (iso || '').match(/^\d{4}-(\d{2})-(\d{2})[T ](\d{2}:\d{2})/);
+        return m ? `${Number(m[1])}월 ${Number(m[2])}일 ${m[3]}` : (iso || '');
+    }
+
     // ─── 마지막 결과 카드 ───────────────────────────────────
     const RESULT_VIEWS = {
         success: { title: '예약했어요', icon: 'bg-rail-ok', svg: '<path d="M5 12l5 5 9-10"/>' },
         stopped: { title: '매크로를 멈췄어요', icon: 'bg-rail-muted', svg: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>' },
         gave_up: { title: '로그인이 계속 실패해서 멈췄어요', icon: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
         crash: { title: '오류로 멈췄어요', icon: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
+    };
+
+    // 결제 안내 3가지 (성공 배너의 payDone / payFailed / payPending 과 같은 모양)
+    const noteSvg = (stroke, paths) =>
+        `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+    const NOTE_VIEWS = {
+        paid: body => ({ body, title: '자동결제까지 끝났어요', box: 'bg-rail-okSoft',
+            titleClass: 'text-rail-ok', bodyClass: 'text-[#245B3D]',
+            icon: noteSvg('#0B6B3A', '<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/>') }),
+        failed: body => ({ body, title: '자동결제에 실패했어요', box: 'bg-rail-accentSoft border border-ktx-primary', alert: true,
+            titleClass: 'text-ktx-secondary', bodyClass: 'text-rail-ink font-semibold',
+            icon: noteSvg('#C8102E', '<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17.5h.01"/>') }),
+        pending: body => ({ body, title: '결제가 남았어요', box: 'bg-[#FDF1DD]',
+            titleClass: 'text-[#7A4200]', bodyClass: 'text-[#6B4A1E]',
+            icon: noteSvg('#8A4B00', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>') }),
     };
 
     function updateLastResult(result) {
@@ -1476,22 +1550,19 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('lastResultIcon').innerHTML =
             `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${view.svg}</svg>`;
         document.getElementById('lastResultTitle').textContent = view.title;
-        document.getElementById('lastResultTime').textContent = (result.ended_at || '').replace('T', ' ').slice(5, 16);
+        document.getElementById('lastResultTime').textContent = formatResultTime(result.ended_at);
 
-        let body = '', note = '', noteClass = '';
+        let body = '', note = null;
         if (result.reason === 'success') {
             body = result.reserved || '';
             if (result.paid === true) {
-                note = '자동결제까지 끝났어요. 따로 할 일은 없어요.';
-                noteClass = 'bg-rail-okSoft text-rail-ok font-semibold';
+                note = NOTE_VIEWS.paid('등록한 카드로 결제했어요. 따로 할 일은 없어요.');
             } else if (result.autopay) {
                 // 자동결제를 걸었는데 실패: 직접 결제해야 한다는 걸 가장 눈에 띄게
-                note = `자동결제에 실패했어요${result.pay_message ? ' (' + result.pay_message + ')' : ''}. ` +
-                    payGuide(result.pay_deadline);
-                noteClass = 'bg-rail-accentSoft border border-ktx-primary text-ktx-secondary font-semibold';
+                note = NOTE_VIEWS.failed((result.pay_message ? `실패 사유: ${result.pay_message}. ` : '') +
+                    payGuide(result.pay_deadline));
             } else {
-                note = '결제가 남았어요. ' + payGuide(result.pay_deadline);
-                noteClass = 'bg-[#FDF1DD] text-[#6B4A1E]';
+                note = NOTE_VIEWS.pending(payGuide(result.pay_deadline));
             }
         } else if (result.reason === 'gave_up') {
             body = '코레일 비밀번호가 바뀌었거나 계정이 잠겼을 수 있어요. 다시 로그인한 뒤 시작해 주세요.';
@@ -1502,8 +1573,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         document.getElementById('lastResultBody').textContent = body;
         const noteEl = document.getElementById('lastResultNote');
-        noteEl.textContent = note;
-        noteEl.className = `mt-4 p-3.5 rounded-2xl text-[13px] leading-relaxed [word-break:keep-all] ${noteClass}`;
+        if (note) {
+            noteEl.className = `mt-4 sm:ml-14 flex gap-3 items-start p-3.5 rounded-2xl ${note.box}`;
+            noteEl.setAttribute('role', note.alert ? 'alert' : 'status');
+            document.getElementById('lastResultNoteIcon').innerHTML = note.icon;
+            const t = document.getElementById('lastResultNoteTitle');
+            t.textContent = note.title;
+            t.className = `text-[15px] font-bold ${note.titleClass}`;
+            const b = document.getElementById('lastResultNoteBody');
+            b.textContent = note.body;
+            b.className = `text-[13px] leading-relaxed [word-break:keep-all] ${note.bodyClass}`;
+        }
         noteEl.classList.toggle('hidden', !note);
         card.classList.remove('hidden');
     }
@@ -1692,9 +1772,9 @@ function setPushUI(state, text, hint) {
     const hintEl = document.getElementById('pushHint');
     if (!dot) return;
     const on = state === 'on';
-    dot.className = 'w-2.5 h-2.5 rounded-full ' + (on ? 'bg-green-500' : state === 'blocked' ? 'bg-red-400' : 'bg-gray-300');
+    dot.className = 'w-2.5 h-2.5 rounded-full ' + (on ? 'bg-rail-ok' : state === 'blocked' ? 'bg-ktx-primary' : 'bg-[#D6D0C8]');
     label.textContent = text;
-    label.className = 'text-sm ' + (on ? 'text-green-600 font-medium' : 'text-gray-500');
+    label.className = 'text-sm ' + (on ? 'text-rail-ok font-medium' : 'text-rail-muted');
     hintEl.textContent = hint || '';
     hintEl.classList.toggle('hidden', !hint);
     document.getElementById('pushEnableBtn').classList.toggle('hidden', state !== 'off');
@@ -1858,9 +1938,9 @@ function updateTelegramUI(status) {
     if (!dot) return;
 
     if (status.connected) {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rail-ok animate-pulse';
         text.textContent = status.chat_id ? `연결됨 (${status.chat_id})` : '연결됨 (Chat ID 대기 중)';
-        text.className = 'text-sm text-green-600 font-medium';
+        text.className = 'text-sm text-rail-ok font-medium';
         testBtn?.classList.remove('hidden');
         disconnectBtn?.classList.remove('hidden');
         connectBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> 재연결';
@@ -1873,15 +1953,15 @@ function updateTelegramUI(status) {
             }
         }
     } else if (status.configured) {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-yellow-400';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#B45309]';
         text.textContent = '설정됨 (폴링 중단)';
-        text.className = 'text-sm text-yellow-600';
+        text.className = 'text-sm text-[#7A4200]';
         testBtn?.classList.remove('hidden');
         disconnectBtn?.classList.remove('hidden');
     } else {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-gray-300';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#D6D0C8]';
         text.textContent = '미연결';
-        text.className = 'text-sm text-gray-500';
+        text.className = 'text-sm text-rail-muted';
         testBtn?.classList.add('hidden');
         disconnectBtn?.classList.add('hidden');
         connectBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> 연결';
@@ -1898,14 +1978,14 @@ async function connectTelegram(silent = false) {
     if (!botToken) {
         if (!silent) {
             msgEl.textContent = '봇 토큰을 입력해주세요.';
-            msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+            msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
         }
         return;
     }
 
     if (!silent) {
         msgEl.textContent = '연결 중...';
-        msgEl.className = 'text-sm text-blue-500 basis-full mt-1';
+        msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
     }
 
     try {
@@ -1918,7 +1998,7 @@ async function connectTelegram(silent = false) {
 
         if (!silent) {
             msgEl.textContent = data.message;
-            msgEl.className = data.success ? 'text-sm text-green-600 basis-full mt-1' : 'text-sm text-red-500 basis-full mt-1';
+            msgEl.className = data.success ? 'text-sm text-rail-ok basis-full mt-1' : 'text-sm text-ktx-primary basis-full mt-1';
         }
 
         if (data.success) {
@@ -1928,7 +2008,7 @@ async function connectTelegram(silent = false) {
     } catch(e) {
         if (!silent) {
             msgEl.textContent = '연결 오류가 발생했습니다.';
-            msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+            msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
         }
     }
 }
@@ -1936,16 +2016,16 @@ async function connectTelegram(silent = false) {
 async function testTelegram() {
     const msgEl = document.getElementById('tgMessage');
     msgEl.textContent = '테스트 전송 중...';
-    msgEl.className = 'text-sm text-blue-500 basis-full mt-1';
+    msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
 
     try {
         const resp = await fetch('/api/telegram/test', {method: 'POST'});
         const data = await resp.json();
         msgEl.textContent = data.message;
-        msgEl.className = data.success ? 'text-sm text-green-600 basis-full mt-1' : 'text-sm text-red-500 basis-full mt-1';
+        msgEl.className = data.success ? 'text-sm text-rail-ok basis-full mt-1' : 'text-sm text-ktx-primary basis-full mt-1';
     } catch(e) {
         msgEl.textContent = '전송 오류가 발생했습니다.';
-        msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
     }
 }
 
@@ -1955,12 +2035,12 @@ async function disconnectTelegram() {
         const resp = await fetch('/api/telegram/disconnect', {method: 'POST'});
         const data = await resp.json();
         msgEl.textContent = data.message;
-        msgEl.className = 'text-sm text-gray-600 basis-full mt-1';
+        msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
         localStorage.removeItem(TG_STORAGE_KEY);
         checkTelegramStatus();
     } catch(e) {
         msgEl.textContent = '연결 해제 오류';
-        msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
     }
 }
 
@@ -2002,9 +2082,9 @@ function updateCardUI(status) {
     if (!dot) return;
 
     if (status.configured) {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-green-500';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rail-ok';
         text.textContent = `등록됨 (${status.masked_number})${status.auto_pay ? '' : ' · 자동결제 꺼짐'}`;
-        text.className = 'text-sm text-green-600 font-medium';
+        text.className = 'text-sm text-rail-ok font-medium';
 
         const expireInput = document.getElementById('cardExpire');
         const typeSelect = document.getElementById('cardType');
@@ -2015,9 +2095,9 @@ function updateCardUI(status) {
         if (installmentSelect && status.installment !== undefined) installmentSelect.value = String(status.installment);
         if (autoPayCheckbox) autoPayCheckbox.checked = !!status.auto_pay;
     } else {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-gray-300';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#D6D0C8]';
         text.textContent = '미등록';
-        text.className = 'text-sm text-gray-500';
+        text.className = 'text-sm text-rail-muted';
     }
 }
 
@@ -2029,7 +2109,7 @@ async function saveCardSettings() {
 
     if (expireDisplay && (expireApi.length !== 4 || month < 1 || month > 12)) {
         msgEl.textContent = '유효기간은 MM/YY 형식으로 입력해주세요. 예: 09/30';
-        msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
         return;
     }
 
@@ -2040,7 +2120,7 @@ async function saveCardSettings() {
         const currentMonth = now.getMonth() + 1; // 1-12
         if (expireYear < currentYear || (expireYear === currentYear && month < currentMonth)) {
             msgEl.textContent = `카드 유효기간이 지났습니다 (${expireDisplay}). 카드를 확인해주세요.`;
-            msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+            msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
             return;
         }
     }
@@ -2056,7 +2136,7 @@ async function saveCardSettings() {
     };
 
     msgEl.textContent = '저장 중...';
-    msgEl.className = 'text-sm text-blue-500 basis-full mt-1';
+    msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
 
     try {
         const resp = await fetch('/api/card/save', {
@@ -2066,7 +2146,7 @@ async function saveCardSettings() {
         });
         const data = await resp.json();
         msgEl.textContent = data.message;
-        msgEl.className = data.success ? 'text-sm text-green-600 basis-full mt-1' : 'text-sm text-red-500 basis-full mt-1';
+        msgEl.className = data.success ? 'text-sm text-rail-ok basis-full mt-1' : 'text-sm text-ktx-primary basis-full mt-1';
 
         if (data.success) {
             // Clear sensitive fields from the DOM after saving
@@ -2077,7 +2157,7 @@ async function saveCardSettings() {
         }
     } catch (e) {
         msgEl.textContent = '저장 중 오류가 발생했습니다.';
-        msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
     }
 }
 
@@ -2087,11 +2167,11 @@ async function clearCardSettings() {
         const resp = await fetch('/api/card/clear', {method: 'POST'});
         const data = await resp.json();
         msgEl.textContent = data.message;
-        msgEl.className = 'text-sm text-gray-600 basis-full mt-1';
+        msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
         loadCardStatus();
     } catch (e) {
         msgEl.textContent = '삭제 중 오류가 발생했습니다.';
-        msgEl.className = 'text-sm text-red-500 basis-full mt-1';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
     }
 }
 </script>
