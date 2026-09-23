@@ -21,7 +21,7 @@ from flask import Blueprint, current_app, jsonify, request
 from py_vapid import Vapid, b64urlencode
 from pywebpush import WebPushException, webpush
 
-from app.utils.session_helper import current_user_id
+from webui.utils.session_helper import current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +212,7 @@ def test():
 
 def init_push(app, pusher: WebPusher | None = None) -> WebPusher:
     """앱에 웹 푸시를 붙이고, 매크로 알림이 이리로 오게 한다."""
-    from app.routes.reservation import add_macro_listener
+    from webui.routes.reservation import add_macro_listener
 
     if pusher is None:
         subject = os.environ.get('VAPID_SUBJECT', 'https://github.com/ohjn96/private_train')

@@ -1,6 +1,6 @@
-# android/ — 안드로이드 앱 (APK)
+# mobile/ — ③ 안드로이드 앱 (APK)
 
-데스크톱 앱을 그대로 폰 안에 넣은 앱입니다. 예약 매크로가 **그 폰에서, 그 폰의 IP 로** 돕니다.
+공통 웹 화면(`webui/`)과 예약 로직(`core/`)을 그대로 폰 안에 넣은 앱입니다. 예약 매크로가 **그 폰에서, 그 폰의 IP 로** 돕니다.
 서버가 필요 없고, 화면·예약 로직·호출 간격 옵션은 데스크톱과 똑같습니다.
 
 ## 구조
@@ -9,11 +9,11 @@
 앱 실행
  └ MainActivity ─ WebView ──────────► http://127.0.0.1:17650  (폰 안)
  └ ServerService (포그라운드 서비스)
-     └ Chaquopy 파이썬 ─ android_main.start() ─ Flask 앱 (app/, core/, korail2/)
+     └ Chaquopy 파이썬 ─ android_main.start() ─ Flask 앱 (webui/, core/, korail2/)
                                                    └ 코레일 API (이 폰의 IP)
 ```
 
-- **파이썬 코드는 복사본이 없습니다.** 빌드할 때 저장소 루트의 `app/`, `core/`, `korail2/` 를
+- **파이썬 코드는 복사본이 없습니다.** 빌드할 때 저장소 루트의 공통 모듈 `webui/`, `core/`, `korail2/` 를
   가져다 싣습니다 (`app/build.gradle.kts` 의 `syncPythonSources`).
 - **앱을 내려도 계속 돕니다.** ServerService 가 포그라운드 서비스라 상단에 알림이 떠 있고,
   매크로가 도는 동안만 CPU·Wi-Fi 절전 방지 잠금을 쥡니다 (안 돌 땐 배터리를 안 씀).
@@ -28,7 +28,7 @@
 | `.../MainActivity.kt` | WebView, 알림 권한, 배터리 최적화 제외 안내 |
 | `.../Bridge.kt` | 파이썬 → Kotlin 호출 입구 |
 | `.../Notifications.kt` | 알림 채널, 예약 알림 |
-| `../requirements-android.txt` | 앱에 싣는 파이썬 패키지 |
+| `requirements.txt` | 앱에 싣는 파이썬 패키지 |
 
 ## 친구에게 나눠줄 때 (설치 안내)
 
@@ -70,7 +70,7 @@ keytool -genkeypair -keystore release.jks -storetype PKCS12 -alias trainreservat
 JDK 17, Android SDK(platform 35, build-tools 35), Python 3.12 가 필요합니다.
 
 ```bash
-cd android
+cd mobile
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 export CHAQUOPY_BUILD_PYTHON=/path/to/python3.12   # PATH 에 python3.12 가 있으면 생략
 ./gradlew assembleDebug        # → app/build/outputs/apk/debug/app-debug.apk

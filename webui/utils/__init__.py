@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Utility modules for the application."""
-from app.utils.session_helper import (
+from webui.utils.session_helper import (
     get_current_provider,
     set_current_provider,
     get_auth_state,

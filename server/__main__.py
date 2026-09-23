@@ -9,7 +9,7 @@ import os
 
 from waitress import serve
 
-from app.version import get_version
+from webui.version import get_version
 from server import create_server_app
 
 

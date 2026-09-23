@@ -2,10 +2,10 @@
 """Telegram bot API routes."""
 from flask import Blueprint, current_app, request, jsonify
 
-from app.services.telegram_service import (
+from webui.services.telegram_service import (
     TelegramService, load_saved_settings, save_settings, clear_saved_settings
 )
-from app.utils.session_helper import (
+from webui.utils.session_helper import (
     get_current_provider, is_logged_in, get_credentials,
     get_any_logged_in_provider, mask_user
 )
@@ -57,7 +57,7 @@ def configure():
             pass
 
         # Set up Telegram callbacks
-        from app.routes.reservation import _setup_telegram_callbacks
+        from webui.routes.reservation import _setup_telegram_callbacks
         _setup_telegram_callbacks()
 
         # Start polling for commands
@@ -87,7 +87,7 @@ def status():
     status = tg.get_status()
 
     # 남의 매크로 상태와 로그는 가리고, 누가 쓰는 중인지만 알려준다
-    from app.routes.reservation import owns_macro
+    from webui.routes.reservation import owns_macro
     if not owns_macro(tg):
         if status['macro_running']:
             status['busy'] = {

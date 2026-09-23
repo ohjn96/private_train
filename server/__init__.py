@@ -6,7 +6,7 @@
 
     python -m server
 """
-from app import create_app
+from webui import create_app
 
 
 def create_server_app(pusher=None):

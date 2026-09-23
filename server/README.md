@@ -4,8 +4,8 @@
 python -m server          # 보통은 scripts/setup-server.sh 가 systemd 로 띄운다
 ```
 
-데스크톱 앱(`app/`, exe)은 1인용 그대로 두고, 서버에만 필요한 것만 여기 둔다.
-화면·라우트는 `app/` 을, 코레일 API·예약 루프·호출 간격은 `core/` 를 같이 쓴다.
+데스크톱 앱(`desktop/`, exe)은 1인용 그대로 두고, 서버에만 필요한 것만 여기 둔다.
+화면·라우트는 `webui/` 를, 코레일 API·예약 루프·호출 간격은 `core/` 를 같이 쓴다.
 대상: 가족·친구 몇 명, Tailscale 로만 접속, 폰은 홈 화면 앱(PWA).
 
 ## 동작 방식
@@ -36,10 +36,10 @@ server/
 ```
 
 서버 모드에서 달라지는 공통 코드 (`app.config['SERVER_MODE']`):
-- `app/routes/reservation.py`: 매크로 주인 기록 (`owns_macro`), 알림 리스너 (`add_macro_listener`)
-- `app/routes/telegram.py`: 봇 설정 API 403, 상태 API 는 남의 매크로를 가림
-- `app/services/service_manager.py`: 로그인 인스턴스를 (provider, 코레일 ID) 로 캐시
-- `app/templates/search.html`: 텔레그램 카드 대신 "폰 알림" 카드
+- `webui/routes/reservation.py`: 매크로 주인 기록 (`owns_macro`), 알림 리스너 (`add_macro_listener`)
+- `webui/routes/telegram.py`: 봇 설정 API 403, 상태 API 는 남의 매크로를 가림
+- `webui/services/service_manager.py`: 로그인 인스턴스를 (provider, 코레일 ID) 로 캐시
+- `webui/templates/search.html`: 텔레그램 카드 대신 "폰 알림" 카드
 
 ## 웹 푸시
 

@@ -47,7 +47,7 @@ jobs:
           pip install -r requirements-windows.txt
 
       - name: 빌드
-        run: python build/build.py unified
+        run: python desktop/build/build.py unified
 
       - name: 실행 스모크 테스트 (exe 가 실제로 뜨는지)
         shell: pwsh
@@ -68,7 +68,7 @@ jobs:
           if (-not $ok) { throw "exe 가 60초 안에 응답하지 않았습니다." }
           Write-Host "OK: exe 정상 기동 확인"
 
-          # 헤드리스 모드가 번들에 들어갔는지 (app.headless 누락 시 여기서 죽는다)
+          # 헤드리스 모드가 번들에 들어갔는지 (desktop.headless 누락 시 여기서 죽는다)
           $help = & $exe --headless --help 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or $help -notmatch '--telegram-token') {
             throw "헤드리스 모드가 동작하지 않습니다: $help"
@@ -120,7 +120,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: 빌드
-        run: python build/build.py unified
+        run: python desktop/build/build.py unified
 
       - name: 실행 스모크 테스트 (바이너리가 실제로 뜨는지)
         env:
@@ -142,7 +142,7 @@ jobs:
           fi
           echo "OK: 바이너리 정상 기동 확인"
 
-          # 헤드리스 모드가 번들에 들어갔는지 (app.headless 누락 시 여기서 죽는다)
+          # 헤드리스 모드가 번들에 들어갔는지 (desktop.headless 누락 시 여기서 죽는다)
           if ! "$app" --headless --help | grep -q -- '--telegram-token'; then
             echo "헤드리스 모드가 동작하지 않습니다." >&2
             exit 1

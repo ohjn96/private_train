@@ -2,12 +2,12 @@
 .SYNOPSIS
     Windows EXE 빌드 (가상환경 준비 -> PyInstaller -> 루트로 이동)
 
-    실제 PyInstaller 옵션은 build/build.py 한 곳에만 있습니다.
+    실제 PyInstaller 옵션은 desktop/build/build.py 한 곳에만 있습니다.
     이 스크립트는 venv 준비 + 의존성 설치 + build.py 호출만 담당합니다.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File build\build.ps1
-    .\build\build.ps1 -SkipInstall
+    powershell -ExecutionPolicy Bypass -File desktop\build\build.ps1
+    .\desktop\build\build.ps1 -SkipInstall
 #>
 [CmdletBinding()]
 param(
@@ -17,7 +17,8 @@ param(
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$Root = Split-Path -Parent $PSScriptRoot
+# 이 스크립트는 desktop\build\ 에 있다 -> 저장소 루트는 두 단계 위
+$Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $Root
 
 $Version = (Get-Content "$Root\VERSION" -Raw).Trim()
@@ -51,8 +52,8 @@ if (-not $SkipInstall) {
 Get-ChildItem -Path app,korail2 -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-# 4) 빌드 (옵션은 build/build.py 가 소유)
-& $VenvPython build\build.py unified
+# 4) 빌드 (옵션은 desktop/build/build.py 가 소유)
+& $VenvPython desktop\build\build.py unified
 if ($LASTEXITCODE -ne 0) { Write-Host "!! 빌드 실패" -ForegroundColor Red; exit 1 }
 
 $exe = "$Root\TrainReservationApp-v$Version.exe"

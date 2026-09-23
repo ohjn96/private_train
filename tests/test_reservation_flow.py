@@ -16,16 +16,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from korail2 import NoResultsError, SoldOutError
 
-import app.routes.reservation as reservation
-from app.services.base_service import SeatOption
-from app.services.korail_service import KorailService
-from app.services.rate_limit import (
+import webui.routes.reservation as reservation
+from webui.services.base_service import SeatOption
+from webui.services.korail_service import KorailService
+from webui.services.rate_limit import (
     DEFAULT_MIN_INTERVAL,
     RateLimiter,
     _configured_interval,
     korail_api,
 )
-from app.services.telegram_service import TelegramService
+from webui.services.telegram_service import TelegramService
 
 
 # ---------------------------------------------------------------- 가짜 클라이언트
@@ -361,7 +361,7 @@ class MacroStartGuardTest(unittest.TestCase):
 
 def sign_in(client, user_id):
     """로그인된 세션을 흉내 낸다. 자격증명은 쿠키가 아니라 서버 금고에 들어간다."""
-    from app.utils import session_helper
+    from webui.utils import session_helper
     sid = f'test-{user_id}'
     session_helper._vault[sid] = {
         'credentials': {'korail': {'user_id': user_id, 'password': 'pw'}},
@@ -378,7 +378,7 @@ def sign_in(client, user_id):
 
 class SelectionTest(unittest.TestCase):
     def setUp(self):
-        from app import create_app
+        from webui import create_app
         self.client = create_app().test_client()
         sign_in(self.client, 'tester')
 
@@ -409,8 +409,8 @@ class ServiceReuseTest(unittest.TestCase):
 
     def setUp(self):
         from unittest import mock
-        from app import create_app
-        from app.services import ServiceManager
+        from webui import create_app
+        from webui.services import ServiceManager
 
         self.ServiceManager = ServiceManager
         ServiceManager._services.clear()

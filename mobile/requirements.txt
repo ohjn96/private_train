@@ -1,4 +1,4 @@
-# 안드로이드 앱(android/) 안에 싣는 파이썬 패키지. Chaquopy 가 설치한다.
+# 모바일(안드로이드) 앱 안에 싣는 파이썬 패키지. Chaquopy 가 설치한다.
 # 데스크톱 전용(pyinstaller 등)은 뺐다. 네이티브 확장(pycryptodome)은 Chaquopy 가
 # 안드로이드용으로 빌드해 둔 버전만 쓸 수 있어서 버전을 고정하지 않는다 (MarkupSafe, pycryptodome).
 Flask==3.1.0

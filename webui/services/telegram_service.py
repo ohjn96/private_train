@@ -430,7 +430,7 @@ class TelegramService:
         if not self._stored_provider or not self._stored_credentials:
             return None, None
 
-        from app.services.korail_service import KorailService
+        from webui.services.korail_service import KorailService
 
         provider = self._stored_provider
         if provider != 'korail':

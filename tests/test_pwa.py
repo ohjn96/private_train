@@ -14,7 +14,7 @@ def status_of(client, path):
 
 
 def make_client(**env):
-    from app import create_app
+    from webui import create_app
     with mock.patch.dict(os.environ, env):
         return create_app().test_client()
 
@@ -71,13 +71,13 @@ class VersionOverrideTest(unittest.TestCase):
     """안드로이드 앱은 VERSION 파일을 싣지 않고 버전을 환경변수로 넘긴다."""
 
     def test_env_wins(self):
-        from app.version import get_version
+        from webui.version import get_version
         with mock.patch.dict(os.environ, {'TRAIN_APP_VERSION': '9.9.9'}):
             self.assertEqual(get_version(), '9.9.9')
 
     def test_file_otherwise(self):
         from pathlib import Path
-        from app.version import get_version
+        from webui.version import get_version
         expected = (Path(__file__).resolve().parent.parent / 'VERSION').read_text().strip()
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop('TRAIN_APP_VERSION', None)

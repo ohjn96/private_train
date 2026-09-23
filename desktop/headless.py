@@ -16,7 +16,7 @@
     python main.py --headless --dep 서울 --arr 부산 --date 20261003 --from 08:00
 
 매크로 본체는 웹 UI 가 쓰는 것과 같은 함수다. 예약 로직이 두 벌로 갈라지지
-않도록 app.routes.reservation 의 루프를 그대로 가져다 쓴다.
+않도록 webui.routes.reservation 의 루프를 그대로 가져다 쓴다.
 """
 from __future__ import annotations
 
@@ -28,11 +28,11 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from app.services.base_service import SeatOption, TrainInfo
-from app.services.korail_service import KorailService
+from webui.services.base_service import SeatOption, TrainInfo
+from webui.services.korail_service import KorailService
 from core.rate_limit import clamp_call_interval, korail_api
-from app.services.telegram_service import TelegramService
-from app.version import get_version
+from webui.services.telegram_service import TelegramService
+from webui.version import get_version
 
 #: 유일한 서비스 제공자 (SRT 도 코레일 API 로 함께 조회된다)
 PROVIDER = 'korail'
@@ -329,7 +329,7 @@ def wire_telegram(telegram: TelegramService, args: argparse.Namespace, card: dic
     _setup_telegram_callbacks 는 웹 세션을 읽으려다 요청 컨텍스트가 없어 조용히
     넘어가므로, 자격증명과 카드 설정은 뒤에서 직접 채워 넣는다.
     """
-    from app.routes import reservation
+    from webui.routes import reservation
 
     reservation._setup_telegram_callbacks()
     telegram.store_web_session(
@@ -340,7 +340,7 @@ def wire_telegram(telegram: TelegramService, args: argparse.Namespace, card: dic
 
 def install_signal_handlers(stop: threading.Event) -> None:
     """Ctrl+C / SIGTERM 에 매크로와 대기 루프를 함께 세운다."""
-    from app.routes import reservation
+    from webui.routes import reservation
 
     def request_stop(signum, frame):
         log("중단 신호를 받았습니다. 정리 중...")
@@ -356,7 +356,7 @@ def run_oneshot(
     service, telegram: TelegramService, plan: Plan, dry_run: bool = False
 ) -> int:
     """지정한 구간을 조회해 바로 매크로를 돌린다. dry_run 이면 조회까지만."""
-    from app.routes import reservation
+    from webui.routes import reservation
 
     trip = plan.trip
     log("열차 조회 중...")

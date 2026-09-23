@@ -10,8 +10,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# Project root
-ROOT_DIR = Path(__file__).parent.parent
+# 저장소 루트 (이 파일은 desktop/build/ 에 있다)
+ROOT_DIR = Path(__file__).resolve().parents[2]
+# PyInstaller 중간 산출물 (desktop/build/.pyi)
+PYI_DIR = Path(__file__).resolve().parent / '.pyi'
 
 # 버전 (VERSION 파일이 단일 출처)
 VERSION = (ROOT_DIR / 'VERSION').read_text(encoding='utf-8').strip()
@@ -26,8 +28,8 @@ BUILD_CONFIG = {
         'name': 'TrainReservationApp',
         # --specpath 기준으로 상대경로가 풀리므로 원본 경로는 절대경로로 준다
         'data': [
-            f'{ROOT_DIR / "app" / "templates"}{DATA_SEP}app/templates',
-            f'{ROOT_DIR / "app" / "static"}{DATA_SEP}app/static',
+            f'{ROOT_DIR / "webui" / "templates"}{DATA_SEP}webui/templates',
+            f'{ROOT_DIR / "webui" / "static"}{DATA_SEP}webui/static',
             f'{ROOT_DIR / "VERSION"}{DATA_SEP}.',
             # 라이선스 고지: BSD 등 번들 구성요소는 바이너리 배포 시 고지문을 함께 제공해야 한다
             f'{ROOT_DIR / "LICENSE"}{DATA_SEP}.',
@@ -41,7 +43,7 @@ BUILD_CONFIG = {
             # pycryptodome 은 배포 이름, 실제 모듈 이름은 Crypto
             'Crypto', 'Crypto.Cipher.AES', 'Crypto.Util.Padding',
         ],
-        'collect_submodules': ['app', 'core', 'korail2'],
+        'collect_submodules': ['desktop', 'webui', 'core', 'korail2'],
     },
     'ktx': {
         'script': 'ktx_main_web.py',
@@ -60,10 +62,10 @@ def get_pyinstaller_cmd(config: dict) -> list[str]:
         '--clean',
         '--noconfirm',
         f'--name={config["name"]}-v{VERSION}',
-        # 중간 산출물/spec 은 build/.pyi 아래로 모아 루트를 깨끗하게 유지
-        '--distpath=build/.pyi/dist',
-        '--workpath=build/.pyi/work',
-        '--specpath=build/.pyi',
+        # 중간 산출물/spec 은 desktop/build/.pyi 아래로 모아 루트를 깨끗하게 유지
+        f'--distpath={PYI_DIR / "dist"}',
+        f'--workpath={PYI_DIR / "work"}',
+        f'--specpath={PYI_DIR}',
     ]
 
     # Add data files
@@ -122,7 +124,7 @@ def build(app_name: str = 'unified'):
 def move_to_root(base_name: str) -> Path:
     """dist/ 결과물을 프로젝트 루트로 옮기고, 이전 버전 산출물은 지운다."""
     suffix = '.exe' if platform.system() == 'Windows' else ''
-    built = ROOT_DIR / 'build' / '.pyi' / 'dist' / f'{base_name}-v{VERSION}{suffix}'
+    built = PYI_DIR / 'dist' / f'{base_name}-v{VERSION}{suffix}'
     if not built.exists():
         raise FileNotFoundError(f'빌드 결과물을 찾을 수 없습니다: {built}')
 
@@ -139,7 +141,7 @@ def move_to_root(base_name: str) -> Path:
     shutil.move(str(built), target)
 
     # 중간 산출물 정리
-    shutil.rmtree(ROOT_DIR / 'build' / '.pyi', ignore_errors=True)
+    shutil.rmtree(PYI_DIR, ignore_errors=True)
     return target
 
 

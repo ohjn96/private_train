@@ -4,7 +4,7 @@ plugins {
     id("com.chaquo.python")
 }
 
-// 저장소 루트. 파이썬 코드(app/, core/, korail2/)와 VERSION 을 여기서 가져온다.
+// 저장소 루트. 파이썬 코드(webui/, core/, korail2/)와 VERSION 을 여기서 가져온다.
 val repoRoot: File = rootProject.projectDir.parentFile
 val appVersion: String = File(repoRoot, "VERSION").readText().trim()
 
@@ -63,11 +63,11 @@ android {
     }
 }
 
-// 파이썬 코드는 복사본을 두지 않고, 빌드할 때 저장소 루트에서 가져온다.
+// 파이썬 코드는 복사본을 두지 않고, 빌드할 때 저장소 루트(공통 모듈)에서 가져온다.
 val pythonSrc = layout.buildDirectory.dir("python-src")
 val syncPythonSources by tasks.registering(Sync::class) {
     from(repoRoot) {
-        include("app/**", "core/**", "korail2/**")
+        include("webui/**", "core/**", "korail2/**")
         exclude("**/__pycache__/**", "**/*.pyc")
     }
     into(pythonSrc)
@@ -82,10 +82,10 @@ chaquopy {
         version = "3.12"
         System.getenv("CHAQUOPY_BUILD_PYTHON")?.let { buildPython(it) }
         pip {
-            install("-r", File(repoRoot, "requirements-android.txt").path)
+            install("-r", File(rootProject.projectDir, "requirements.txt").path)
         }
         // Flask 가 templates/static 을 파일로 읽으므로 실제 파일로 풀어 둔다
-        extractPackages("app")
+        extractPackages("webui")
     }
     sourceSets {
         getByName("main") {

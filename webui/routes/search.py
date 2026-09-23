@@ -7,8 +7,8 @@ from flask import (
     flash, get_flashed_messages
 )
 
-from app.services import ServiceManager
-from app.utils.session_helper import (
+from webui.services import ServiceManager
+from webui.utils.session_helper import (
     get_current_provider, is_logged_in,
     get_search_state, set_search_trains,
     get_card_settings, set_card_settings, clear_card_settings

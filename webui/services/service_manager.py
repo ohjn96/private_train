@@ -4,9 +4,9 @@ import threading
 from flask import g
 from typing import Optional
 
-from app.services.korail_service import KorailService
-from app.services.base_service import BaseTrainService
-from app.utils.session_helper import (
+from webui.services.korail_service import KorailService
+from webui.services.base_service import BaseTrainService
+from webui.utils.session_helper import (
     set_auth_state,
     clear_auth_state,
     get_credentials,

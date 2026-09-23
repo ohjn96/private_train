@@ -13,11 +13,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pywebpush import WebPushException
 
-import app.routes.reservation as reservation
-from app.services import ServiceManager
-from app.services.korail_service import KorailService
-from app.services.telegram_service import TelegramService
-from app.utils import session_helper
+import webui.routes.reservation as reservation
+from webui.services import ServiceManager
+from webui.services.korail_service import KorailService
+from webui.services.telegram_service import TelegramService
+from webui.utils import session_helper
 from core.base_service import SeatOption
 from server import create_server_app
 from server.push import SubscriptionStore, WebPusher, load_or_create_vapid
@@ -177,11 +177,11 @@ class ServerModeTest(ServerTestCase):
 
 class DesktopModeUnchangedTest(unittest.TestCase):
     def test_desktop_still_configures_telegram(self):
-        from app import create_app
+        from webui import create_app
         client = create_app(server_mode=False).test_client()
         sign_in(client, 'me')
         # 실제 홈 폴더에 저장된 봇 토큰으로 붙지 않게 막는다 (실행 중인 봇과 폴링이 충돌)
-        with mock.patch('app.routes.telegram.load_saved_settings',
+        with mock.patch('webui.routes.telegram.load_saved_settings',
                         return_value={'token': '', 'chat_id': ''}):
             resp = client.post('/api/telegram/configure', json={'bot_token': ''})
         self.assertNotEqual(resp.status_code, 403)

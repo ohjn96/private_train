@@ -2,8 +2,8 @@
 """Authentication routes (코레일 단일 서비스)."""
 from flask import Blueprint, request, session, redirect, url_for, render_template
 
-from app.services import ServiceManager
-from app.utils.session_helper import (
+from webui.services import ServiceManager
+from webui.utils.session_helper import (
     PROVIDER,
     get_current_provider,
     set_current_provider,

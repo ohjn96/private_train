@@ -68,7 +68,7 @@ def create_app(config_name: str = 'default', server_mode: bool | None = None) ->
         app.config['SESSION_COOKIE_SECURE'] = True
 
     # 모든 템플릿에서 버전을 쓸 수 있게 (단일 출처는 루트 VERSION 파일)
-    from app.version import get_version
+    from webui.version import get_version
 
     @app.context_processor
     def inject_version():
@@ -77,7 +77,7 @@ def create_app(config_name: str = 'default', server_mode: bool | None = None) ->
     _install_access_gate(app)
 
     # Register blueprints
-    from app.routes import auth, search, reservation, telegram, pwa
+    from webui.routes import auth, search, reservation, telegram, pwa
     app.register_blueprint(auth.bp)
     app.register_blueprint(search.bp)
     app.register_blueprint(reservation.bp)
@@ -99,7 +99,7 @@ def _install_access_gate(app: Flask) -> None:
 
     @app.before_request
     def require_gate():
-        from app.routes.pwa import PUBLIC_ENDPOINTS
+        from webui.routes.pwa import PUBLIC_ENDPOINTS
         if (request.endpoint in _GATE_EXEMPT or request.endpoint in PUBLIC_ENDPOINTS
                 or session.get('gate_ok')):
             return None

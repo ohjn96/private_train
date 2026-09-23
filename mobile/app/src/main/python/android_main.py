@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """안드로이드 앱 안에서 도는 파이썬 진입점 (Chaquopy).
 
-데스크톱 앱(app/)을 그대로 폰 안의 127.0.0.1 에 띄우고, 화면은 WebView 가 보여준다.
+공통 웹 화면(webui/)을 폰 안의 127.0.0.1 에 띄우고, 화면은 WebView 가 보여준다.
 코레일 호출은 이 폰에서, 이 폰의 IP 로 나간다.
 
 안드로이드 쪽과 주고받는 것:
@@ -34,7 +34,7 @@ def start(files_dir: str, port: int, token: str, version: str, debug: bool = Fal
 
     from werkzeug.serving import make_server
 
-    from app import create_app
+    from webui import create_app
 
     app = create_app(server_mode=False)
     _require_token(app, token)
@@ -61,8 +61,8 @@ def _require_token(app, token: str) -> None:
 def _wire_android() -> None:
     from java import jclass
 
-    from app.routes.reservation import add_macro_listener
-    from app.services.telegram_service import TelegramService
+    from webui.routes.reservation import add_macro_listener
+    from webui.services.telegram_service import TelegramService
 
     bridge = jclass('com.ohjn96.trainreservation.Bridge')
 
@@ -107,8 +107,8 @@ def _add_debug_routes(app) -> None:
     """디버그 빌드 전용: 코레일 없이 매크로 상태·알림 경로를 시험한다 (토큰은 여전히 필요)."""
     from flask import request
 
-    from app.routes.reservation import _macro_listeners
-    from app.services.telegram_service import TelegramService
+    from webui.routes.reservation import _macro_listeners
+    from webui.services.telegram_service import TelegramService
 
     @app.route('/__debug/macro')
     def debug_macro():

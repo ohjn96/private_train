@@ -182,7 +182,7 @@ Restart=on-failure
 안드로이드폰이면 앱을 깔아서 **폰에서 직접** 돌릴 수 있습니다. 서버가 필요 없고, 코레일 호출도
 각자 폰의 IP 로 나갑니다. 앱을 내리거나 화면을 꺼도 매크로가 계속 돌고, 예약 성공은 폰 알림으로 옵니다.
 [Releases](https://github.com/ohjn96/private_train/releases) 에서 `TrainReservationApp-v<버전>.apk` 를 받아 설치하세요.
-설치·빌드·서명 방법은 [android/README.md](android/README.md). (iPhone 은 아래 서버 버전을 쓰세요)
+설치·빌드·서명 방법은 [mobile/README.md](mobile/README.md). (iPhone 은 아래 서버 버전을 쓰세요)
 
 ### Oracle Cloud 에 올리기 (무료, 폰에서 접속, 여러 명)
 
@@ -196,8 +196,8 @@ PC 를 계속 켜 둘 수 없을 때. Oracle Cloud Always Free VM 에 **서버 �
 
 ```bash
 git clone https://github.com/ohjn96/private_train.git && cd private_train
-./scripts/setup-server.sh --tailscale              # 서버 버전 (웹 + 웹 푸시 알림)
-./scripts/setup-server.sh --headless --tailscale   # 혼자, 텔레그램으로만 쓸 때
+./server/setup-server.sh --tailscale              # 서버 버전 (웹 + 웹 푸시 알림)
+./server/setup-server.sh --headless --tailscale   # 혼자, 텔레그램으로만 쓸 때
 ```
 
 4. 폰(과 같이 쓸 가족·친구 폰)에 Tailscale 앱 설치 → 같은 tailnet 에 초대(Share) →
@@ -400,17 +400,20 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 ```
 private_train/
-├── app/                        # Flask 앱
-│   ├── routes/                 # 라우트 (auth, search, reservation, telegram)
-│   ├── services/               # 서비스 레이어 (Korail, Telegram)
-│   ├── templates/              # Jinja2 템플릿
-│   └── static/                 # 정적 파일
-├── korail2/                    # Korail API 모듈
+│   ── 공통 (세 앱이 같이 쓴다) ──
+├── core/                       # 코레일 API 래퍼, 예약 루프, 호출 간격
+├── korail2/                    # 코레일 통신 라이브러리
+├── webui/                      # 화면(templates·static)과 라우트. 세 앱 모두 이 화면을 쓴다
+│
+│   ── 앱 3개 ──
+├── desktop/                    # ① PC 앱: python -m desktop (= python main.py), exe 빌드(build/), 헤드리스
+├── server/                     # ② 서버: python -m server, 여러 명·웹 푸시, setup-server.sh
+├── mobile/                     # ③ 안드로이드 앱(APK): 폰 안에서 webui 를 띄운다
+│
 ├── tests/                      # 회귀 테스트 (네트워크 불필요)
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
-├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
-├── .github/workflows/          # 태그 푸시 시 Windows/macOS 실행 파일 자동 빌드
-├── main.py                     # 진입점 (웹 / --headless 로 매크로만)
+├── .github/workflows/          # 태그 푸시 시 exe(Windows/macOS)·APK 자동 빌드
+├── main.py                     # 하위 호환 진입점 (= python -m desktop)
 ├── VERSION                     # 버전 단일 출처
 ├── LICENSE                     # 개인 사용 라이선스 (재배포·상업이용 금지)
 ├── THIRD-PARTY-NOTICES.md      # 번들 오픈소스 고지
@@ -446,17 +449,17 @@ Release 없이 아티팩트로만 받을 수 있습니다.
 ### 2. Windows PC 에서 직접 빌드
 
 ```powershell
-.\build\build.ps1          # venv 준비 + 의존성 설치 + 빌드
-.\build\build.ps1 -SkipInstall   # 이미 설치돼 있으면
+.\desktop\build\build.ps1          # venv 준비 + 의존성 설치 + 빌드
+.\desktop\build\build.ps1 -SkipInstall   # 이미 설치돼 있으면
 ```
-더블클릭으로 하려면 `build\build.bat`.
+더블클릭으로 하려면 `desktop\build\build.bat`.
 
 ### 3. 파이썬으로 직접
 
 ```bash
-python build/build.py unified
+python desktop/build/build.py unified
 ```
-PyInstaller 옵션은 `build/build.py` 한 곳에만 있고, `build.ps1` 은 이를 호출만 합니다.
+PyInstaller 옵션은 `desktop/build/build.py` 한 곳에만 있고, `build.ps1` 은 이를 호출만 합니다.
 
 ---
 

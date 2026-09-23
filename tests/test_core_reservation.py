@@ -152,7 +152,7 @@ class CallIntervalTest(unittest.TestCase):
 
 class WebCallIntervalTest(unittest.TestCase):
     def setUp(self):
-        from app import create_app
+        from webui import create_app
         from test_reservation_flow import sign_in
         self.client = create_app().test_client()
         sign_in(self.client, 'tester')

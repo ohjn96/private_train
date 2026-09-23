@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 리눅스 서버(Oracle Cloud Always Free 등, Ubuntu 24.04)에 상주 서비스로 설치한다.
-#   ./scripts/setup-server.sh               서버 버전 (여러 명이 웹으로, 알림은 웹 푸시)
-#   ./scripts/setup-server.sh --headless    헤드리스 (혼자, 텔레그램으로만 조종)
-#   ./scripts/setup-server.sh --tailscale   Tailscale + HTTPS 주소(https://<이름>.ts.net)로 폰에서 접속
+#   ./server/setup-server.sh               서버 버전 (여러 명이 웹으로, 알림은 웹 푸시)
+#   ./server/setup-server.sh --headless    헤드리스 (혼자, 텔레그램으로만 조종)
+#   ./server/setup-server.sh --tailscale   Tailscale + HTTPS 주소(https://<이름>.ts.net)로 폰에서 접속
 #
 # 여러 번 돌려도 된다. 설정 파일(/etc/train.env)이 이미 있으면 건드리지 않는다.
 # 업데이트는 git pull 후 이 스크립트를 다시 돌리면 끝.
@@ -36,7 +36,7 @@ sudo apt-get install -y -q python3.12 python3.12-venv git
 echo "==> 2/5 가상환경 + 의존성"
 [[ -x venv/bin/python ]] || python3.12 -m venv venv
 venv/bin/python -m pip install --upgrade pip -q
-venv/bin/python -m pip install -r requirements-server.txt -q
+venv/bin/python -m pip install -r server/requirements.txt -q
 
 echo "==> 3/5 설정 파일 ($ENV_FILE)"
 if sudo test -f "$ENV_FILE"; then
@@ -77,7 +77,7 @@ EXTRA_ENV=""
 EXEC="$APP_DIR/venv/bin/python -m server"
 if [[ $HEADLESS -eq 1 ]]; then
     EXTRA_ENV="Environment=HEADLESS=1"
-    EXEC="$APP_DIR/venv/bin/python main.py"
+    EXEC="$APP_DIR/venv/bin/python -m desktop"
 fi
 sudo tee "$UNIT_FILE" >/dev/null <<EOF
 [Unit]

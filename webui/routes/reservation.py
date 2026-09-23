@@ -6,9 +6,9 @@ from datetime import datetime
 from functools import wraps
 from flask import Blueprint, request, session, redirect, url_for, Response, jsonify
 
-from app.services import ServiceManager, SeatOption
-from app.services.telegram_service import TelegramService
-from app.utils.session_helper import (
+from webui.services import ServiceManager, SeatOption
+from webui.services.telegram_service import TelegramService
+from webui.utils.session_helper import (
     current_user_id,
     mask_user,
     get_current_provider,
@@ -71,7 +71,7 @@ def _setup_telegram_callbacks():
         if is_logged_in():
             _provider = get_current_provider()
         if not _provider:
-            from app.utils.session_helper import get_any_logged_in_provider
+            from webui.utils.session_helper import get_any_logged_in_provider
 
             _provider = get_any_logged_in_provider()
         if _provider:

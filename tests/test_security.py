@@ -7,9 +7,9 @@ import unittest
 import zlib
 from unittest import mock
 
-from app.services import ServiceManager
-from app.services.korail_service import KorailService
-from app.utils import session_helper
+from webui.services import ServiceManager
+from webui.services.korail_service import KorailService
+from webui.utils import session_helper
 
 
 def decode_session_cookie(client) -> dict:
@@ -26,7 +26,7 @@ def decode_session_cookie(client) -> dict:
 
 class SecretsStayOffTheCookieTest(unittest.TestCase):
     def setUp(self):
-        from app import create_app
+        from webui import create_app
 
         def fake_login(svc, user_id, password):
             svc._user_id, svc._password = user_id, password
@@ -98,14 +98,14 @@ class SecretsStayOffTheCookieTest(unittest.TestCase):
 
 class SecretKeyTest(unittest.TestCase):
     def test_env_key_wins(self):
-        from app import _load_secret_key
+        from webui import _load_secret_key
         with mock.patch.dict(os.environ, {'FLASK_SECRET_KEY': 'from-env'}):
             self.assertEqual(_load_secret_key(), 'from-env')
 
     def test_generated_key_is_random_and_private(self):
         import tempfile
         from pathlib import Path
-        import app as app_module
+        import webui as app_module
         with tempfile.TemporaryDirectory() as d, \
                 mock.patch.dict(os.environ, {}, clear=False), \
                 mock.patch.object(app_module, 'SECRET_KEY_PATH', Path(d) / 'secret_key'):
@@ -119,7 +119,7 @@ class SecretKeyTest(unittest.TestCase):
 
 class AccessGateTest(unittest.TestCase):
     def make_client(self, password):
-        from app import create_app
+        from webui import create_app
         with mock.patch.dict(os.environ, {'APP_PASSWORD': password}):
             return create_app().test_client()
 
@@ -142,7 +142,7 @@ class AccessGateTest(unittest.TestCase):
         self.assertEqual(resp.headers['Location'], '/login')
         self.assertEqual(client.get('/login').status_code, 200)
 
-    @mock.patch('app.time.sleep')
+    @mock.patch('webui.time.sleep')
     def test_wrong_password_stays_shut(self, _sleep):
         client = self.make_client('letmein')
         resp = client.post('/gate', data={'password': 'nope'})

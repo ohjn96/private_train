@@ -10,7 +10,7 @@ name: Build Android App
 #   ANDROID_KEY_ALIAS
 #   ANDROID_KEY_PASSWORD
 # 없으면 디버그 키로 서명합니다. 설치는 되지만 빌드마다 키가 달라서 업데이트할 때
-# 기존 앱을 지우고 다시 깔아야 합니다. (키 만드는 법은 android/README.md)
+# 기존 앱을 지우고 다시 깔아야 합니다. (키 만드는 법은 mobile/README.md)
 on:
   push:
     tags:
@@ -61,7 +61,7 @@ jobs:
           fi
 
       - name: 빌드
-        working-directory: android
+        working-directory: mobile
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -71,7 +71,7 @@ jobs:
       - name: 이름 정리
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/release/app-release.apk \
+          cp mobile/app/build/outputs/apk/release/app-release.apk \
              "dist/TrainReservationApp-v${VERSION}.apk"
           ls -la dist
 
