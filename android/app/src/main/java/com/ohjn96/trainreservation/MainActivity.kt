@@ -28,6 +28,7 @@ import android.widget.TextView
 import java.net.HttpURLConnection
 import java.net.URL
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import kotlin.concurrent.thread
 
@@ -36,6 +37,11 @@ import kotlin.concurrent.thread
  * 매크로는 ServerService 에서 돌기 때문에 이 화면을 닫아도 계속된다.
  */
 class MainActivity : Activity() {
+
+    private companion object {
+        /** 웹 화면의 바탕색 (app/templates/base.html 의 rail.ground) */
+        const val GROUND = "#F6F4F0"
+    }
 
     private lateinit var webView: WebView
     private lateinit var loading: View
@@ -47,7 +53,9 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")  // Android 15+ 는 무시하고 아래 여백 색을 쓴다
-        window.statusBarColor = Color.parseColor("#EF4444")
+        window.statusBarColor = Color.parseColor(GROUND)
+        // 밝은 바탕이므로 상태바 아이콘을 어둡게
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
 
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
@@ -74,7 +82,7 @@ class MainActivity : Activity() {
             addView(loading, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
         val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#EF4444"))  // 상태바 자리
+            setBackgroundColor(Color.parseColor(GROUND))  // 상태바 자리 (웹 화면 바탕과 같은 색)
             addView(content, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
         // Android 15+ 는 화면이 상태바·내비게이션바 밑까지 그려진다. 그만큼 비켜 준다.
@@ -113,7 +121,7 @@ class MainActivity : Activity() {
     private fun buildLoadingView(): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         gravity = android.view.Gravity.CENTER
-        setBackgroundColor(Color.parseColor("#F9FAFB"))
+        setBackgroundColor(Color.parseColor(GROUND))
         addView(ProgressBar(this@MainActivity))
         loadingText = TextView(this@MainActivity).apply {
             text = "준비 중..."

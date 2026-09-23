@@ -3,119 +3,144 @@
 {% block title %}열차 검색 - KTX/SRT 예약{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="space-y-4 sm:space-y-6">
+    <!-- 예약 성공 (로그 스트림에서 성공이 오면 보인다) -->
+    <section id="successBanner" data-testid="success-banner" class="hidden bg-white border border-rail-line rounded-[20px] p-5" role="status" aria-live="polite">
+        <div class="flex items-start gap-3">
+            <span class="w-11 h-11 rounded-full bg-rail-ok flex items-center justify-center flex-shrink-0">
+                <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>
+            </span>
+            <div class="flex-1 min-w-0">
+                <h2 class="text-xl font-bold tracking-tight">예약했어요</h2>
+                <p id="successDetail" class="text-sm text-rail-muted mt-0.5"></p>
+            </div>
+            <button type="button" aria-label="닫기" onclick="document.getElementById('successBanner').classList.add('hidden')"
+                    class="w-11 h-11 -mr-2 -mt-2 flex items-center justify-center text-rail-muted">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </div>
+        <div id="payPending" class="mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-[#FDF1DD]">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#8A4B00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div>
+                <p class="text-[15px] font-bold text-[#7A4200]">결제가 남았어요</p>
+                <p class="text-[13px] leading-relaxed text-[#6B4A1E]">결제 기한 안에 코레일 앱에서 결제하지 않으면 예약이 취소돼요.</p>
+            </div>
+        </div>
+        <div id="payDone" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-okSoft">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#0B6B3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
+            <div>
+                <p class="text-[15px] font-bold text-rail-ok">자동결제 완료</p>
+                <p class="text-[13px] text-[#245B3D]">등록한 카드로 결제했어요.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 매크로 실행 중 (상태 폴링이 채운다) -->
+    <section id="macroHero" data-testid="macro-hero" class="hidden bg-rail-ink text-white rounded-[22px] p-5 space-y-4" aria-live="polite">
+        <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#4ADE80] shadow-[0_0_0_4px_rgba(74,222,128,0.25)] animate-pulse"></span>
+            <span class="text-sm font-semibold">좌석 찾는 중</span>
+            <span id="heroElapsed" class="ml-auto text-[13px] text-[#C9C2B8] tabular"></span>
+        </div>
+        <div class="flex items-end gap-2.5">
+            <span id="heroAttempt" class="text-[56px] leading-none font-bold tracking-tight tabular">0</span>
+            <span class="text-[15px] text-[#C9C2B8] pb-2">번째 조회</span>
+        </div>
+        <p id="heroCurrent" class="text-sm text-[#E8E2D9] min-h-[1.25rem]"></p>
+        <p class="text-[13px] leading-relaxed text-[#C9C2B8]">앱을 닫거나 화면을 꺼도 계속 찾아요. 좌석을 잡으면 알림으로 알려드려요.</p>
+        <button type="button" id="heroStopBtn" data-testid="hero-stop"
+                class="w-full h-12 rounded-2xl bg-white text-rail-ink font-bold flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            중단
+        </button>
+    </section>
+
     <!-- Search Form Card -->
-    <div class="bg-white rounded-xl shadow-md p-4 sm:p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">열차 검색</h2>
+    <section class="bg-white border border-rail-line rounded-[20px] px-4 sm:px-6 pt-5 pb-4 sm:pb-6">
+        <h1 class="text-[22px] sm:text-2xl font-bold tracking-tight mb-3">열차 검색</h1>
 
         <form method="POST">
             <input type="hidden" name="search" value="1">
 
-            <!-- Improved Grid Search Bar -->
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                <!-- Group 1: Route (Departure <-> Arrival) -->
-                <div class="col-span-1 lg:col-span-5 flex gap-2">
-                    <div class="flex-1 relative">
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">출발역</label>
-                        <div class="relative">
-                            <input type="text" name="dep" id="depStation" data-testid="search-from"
-                                   autocomplete="off" placeholder="역 검색 (예: 서울)"
-                                   value="{{ form_data.dep }}"
-                                   class="w-full pl-4 pr-10 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800
-                                          focus:ring-ktx-primary">
-                            <div class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </div>
-                            <ul id="depStationList" data-for="depStation"
-                                class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg py-1">
-                                {% for station in stations %}
-                                <li data-value="{{ station }}" class="station-option px-4 py-2.5 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100">{{ station }}</li>
-                                {% endfor %}
-                            </ul>
-                        </div>
+            <div class="grid grid-cols-1 lg:grid-cols-12 lg:gap-6 lg:items-end">
+                <!-- 출발 ⇄ 도착 -->
+                <div class="lg:col-span-5 flex items-center gap-2">
+                    <div class="flex-1 min-w-0 relative">
+                        <label for="depStation" class="block text-xs font-medium text-rail-muted mb-1">출발</label>
+                        <input type="text" name="dep" id="depStation" data-testid="search-from"
+                               autocomplete="off" placeholder="출발역"
+                               value="{{ form_data.dep }}"
+                               class="w-full py-1 bg-transparent border-0 border-b-2 border-transparent focus:border-ktx-primary focus:outline-none text-2xl font-bold tracking-tight text-rail-ink placeholder:text-rail-line">
+                        <ul id="depStationList" data-for="depStation"
+                            class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-rail-line rounded-2xl shadow-lg py-1">
+                            {% for station in stations %}
+                            <li data-value="{{ station }}" class="station-option px-4 py-3 text-base font-medium text-rail-ink cursor-pointer hover:bg-rail-ground">{{ station }}</li>
+                            {% endfor %}
+                        </ul>
                     </div>
 
-                    <div class="flex flex-col justify-end pb-1">
-                        <button type="button" id="swapBtn" data-testid="swap-stations"
-                                class="p-2.5 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:shadow-sm transition-all duration-200 focus:outline-none">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-                            </svg>
-                        </button>
-                    </div>
+                    <button type="button" id="swapBtn" data-testid="swap-stations" aria-label="출발·도착 바꾸기"
+                            class="mt-5 w-11 h-11 flex-shrink-0 rounded-full border border-rail-line bg-rail-ground text-rail-ink flex items-center justify-center hover:border-rail-muted transition-colors">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h11"/><path d="M15 4l3 3-3 3"/><path d="M17 17H6"/><path d="M9 14l-3 3 3 3"/></svg>
+                    </button>
 
-                    <div class="flex-1 relative">
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">도착역</label>
-                        <div class="relative">
-                            <input type="text" name="arr" id="arrStation" data-testid="search-to"
-                                   autocomplete="off" placeholder="역 검색 (예: 부산)"
-                                   value="{{ form_data.arr }}"
-                                   class="w-full pl-4 pr-10 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800
-                                          focus:ring-ktx-primary">
-                            <div class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </div>
-                            <ul id="arrStationList" data-for="arrStation"
-                                class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg py-1">
-                                {% for station in stations %}
-                                <li data-value="{{ station }}" class="station-option px-4 py-2.5 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100">{{ station }}</li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                    </div>
-
-                </div>
-
-                <!-- Group 2: Schedule (Date & Time) -->
-                <div class="col-span-1 lg:col-span-5 flex gap-3">
-                    <div class="flex-[3]">
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">날짜</label>
-                        <div class="relative">
-                            <input type="text" name="date" id="dateInput" data-testid="date-picker" value="{{ form_data.date }}"
-                                   placeholder="날짜 선택"
-                                   class="w-full pl-10 pr-4 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800 cursor-pointer
-                                          focus:ring-ktx-primary">
-                            <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex-[2] relative">
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">시간</label>
-                        <div class="relative">
-                            <select name="time" data-testid="time-picker"
-                                    class="w-full pl-10 pr-10 py-3.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 font-semibold text-gray-800 appearance-none
-                                           focus:ring-ktx-primary">
-                                {% for h in range(24) %}
-                                {% set hh = "%02d:00"|format(h) %}
-                                <option value="{{ hh }}" {% if form_data.time == hh %}selected{% endif %}>
-                                    {{ "%02d시"|format(h) }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                            <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            </div>
-                            <div class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </div>
-                        </div>
+                    <div class="flex-1 min-w-0 relative text-right">
+                        <label for="arrStation" class="block text-xs font-medium text-rail-muted mb-1">도착</label>
+                        <input type="text" name="arr" id="arrStation" data-testid="search-to"
+                               autocomplete="off" placeholder="도착역"
+                               value="{{ form_data.arr }}"
+                               class="w-full py-1 bg-transparent border-0 border-b-2 border-transparent focus:border-ktx-primary focus:outline-none text-2xl font-bold tracking-tight text-rail-ink text-right placeholder:text-rail-line">
+                        <ul id="arrStationList" data-for="arrStation"
+                            class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-rail-line rounded-2xl shadow-lg py-1 text-left">
+                            {% for station in stations %}
+                            <li data-value="{{ station }}" class="station-option px-4 py-3 text-base font-medium text-rail-ink cursor-pointer hover:bg-rail-ground">{{ station }}</li>
+                            {% endfor %}
+                        </ul>
                     </div>
                 </div>
 
-                <!-- Group 3: Submit -->
-                <div class="col-span-1 lg:col-span-2 flex items-end">
+                <div class="my-3 h-px bg-rail-line/70 lg:hidden"></div>
+
+                <!-- 날짜 · 시간 -->
+                <div class="lg:col-span-5 flex flex-col gap-2">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-rail-muted flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>
+                        <label for="dateInput" class="sr-only">날짜</label>
+                        <input type="text" name="date" id="dateInput" data-testid="date-picker" value="{{ form_data.date }}"
+                               placeholder="날짜 선택" readonly
+                               class="flex-1 min-w-0 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink cursor-pointer">
+                        <div class="flex gap-1.5" role="group" aria-label="빠른 날짜">
+                            <button type="button" class="quick-date h-9 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="0">오늘</button>
+                            <button type="button" class="quick-date h-9 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="1">내일</button>
+                            <button type="button" class="quick-date h-9 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="2">모레</button>
+                        </div>
+                    </div>
+                    <div class="h-px bg-rail-line/70"></div>
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-rail-muted flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                        <label for="timeSelect" class="sr-only">출발 시간</label>
+                        <select name="time" id="timeSelect" data-testid="time-picker"
+                                class="flex-1 min-w-0 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink appearance-none cursor-pointer">
+                            {% for h in range(24) %}
+                            {% set hh = "%02d:00"|format(h) %}
+                            <option value="{{ hh }}" {% if form_data.time == hh %}selected{% endif %}>{{ "%02d시 이후 출발"|format(h) }}</option>
+                            {% endfor %}
+                        </select>
+                        <svg class="w-4 h-4 text-rail-muted pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                    </div>
+                </div>
+
+                <!-- 조회 -->
+                <div class="lg:col-span-2 mt-4 lg:mt-0">
                     <button type="submit" data-testid="search-submit"
-                            class="w-full py-3.5 rounded-xl text-white font-bold shadow-md hover:shadow-lg transform active:scale-95 transition-all duration-200 flex items-center justify-center gap-2
-                                   bg-ktx-primary hover:bg-ktx-secondary shadow-red-200">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                        검색
+                            class="w-full h-14 rounded-2xl bg-ktx-primary hover:bg-ktx-secondary text-white text-[17px] font-bold flex items-center justify-center gap-2 active:scale-[0.99] transition">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                        열차 조회
                     </button>
                 </div>
             </div>
         </form>
-    </div>
+    </section>
 
     <!-- Error Message -->
     {% if error_message %}
@@ -126,57 +151,56 @@
 
     <!-- Results -->
     {% if trains %}
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="p-4 sm:p-6 border-b">
-            <!-- 폰: 제목 아래에 옵션 2열 / 넓은 화면: 한 줄 -->
-            <div class="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3">
-                <h2 class="text-lg font-semibold text-gray-800 whitespace-nowrap">검색 결과 ({{ trains|length }}건)</h2>
+    <section class="space-y-3">
+        <div class="px-1 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-bold tracking-tight">{{ form_data.dep }} → {{ form_data.arr }}</h2>
+                <p class="text-[13px] text-rail-muted">{{ form_data.date }} · {{ form_data.time[:2] }}시 이후 · 검색 결과 {{ trains|length }}건</p>
+            </div>
 
-                <!-- Passenger Count / Seat Option / Call Interval -->
-                <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
-                    <label class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600">
-                        <span class="whitespace-nowrap">인원</span>
-                        <select id="passengerCount" data-testid="passenger-count"
-                                class="w-full sm:w-auto px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
-                                onchange="updatePassengerModeVisibility()">
-                            <option value="1" selected>1명</option>
-                            <option value="2">2명</option>
-                        </select>
-                    </label>
-
-                    <label class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600">
-                        <span class="whitespace-nowrap">좌석</span>
-                        <select id="seatOption" data-testid="seat-option"
-                                class="w-full sm:w-auto px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white">
-                            <option value="GENERAL_FIRST">일반실 우선</option>
-                            <option value="GENERAL_ONLY">일반실만</option>
-                            <option value="SPECIAL_FIRST">특실 우선</option>
-                            <option value="SPECIAL_ONLY">특실만</option>
-                        </select>
-                    </label>
-
-                    <select id="passengerMode" data-testid="passenger-mode"
-                            class="hidden col-span-2 w-full sm:w-auto px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white">
-                        <option value="together" selected>2명 함께 예약</option>
-                        <option value="sequential">1명씩 순차 예약 (취소표 노림)</option>
+            <!-- 인원 / 좌석 / 호출 간격: 작은 알약 모양 선택 -->
+            <div class="flex flex-wrap gap-2">
+                <label class="h-9 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]">
+                    <span class="text-rail-muted whitespace-nowrap">인원</span>
+                    <select id="passengerCount" data-testid="passenger-count"
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm"
+                            onchange="updatePassengerModeVisibility()">
+                        <option value="1" selected>1명</option>
+                        <option value="2">2명</option>
                     </select>
-
-                    <label class="col-span-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600"
-                           title="코레일에 조회를 보내는 간격. 짧을수록 빨리 잡지만 차단 위험이 커집니다.">
-                        <span class="whitespace-nowrap">호출 간격</span>
-                        <select id="callInterval" data-testid="call-interval"
-                                class="w-full sm:w-auto px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white">
-                            <option value="1">1초 (빠름)</option>
-                            <option value="1.5">1.5초</option>
-                            <option value="2" selected>2초 (기본)</option>
-                            <option value="2.5">2.5초</option>
-                            <option value="3">3초 (안전)</option>
-                        </select>
-                    </label>
-                </div>
+                </label>
+                <label class="h-9 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]">
+                    <span class="text-rail-muted whitespace-nowrap">좌석</span>
+                    <select id="seatOption" data-testid="seat-option"
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm">
+                        <option value="GENERAL_FIRST">일반실 우선</option>
+                        <option value="GENERAL_ONLY">일반실만</option>
+                        <option value="SPECIAL_FIRST">특실 우선</option>
+                        <option value="SPECIAL_ONLY">특실만</option>
+                    </select>
+                </label>
+                <label class="h-9 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]"
+                       title="코레일에 조회를 보내는 간격. 짧을수록 빨리 잡지만 차단 위험이 커집니다.">
+                    <span class="text-rail-muted whitespace-nowrap">간격</span>
+                    <select id="callInterval" data-testid="call-interval"
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm">
+                        <option value="1">1초 · 빠름</option>
+                        <option value="1.5">1.5초</option>
+                        <option value="2" selected>2초</option>
+                        <option value="2.5">2.5초</option>
+                        <option value="3">3초 · 안전</option>
+                    </select>
+                </label>
+                <select id="passengerMode" data-testid="passenger-mode"
+                        class="hidden h-9 px-3 rounded-[10px] border border-rail-line bg-white font-semibold text-rail-ink text-sm">
+                    <option value="together" selected>2명 함께 예약</option>
+                    <option value="sequential">1명씩 순차 예약 (취소표 노림)</option>
+                </select>
             </div>
         </div>
 
+    <!-- 넓은 화면: 표 -->
+    <div class="hidden lg:block bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Train Table (Desktop) -->
         <div class="hidden lg:block overflow-x-auto max-h-[600px] overflow-y-auto">
             <table class="min-w-full divide-y divide-gray-200">
@@ -229,11 +253,11 @@
                         <!-- Special Seat Status -->
                         <td class="px-6 py-5 text-center">
                             {% if train.special_seat_available %}
-                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-green-500 text-white">
+                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-okSoft text-rail-ok">
                                 예약가능
                             </span>
                             {% else %}
-                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-gray-200 text-gray-500">
+                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-offSoft text-rail-off">
                                 매진
                             </span>
                             {% endif %}
@@ -241,11 +265,11 @@
                         <!-- General Seat Status -->
                         <td class="px-6 py-5 text-center">
                             {% if train.general_seat_available %}
-                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-green-500 text-white">
+                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-okSoft text-rail-ok">
                                 예약가능
                             </span>
                             {% else %}
-                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-gray-200 text-gray-500">
+                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-offSoft text-rail-off">
                                 매진
                             </span>
                             {% endif %}
@@ -256,127 +280,82 @@
             </table>
         </div>
 
-        <!-- Train Cards (Mobile) -->
-        <div id="trainCardContainer" class="lg:hidden space-y-3 p-4">
-            {% for train in trains %}
-            <div class="train-row bg-white border rounded-xl p-4 cursor-pointer transition-all duration-150 hover:shadow-md"
-                 data-index="{{ train.index }}"
-                 data-time="{{ train.dep_time }}"
-                 data-testid="train-row-{{ train.index }}"
-                 onclick="toggleTrainSelection(this)">
-                <!-- Top: Train Info + Time -->
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-2">
-                        {% if 'KTX' in train.train_name %}
-                        <span class="px-2 py-1 text-xs font-bold rounded bg-red-100 text-red-700">KTX</span>
-                        {% else %}
-                        <span class="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-600">일반</span>
-                        {% endif %}
-                        <span class="font-semibold text-gray-900">{{ train.train_name }}</span>
-                        <span class="text-xs text-gray-500">#{{ train.train_number }}</span>
-                    </div>
+    </div>
+
+    <!-- 폰: 카드 (눌러서 고르기) -->
+    <div id="trainCardContainer" class="lg:hidden flex flex-col gap-2.5">
+        {% for train in trains %}
+        <div class="train-row train-card bg-white border border-rail-line rounded-2xl px-4 py-3.5 flex items-center gap-3 cursor-pointer select-none transition"
+             data-index="{{ train.index }}" data-time="{{ train.dep_time }}" data-testid="train-row-{{ train.index }}"
+             role="button" tabindex="0" aria-pressed="false"
+             onclick="toggleTrainSelection(this)"
+             onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleTrainSelection(this); }">
+            <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+                <div class="flex items-baseline gap-2 tabular">
+                    <span class="text-[22px] font-bold tracking-tight">{{ train.dep_time_formatted }}</span>
+                    <span class="text-sm text-rail-muted">→</span>
+                    <span class="text-[22px] font-bold tracking-tight">{{ train.arr_time_formatted }}</span>
+                    <span class="text-xs text-rail-muted">{{ train.duration_formatted }}</span>
                 </div>
-                <!-- Middle: Time Display -->
-                <div class="flex items-center justify-center gap-4 py-3 bg-gray-50 rounded-lg mb-3">
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-gray-900">{{ train.dep_time_formatted }}</div>
-                        <div class="text-xs text-gray-500">{{ train.dep_station }}</div>
-                    </div>
-                    <div class="flex flex-col items-center text-gray-400">
-                        <span class="text-xs">{{ train.duration_formatted }}</span>
-                        <span class="text-xl">→</span>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-gray-900">{{ train.arr_time_formatted }}</div>
-                        <div class="text-xs text-gray-500">{{ train.arr_station }}</div>
-                    </div>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[13px] font-semibold">{{ train.train_name }}</span>
+                    <span class="text-xs text-rail-muted">{{ train.train_number }}</span>
                 </div>
-                <!-- Bottom: Seat Status -->
-                <div class="flex gap-2">
-                    <div class="flex-1 text-center">
-                        <div class="text-xs text-gray-500 mb-1">특실</div>
-                        {% if train.special_seat_available %}
-                        <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500 text-white w-full justify-center">
-                            예약가능
-                        </span>
-                        {% else %}
-                        <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-200 text-gray-500 w-full justify-center">
-                            매진
-                        </span>
-                        {% endif %}
-                    </div>
-                    <div class="flex-1 text-center">
-                        <div class="text-xs text-gray-500 mb-1">일반실</div>
-                        {% if train.general_seat_available %}
-                        <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500 text-white w-full justify-center">
-                            예약가능
-                        </span>
-                        {% else %}
-                        <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-200 text-gray-500 w-full justify-center">
-                            매진
-                        </span>
-                        {% endif %}
-                    </div>
+                <div class="flex gap-1.5">
+                    {% if train.general_seat_available %}<span class="px-2 py-0.5 rounded-lg bg-rail-okSoft text-rail-ok text-xs font-semibold">일반 있음</span>{% else %}<span class="px-2 py-0.5 rounded-lg bg-rail-offSoft text-rail-off text-xs font-medium">일반 매진</span>{% endif %}
+                    {% if train.special_seat_available %}<span class="px-2 py-0.5 rounded-lg bg-rail-okSoft text-rail-ok text-xs font-semibold">특실 있음</span>{% else %}<span class="px-2 py-0.5 rounded-lg bg-rail-offSoft text-rail-off text-xs font-medium">특실 매진</span>{% endif %}
                 </div>
             </div>
-            {% endfor %}
+            <span class="select-mark w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                <svg class="w-4 h-4 opacity-0" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+            </span>
         </div>
+        {% endfor %}
+    </div>
 
-        <!-- Load More Button -->
-        <div class="p-4 flex justify-center border-t">
-            <button type="button" id="loadMoreBtn" 
-                    class="px-10 py-2.5 rounded-xl border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50 transition-all flex items-center gap-2">
-                <span>열차 더 보기</span>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+    <div class="flex justify-center pt-1">
+        <button type="button" id="loadMoreBtn"
+                class="h-11 px-6 rounded-xl border border-rail-line bg-white text-sm font-semibold text-rail-ink flex items-center gap-2 hover:border-rail-muted transition-colors">
+            <span>다음 열차 더 보기</span>
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+    </div>
+
+    <!-- 예약 시작 / 알림음 (폰에선 아래 바의 버튼으로도 시작·중단) -->
+    <div class="bg-white rounded-[20px] border border-rail-line p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <span class="text-rail-muted">성공하면 알림음</span>
+            <label class="inline-flex items-center gap-1.5">
+                <input type="radio" name="sound_option" value="once" checked data-testid="sound-option-once" class="accent-[#C8102E]">
+                <span>1번</span>
+            </label>
+            <label class="inline-flex items-center gap-1.5">
+                <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat" class="accent-[#C8102E]">
+                <span>10초 반복</span>
+            </label>
+            <button type="button" id="ackBtn" data-testid="ack-button" class="h-9 px-3 rounded-lg border border-rail-line text-sm hover:bg-rail-ground transition-colors">알림음 끄기</button>
+        </div>
+        <div class="flex gap-2">
+            <button type="button" id="startBtn" data-testid="reserve-start"
+                    class="flex-1 sm:flex-none h-12 px-7 rounded-2xl bg-ktx-primary hover:bg-ktx-secondary text-white font-bold transition-colors">
+                예약 시작
+            </button>
+            <button type="button" id="stopBtn" data-testid="reserve-stop"
+                    class="hidden flex-1 sm:flex-none h-12 px-7 rounded-2xl border-[1.5px] border-rail-ink bg-white text-rail-ink font-bold transition-colors">
+                중단
             </button>
         </div>
-
-        <!-- Action Buttons -->
-        <div class="p-6 border-t bg-gray-50">
-            <div class="flex flex-wrap items-center justify-between gap-4">
-                <!-- Sound Options -->
-                <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-600">예약 성공 시:</span>
-                    <label class="inline-flex items-center">
-                        <input type="radio" name="sound_option" value="once" checked data-testid="sound-option-once"
-                               class="text-ktx-primary">
-                        <span class="ml-2 text-sm text-gray-700">1회 알림</span>
-                    </label>
-                    <label class="inline-flex items-center">
-                        <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat"
-                               class="text-ktx-primary">
-                        <span class="ml-2 text-sm text-gray-700">10초 반복</span>
-                    </label>
-                    <button type="button" id="ackBtn" data-testid="ack-button" class="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded transition-colors">
-                        ACK
-                    </button>
-                </div>
-
-                <!-- Reserve Buttons -->
-                <div class="flex space-x-3">
-                    <button type="button" id="startBtn" data-testid="reserve-start"
-                            class="px-6 py-2 rounded-lg text-white font-medium transition-colors
-                                   bg-ktx-primary hover:bg-ktx-secondary">
-                        예약 시작
-                    </button>
-                    <button type="button" id="stopBtn" data-testid="reserve-stop"
-                            class="px-6 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 transition-colors hidden">
-                        중단
-                    </button>
-                </div>
-
-                <!-- 다른 사람이 매크로를 쓰는 중일 때 (서버는 한 번에 한 명만) -->
-                <p id="busyNotice" data-testid="busy-notice"
-                   class="hidden w-full text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"></p>
-            </div>
-        </div>
+        <!-- 다른 사람이 매크로를 쓰는 중일 때 (서버는 한 번에 한 명만) -->
+        <p id="busyNotice" data-testid="busy-notice"
+           class="hidden w-full text-sm text-[#7A4200] bg-[#FDF1DD] rounded-xl px-3 py-2"></p>
     </div>
+    </section>
 
     {% endif %}
 
     {% if server_mode %}
     <!-- Web Push Card (서버 모드) -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden" data-testid="push-card">
+    <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden" data-testid="push-card">
         <div class="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
              onclick="document.getElementById('pushBody').classList.toggle('hidden'); document.getElementById('pushChevron').classList.toggle('rotate-180');">
             <div class="flex items-center gap-3">
@@ -427,7 +406,7 @@
 
     {% else %}
     <!-- Telegram Settings Card (always visible) -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+    <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Header / Toggle -->
         <div class="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
              onclick="document.getElementById('tgBody').classList.toggle('hidden'); document.getElementById('tgChevron').classList.toggle('rotate-180');">
@@ -546,7 +525,7 @@
     {% endif %}
 
     <!-- Card Auto-Payment Settings Card (always visible) -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+    <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Header / Toggle -->
         <div class="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
              onclick="document.getElementById('cardBody').classList.toggle('hidden'); document.getElementById('cardChevron').classList.toggle('rotate-180');">
@@ -621,7 +600,7 @@
                         <span class="text-sm text-gray-600">예매 성공 시 자동으로 결제</span>
                     </label>
                     <button type="button" id="cardSaveBtn" onclick="saveCardSettings()"
-                            class="px-5 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors">
+                            class="px-5 py-2 rounded-lg bg-rail-okSoft text-rail-ok text-sm font-medium hover:bg-green-600 transition-colors">
                         저장
                     </button>
                     <button type="button" id="cardClearBtn" onclick="clearCardSettings()"
@@ -645,15 +624,16 @@
      style="transform: translateY(calc(100% - 48px));">
 
     <!-- Drawer Handle (Always Visible) -->
-    <div class="bg-gray-800 text-white px-4 py-3 rounded-t-xl cursor-pointer flex items-center justify-between shadow-lg"
+    <div class="bg-rail-ink text-white px-4 py-3 rounded-t-2xl cursor-pointer flex items-center justify-between shadow-lg"
          onclick="toggleLogDrawer()" data-testid="log-toggle-button">
         <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse" id="logStatusDot" data-testid="log-status-indicator"></span>
-            <span class="text-sm font-medium">예약 로그</span>
-            <span id="logSourceBadge" class="hidden text-xs px-1.5 py-0.5 rounded bg-blue-500 text-white">TG</span>
-            <span id="selectedCount" class="text-xs text-gray-400 ml-2"></span>
-            <span id="macroElapsed" class="hidden text-xs text-gray-400 ml-2"></span>
-            <span id="currentAttempt" class="hidden text-xs text-yellow-300 ml-2 truncate max-w-[240px]" title=""></span>
+            <span class="text-sm font-medium whitespace-nowrap">예약 로그</span>
+            <span id="logSourceBadge" class="hidden max-sm:!hidden text-xs px-1.5 py-0.5 rounded bg-blue-500 text-white whitespace-nowrap">TG</span>
+            <span id="selectedCount" class="text-xs text-[#C9C2B8] ml-2 whitespace-nowrap"></span>
+            <!-- 폰에선 위쪽 실행 중 카드가 보여주므로 숨긴다 -->
+            <span id="macroElapsed" class="hidden max-lg:!hidden text-xs text-[#C9C2B8] ml-2 whitespace-nowrap"></span>
+            <span id="currentAttempt" class="hidden max-lg:!hidden text-xs text-yellow-300 ml-2 truncate max-w-[240px]" title=""></span>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
             <!-- 폰: 긴 열차 목록 맨 아래까지 내려가지 않아도 되게 여기서 시작/중단 -->
@@ -674,7 +654,7 @@
     </div>
 
     <!-- Drawer Content -->
-    <div id="logContainer" data-testid="log-stream-container" class="log-container h-48 overflow-y-auto p-4 bg-gray-900 text-gray-100 text-sm">
+    <div id="logContainer" data-testid="log-stream-container" class="log-container h-48 overflow-y-auto p-4 bg-[#12100E] text-[#E8E2D9] text-[13px]">
         <div class="text-gray-500">대기 중...</div>
     </div>
 </div>
@@ -712,6 +692,7 @@ function updatePassengerModeVisibility() {
 // Train selection toggle function
 function toggleTrainSelection(row) {
     row.classList.toggle('selected');
+    row.setAttribute('aria-pressed', row.classList.contains('selected') ? 'true' : 'false');
     updateSelectedCount();
 }
 
@@ -779,8 +760,31 @@ document.addEventListener('DOMContentLoaded', function() {
             minDate: 'today',
             maxDate: new Date().fp_incr(30), // 30 days from today
             defaultDate: dateInput.value || 'today',
-            disableMobile: true
+            disableMobile: true,
+            onChange: markQuickDate
         });
+
+        // 오늘/내일/모레: 누르면 그 날짜로, 지금 날짜와 같은 버튼은 강조
+        function markQuickDate() {
+            const picked = dateInput.value;
+            document.querySelectorAll('.quick-date').forEach(btn => {
+                const d = new Date();
+                d.setDate(d.getDate() + Number(btn.dataset.offset));
+                const on = flatpickr.formatDate(d, 'Y-m-d') === picked;
+                btn.classList.toggle('border-ktx-primary', on);
+                btn.classList.toggle('bg-rail-accentSoft', on);
+                btn.classList.toggle('text-ktx-primary', on);
+                btn.classList.toggle('font-semibold', on);
+            });
+        }
+        document.querySelectorAll('.quick-date').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const d = new Date();
+                d.setDate(d.getDate() + Number(btn.dataset.offset));
+                dateInput._flatpickr.setDate(d, true);
+            });
+        });
+        markQuickDate();
     }
 
     // Swap stations
@@ -1031,60 +1035,52 @@ document.addEventListener('DOMContentLoaded', function() {
                 </td>
                 <td class="px-6 py-5 text-center">
                     ${train.special_seat_available 
-                        ? '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-green-500 text-white">예약가능</span>' 
-                        : '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-gray-200 text-gray-500">매진</span>'}
+                        ? '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-okSoft text-rail-ok">예약가능</span>' 
+                        : '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-offSoft text-rail-off">매진</span>'}
                 </td>
                 <td class="px-6 py-5 text-center">
                     ${train.general_seat_available 
-                        ? '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-green-500 text-white">예약가능</span>' 
-                        : '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-gray-200 text-gray-500">매진</span>'}
+                        ? '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-okSoft text-rail-ok">예약가능</span>' 
+                        : '<span class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-rail-offSoft text-rail-off">매진</span>'}
                 </td>
             `;
             tableBody.appendChild(row);
 
-            // Mobile Card
+            // Mobile Card (템플릿의 카드와 같은 모양)
             const card = document.createElement('div');
-            card.className = 'train-row bg-white border rounded-xl p-4 cursor-pointer transition-all duration-150 hover:shadow-md';
+            card.className = 'train-row train-card bg-white border border-rail-line rounded-2xl px-4 py-3.5 flex items-center gap-3 cursor-pointer select-none transition';
             card.dataset.index = train.index;
             card.dataset.time = train.dep_time;
+            card.setAttribute('role', 'button');
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('aria-pressed', 'false');
             card.onclick = function() { toggleTrainSelection(this); };
-
+            card.onkeydown = function(event) {
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleTrainSelection(this); }
+            };
+            const seatPill = (label, ok) => ok
+                ? `<span class="px-2 py-0.5 rounded-lg bg-rail-okSoft text-rail-ok text-xs font-semibold">${label} 있음</span>`
+                : `<span class="px-2 py-0.5 rounded-lg bg-rail-offSoft text-rail-off text-xs font-medium">${label} 매진</span>`;
             card.innerHTML = `
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-2">
-                        <span class="px-2 py-1 text-xs font-bold rounded ${badgeClass}">${badgeText}</span>
-                        <span class="font-semibold text-gray-900">${train.train_name}</span>
-                        <span class="text-xs text-gray-500">#${train.train_number}</span>
+                <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+                    <div class="flex items-baseline gap-2 tabular">
+                        <span class="text-[22px] font-bold tracking-tight">${train.dep_time_formatted}</span>
+                        <span class="text-sm text-rail-muted">→</span>
+                        <span class="text-[22px] font-bold tracking-tight">${train.arr_time_formatted}</span>
+                        <span class="text-xs text-rail-muted">${train.duration_formatted}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[13px] font-semibold">${train.train_name}</span>
+                        <span class="text-xs text-rail-muted">${train.train_number}</span>
+                    </div>
+                    <div class="flex gap-1.5">
+                        ${seatPill('일반', train.general_seat_available)}
+                        ${seatPill('특실', train.special_seat_available)}
                     </div>
                 </div>
-                <div class="flex items-center justify-center gap-4 py-3 bg-gray-50 rounded-lg mb-3">
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-gray-900">${train.dep_time_formatted}</div>
-                        <div class="text-xs text-gray-500">${train.dep_station}</div>
-                    </div>
-                    <div class="flex flex-col items-center text-gray-400">
-                        <span class="text-xs">${train.duration_formatted}</span>
-                        <span class="text-xl">→</span>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-gray-900">${train.arr_time_formatted}</div>
-                        <div class="text-xs text-gray-500">${train.arr_station}</div>
-                    </div>
-                </div>
-                <div class="flex gap-2">
-                    <div class="flex-1 text-center">
-                        <div class="text-xs text-gray-500 mb-1">특실</div>
-                        ${train.special_seat_available 
-                            ? '<span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500 text-white w-full justify-center">예약가능</span>' 
-                            : '<span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-200 text-gray-500 w-full justify-center">매진</span>'}
-                    </div>
-                    <div class="flex-1 text-center">
-                        <div class="text-xs text-gray-500 mb-1">일반실</div>
-                        ${train.general_seat_available 
-                            ? '<span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500 text-white w-full justify-center">예약가능</span>' 
-                            : '<span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-200 text-gray-500 w-full justify-center">매진</span>'}
-                    </div>
-                </div>
+                <span class="select-mark w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                    <svg class="w-4 h-4 opacity-0" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+                </span>
             `;
             cardContainer.appendChild(card);
         });
@@ -1211,12 +1207,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (isLive && dot) dot.className = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse';
 
-        if (isLive) {
+        // 넓은 화면에서만 로그 서랍을 저절로 연다. 폰은 위쪽 실행 중 카드가 상태를 보여주고,
+        // 서랍이 열리면 화면 절반을 가린다.
+        if (isLive && window.matchMedia('(min-width: 1024px)').matches) {
             // Only an actually-active run should grab the user's attention like this.
             const drawer = document.getElementById('logDrawer');
             if (drawer) drawer.style.transform = 'translateY(0px)';
             const icon = document.getElementById('drawerIcon');
             if (icon) icon.classList.remove('rotate-180');
+        }
+        if (isLive) {
 
             if (startBtn) startBtn.classList.add('hidden');
             if (stopBtn) stopBtn.classList.remove('hidden');
@@ -1246,7 +1246,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Reservation (and possibly payment) succeeded - keep the
                     // stream open until 'stream_end' so payment log lines still arrive.
                     log(data.message, 'success');
-                    if (isLive) playSound();
+                    if (isLive) {
+                        playSound();
+                        showSuccess(data.message);
+                    }
                     break;
                 case 'error':
                     log(data.message, 'error');
@@ -1292,8 +1295,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const startTime = new Date(startTimeIso);
 
         const tick = () => {
-            elapsedEl.textContent = formatElapsed(Date.now() - startTime.getTime());
+            const ms = Date.now() - startTime.getTime();
+            elapsedEl.textContent = formatElapsed(ms);
             elapsedEl.classList.remove('hidden');
+            const heroEl = document.getElementById('heroElapsed');
+            if (heroEl) {
+                const m = Math.floor(ms / 60000);
+                heroEl.textContent = m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분째` : m > 0 ? `${m}분째` : '방금 시작';
+            }
         };
         tick();
         if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
@@ -1339,6 +1348,57 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // ─── 실행 중 카드 / 예약 성공 배너 ─────────────────────────
+    function updateMacroHero(status) {
+        const hero = document.getElementById('macroHero');
+        if (!hero) return;
+        const stopBtnEl = document.getElementById('heroStopBtn');
+        if (!stopBtnEl.dataset.label) stopBtnEl.dataset.label = stopBtnEl.innerHTML;
+        if (!status) {
+            hero.classList.add('hidden');
+            stopBtnEl.innerHTML = stopBtnEl.dataset.label;  // 다음 실행 때 "중단" 으로 다시
+            return;
+        }
+        hero.classList.remove('hidden');
+        document.getElementById('heroAttempt').textContent = (status.macro_attempt || 0).toLocaleString('ko-KR');
+        const info = status.macro_info || {};
+        let current = '';
+        if (info.current_train && info.current_time) {
+            const idx = (info.current_index && info.current_total) ? ` (${info.current_index}/${info.current_total})` : '';
+            current = `${info.current_train} ${info.current_time} 확인 중${idx}`;
+        } else if (info.trains) {
+            current = `대상: ${info.trains}`;
+        }
+        document.getElementById('heroCurrent').textContent = current;
+    }
+
+    document.getElementById('heroStopBtn')?.addEventListener('click', async function() {
+        // 검색 결과가 없는 화면(텔레그램으로 시작한 매크로 등)에서도 멈출 수 있게 직접 부른다
+        const resp = await fetch('/stop_macro', { method: 'POST' });
+        if (resp.ok) {
+            this.textContent = '멈추는 중...';
+            if (typeof log === 'function') log('중단 요청을 보냈습니다...', 'warning');
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            alert(data.message || '중단하지 못했습니다.');
+        }
+    });
+
+    function showSuccess(message) {
+        const banner = document.getElementById('successBanner');
+        if (!banner) return;
+        if (message.includes('결제 완료')) {
+            document.getElementById('payPending').classList.add('hidden');
+            document.getElementById('payDone').classList.remove('hidden');
+        } else {
+            document.getElementById('successDetail').textContent = message.replace(/^예약 성공!\s*/, '');
+            document.getElementById('payPending').classList.remove('hidden');
+            document.getElementById('payDone').classList.add('hidden');
+        }
+        banner.classList.remove('hidden');
+        banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     // Once we've shown a finished run's log history (or watched one live), don't
     // keep re-replaying it every poll tick - only a genuinely new run (macro_running
     // flips true again) should trigger another connect.
@@ -1373,8 +1433,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         startElapsedTimer(data.macro_start_time);
                     }
                     updateCurrentAttempt(data.macro_info);
+                    updateMacroHero(data);
                 } else {
                     updateCurrentAttempt(null);
+                    updateMacroHero(null);
                     // Nothing running right now - but if the last run's log is still in the
                     // buffer and we haven't shown it yet (e.g. just loaded/refreshed the page
                     // after a reservation finished), replay it once instead of leaving the

@@ -3,36 +3,28 @@
 {% block title %}접근 확인 - 열차 예약{% endblock %}
 
 {% block content %}
-<div class="min-h-[calc(100vh-12rem)] flex items-center justify-center">
-    <div class="w-full max-w-md">
-        <div class="bg-white rounded-2xl shadow-xl p-8">
-            <div class="text-center mb-8">
-                <h1 class="text-2xl font-bold mb-2">접근 비밀번호</h1>
-                <p class="text-gray-500">이 서버 관리자가 알려준 비밀번호를 입력하세요</p>
-            </div>
-
-            {% if error %}
-            <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p class="text-sm text-red-600">{{ error }}</p>
-            </div>
-            {% endif %}
-
-            <form method="POST" class="space-y-6">
-                <input type="password"
-                       name="password"
-                       required
-                       autofocus
-                       autocomplete="current-password"
-                       placeholder="접근 비밀번호"
-                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2
-                              focus:ring-ktx-primary focus:border-transparent transition-colors">
-                <button type="submit"
-                        class="w-full py-3 px-4 rounded-lg text-white font-medium transition-colors
-                               bg-ktx-primary hover:bg-ktx-secondary">
-                    들어가기
-                </button>
-            </form>
+<div class="min-h-[calc(100vh-10rem)] flex items-center justify-center">
+    <div class="w-full max-w-sm">
+        <div class="mb-6 px-1">
+            <h1 class="text-[26px] font-bold tracking-tight">접근 비밀번호</h1>
+            <p class="mt-2 text-sm text-rail-muted">이 서버 관리자가 알려준 비밀번호를 입력하세요.</p>
         </div>
+
+        {% if error %}
+        <div class="mb-4 p-3.5 rounded-2xl bg-rail-accentSoft" role="alert">
+            <p class="text-sm text-ktx-secondary">{{ error }}</p>
+        </div>
+        {% endif %}
+
+        <form method="POST" class="bg-white border border-rail-line rounded-[20px] p-5 space-y-4">
+            <label for="gate_password" class="sr-only">접근 비밀번호</label>
+            <input type="password" id="gate_password" name="password" required autofocus
+                   autocomplete="current-password" placeholder="접근 비밀번호"
+                   class="w-full h-12 px-4 rounded-xl border border-rail-line bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary text-base">
+            <button type="submit" class="w-full h-14 rounded-2xl bg-ktx-primary hover:bg-ktx-secondary text-white text-[17px] font-bold transition-colors">
+                들어가기
+            </button>
+        </form>
     </div>
 </div>
 {% endblock %}
