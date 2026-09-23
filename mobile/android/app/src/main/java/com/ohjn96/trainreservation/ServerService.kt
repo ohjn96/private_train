@@ -299,14 +299,8 @@ class ServerService : Service() {
             // 매크로가 도는 중엔 [매크로 중단] (결제 도중에 프로세스를 죽이지 않게), 쉴 땐 [종료]
             .addAction(0, if (macroRunning) "매크로 중단" else "종료", stopIntent())
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            // 잠금 화면에는 노리는 열차 대신 일반 문구만
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPublicVersion(
-                Notifications.publicVersion(
-                    this, Notifications.CHANNEL_SERVICE,
-                    if (macroRunning) "예약 매크로 실행 중" else "열차 예약 대기 중"
-                )
-            )
+            // 잠금 화면에서도 진행 상황을 바로 볼 수 있게 내용까지 보여 준다
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
 
     private fun stopIntent(): PendingIntent {

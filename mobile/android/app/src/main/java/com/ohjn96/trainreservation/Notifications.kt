@@ -88,12 +88,6 @@ object Notifications {
     }
 
     /** 잠금 화면에 대신 보일 내용 없는 알림 */
-    fun publicVersion(context: Context, channel: String, title: String) =
-        NotificationCompat.Builder(context, channel)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title)
-            .build()
-
     fun showEvent(context: Context, kind: String, title: String, body: String) {
         if (kind == "resumed") cancel(context, ID_RESTART_NEEDED)  // 다시 돌기 시작했다
         val notification = NotificationCompat.Builder(context, CHANNEL_EVENTS)
@@ -105,9 +99,8 @@ object Notifications {
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent(context))
-            // 잠금 화면에는 열차·결제 내용 대신 "예약 알림이 있어요" 만
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPublicVersion(publicVersion(context, CHANNEL_EVENTS, "예약 알림이 있어요"))
+            // 잠금 화면에서도 열차·결제 기한을 바로 볼 수 있게 내용까지 보여 준다
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
         try {
             NotificationManagerCompat.from(context).notify(idFor(context, kind), notification)
