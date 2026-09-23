@@ -29,7 +29,7 @@ args = None
 # ──────────────────────────────────────────────── adb / http 도우미
 
 def adb(*cmd, check=False, timeout=120) -> str:
-    p = subprocess.run([ADB, '-s', args.serial, *cmd], capture_output=True, text=True, timeout=timeout)
+    p = subprocess.run([ADB, '-s', args.serial, *cmd], capture_output=True, text=True, errors='replace', timeout=timeout)
     if check and p.returncode != 0:
         raise RuntimeError(f'adb {" ".join(cmd)}: {p.stderr.strip()}')
     return (p.stdout or '') + (p.stderr or '')
