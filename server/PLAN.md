@@ -12,7 +12,7 @@
 | `ServiceManager._services` (전역 1개) | 두 번째 사람이 로그인하면 첫 사람 세션을 밀어냄 | `UserRegistry`: 코레일 ID별 `UserSession` |
 | `reservation.STOP_MACRO` (전역) | 한 명이 멈추면 전부 멈춤 | 사용자별 `threading.Event` |
 | `TelegramService` 싱글톤 | 로그·상태·봇·자격증명을 한 사람 것만 가짐 | 역할별로 쪼갬 (아래) |
-| `core.rate_limit.korail_api` (전역 1.5초) | N명이면 각자 N배 느려짐 | 계정별 1.5초 + 서버 전체 상한 |
+| `core.rate_limit.korail_api` (전역 게이트 1개) | N명이면 각자 N배 느려짐 | 계정별 게이트(1~3초 선택) + 서버 전체 상한 |
 | Flask 개발 서버 | 운영용 아님 | waitress (단일 프로세스, 스레드 여러 개) |
 
 ## 모듈
@@ -49,8 +49,8 @@ server/
   (데스크톱 TelegramService 는 당분간 그대로 두고, 나중에 이 위로 옮길 수 있음)
 
 ### 속도 제한 (IP 차단 방지)
-- `KorailService(limiter=...)` 로 제한기를 주입할 수 있게 `core` 수정 (기본값은 지금 전역 게이트 → 데스크톱 동작 불변)
-- 사용자별: 1.5초 (`KORAIL_MIN_API_INTERVAL`)
+- ✅ `KorailService(limiter=...)` 주입 완료 (기본값은 전역 게이트 → 데스크톱 동작 불변)
+- ✅ 사용자별: 예약 화면에서 고른 호출 간격 1~3초 (기본 2초, 1초 하한)
 - 서버 전체: `SERVER_MAX_CALLS_PER_SEC` (기본 2) — 모든 계정이 같은 IP 로 나가므로
 - 예약 호출은 지금처럼 기다리지 않고 바로 (좌석을 놓치지 않게), 대신 기록은 남김
 
@@ -69,7 +69,7 @@ server/
 
 ## 작업 순서 (각 단계마다 테스트)
 
-1. `core`: KorailService 에 limiter 주입 + 서버 전체 상한 제한기 (`CompositeLimiter`)
+1. `core`: 서버 전체 상한 제한기 (`CompositeLimiter`: 사용자 게이트 + 전체 게이트)
 2. `server/users.py`, `server/macro.py` + 단위 테스트 (2명 동시 매크로, 한 명 중단, 로그 분리)
 3. `server/app.py` + routes (기존 템플릿으로 로그인→검색→예약→스트림 동작)
 4. `core/telegram_api.py` 추출 + `server/bot.py` (연결 코드, 명령 분배)
