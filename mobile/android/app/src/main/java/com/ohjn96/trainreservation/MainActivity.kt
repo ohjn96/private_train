@@ -15,7 +15,6 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
@@ -61,8 +60,6 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 최근 앱 목록 미리보기·화면 녹화에 예약 정보·카드 입력칸이 찍히지 않게
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         @Suppress("DEPRECATION")  // Android 15+ 는 무시하고 아래 여백 색을 쓴다
         window.statusBarColor = Color.parseColor(GROUND)
         // 밝은 바탕이므로 상태바 아이콘을 어둡게

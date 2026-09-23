@@ -55,8 +55,8 @@ scripts/qa/android_e2e.sh --no-build --reboot
 평문 없음, `kill -9` → 새 pid + 매크로 재개 + "다시 시작했어요" 알림, `STOP_MACRO` 서비스 인텐트
 → 매크로 멈춤 + 작업 삭제, WebView 렌더러 kill → 앱 생존 + 다시 로드, 비행기 모드 실행 →
 Tailwind 스타일 유지, 뒤로 가기 버튼이 `window.__appBack()` 에 먼저 묻는지 (true → 앱 유지, false → 앱을 뒤로). 선택: `--reboot` 재부팅 후 재개, `--stall` 조회 멈춤 → 워치독 재시작.
-WebView 안의 값은 CDP(디버그 빌드 원격 디버깅)로 읽는다. 앱 화면은 FLAG_SECURE 라
-`screencap` 이 검게 나올 수 있다 (알림·홈 화면 증거용으로만 쓴다; 앱 화면 점검은 screenshots.py). 토큰은
+WebView 안의 값은 CDP(디버그 빌드 원격 디버깅)로 읽는다. 앱 화면 점검은 screenshots.py 가 주로 맡고,
+`screencap` 은 알림·홈 화면 증거용으로 쓴다. 토큰은
 `adb shell run-as com.ohjn96.trainreservation cat shared_prefs/app.xml`.
 
 ## 주의
