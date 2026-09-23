@@ -179,6 +179,14 @@ def card_clear():
     """Clear card auto-payment settings for the current provider."""
     provider = get_current_provider()
     clear_card_settings(provider)
+    # 텔레그램 /reserve 용으로 복사해 둔 카드, 폰 앱의 자동 재개 작업에 든 카드도 지운다
+    from webui.services.telegram_service import TelegramService
+    from webui.utils.session_helper import current_user_id, notify_session_event
+    user_id = current_user_id()
+    tg = TelegramService.get_instance()
+    if (tg._stored_credentials or {}).get('user_id') in (None, user_id):
+        tg.store_card_settings(None)
+    notify_session_event('card_cleared', user_id)
     return jsonify({'success': True, 'message': '카드 정보가 삭제되었습니다.'})
 
 

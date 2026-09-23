@@ -7,6 +7,7 @@ import os
 import secrets
 import threading
 import time
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -68,6 +69,11 @@ def create_app(config_name: str = 'default', server_mode: bool | None = None) ->
     app.secret_key = _load_secret_key()
     # 자바스크립트에서 세션 쿠키를 못 읽게, 다른 사이트에서 온 POST 에는 안 실리게
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
+    if server_mode:
+        # 로그인 쿠키는 마지막 요청으로부터 12시간(VAULT_IDLE_HOURS) 뒤에 끝난다.
+        # 서버 메모리의 비밀번호·카드도 같은 시간 동안 안 쓰면 지운다 (session_helper).
+        from webui.utils.session_helper import VAULT_IDLE_TTL
+        app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=VAULT_IDLE_TTL)
     # HTTPS(tailscale serve 등) 뒤에서만 쓸 땐 쿠키가 평문 HTTP 로 새지 않게
     if os.environ.get('COOKIE_SECURE', '').lower() in ('1', 'true', 'yes'):
         app.config['SESSION_COOKIE_SECURE'] = True

@@ -13,6 +13,7 @@ from webui.utils.session_helper import (
     set_credentials,
     is_logged_in,
     clear_all_session,
+    notify_session_event,
 )
 
 
@@ -111,6 +112,12 @@ class ServiceManager:
         """Logout from a specific provider only."""
         key = cls._get_service_key(provider)
         credentials = get_credentials(provider)
+        user_id = credentials["user_id"] if credentials else None
+
+        # 텔레그램 원격 조종용으로 붙잡아 둔 로그인·카드 정보도 같이 지운다
+        from webui.services.telegram_service import TelegramService
+        TelegramService.get_instance().clear_web_session(user_id)
+        notify_session_event("logout", user_id)
 
         with cls._cache_lock:
             service = (

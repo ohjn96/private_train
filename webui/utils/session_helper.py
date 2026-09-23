@@ -6,10 +6,15 @@ Flask 기본 세션은 쿠키에 서명만 하고 암호화는 하지 않는다.
 (`_vault`)에 둔다. 쿠키에는 그 금고를 찾는 무작위 세션 ID 만 남는다.
 프로세스 메모리라 서버를 재시작하면 비워지고, 그때는 다시 로그인하면 된다.
 """
+import logging
+import os
 import secrets
 import threading
-from flask import session
-from typing import Optional, Dict, Any, List
+import time
+from flask import current_app, session
+from typing import Callable, Optional, Dict, Any, List
+
+logger = logging.getLogger(__name__)
 
 #: 유일한 서비스 제공자. SRT 열차도 코레일 API로 함께 조회된다.
 PROVIDER = 'korail'
@@ -17,6 +22,32 @@ PROVIDER = 'korail'
 #: 세션 ID -> {'credentials': {...}, 'cards': {...}}. 쿠키에 두면 안 되는 값만 여기 둔다.
 _vault: Dict[str, Dict[str, Dict[str, Any]]] = {}
 _vault_lock = threading.Lock()
+
+#: 서버 모드에서 이만큼(초) 아무 요청이 없던 금고 칸은 지운다. 쿠키를 훔쳐 가도
+#: 영원히 쓸 수는 없게, 그리고 떠난 사람의 비밀번호·카드가 메모리에 계속 남지 않게.
+VAULT_IDLE_TTL = float(os.environ.get('VAULT_IDLE_HOURS', 12)) * 3600
+#: 금고 칸의 마지막 사용 시각 (monotonic). 칸 dict 안에 섞지 않고 따로 둔다.
+_vault_touched: Dict[str, float] = {}
+_last_sweep = {'at': 0.0}
+
+
+def _expiry_enabled() -> bool:
+    """1인용(PC·폰)에선 끄고, 여러 명이 쓰는 서버 모드에서만 만료시킨다."""
+    try:
+        return bool(current_app.config.get('SERVER_MODE'))
+    except RuntimeError:
+        return False
+
+
+def _sweep_locked(now: float) -> None:
+    """만료된 칸을 한꺼번에 치운다 (1분에 한 번만)."""
+    if now - _last_sweep['at'] < 60:
+        return
+    _last_sweep['at'] = now
+    for sid, touched in list(_vault_touched.items()):
+        if now - touched > VAULT_IDLE_TTL:
+            _vault.pop(sid, None)
+            _vault_touched.pop(sid, None)
 
 
 def _vault_entry(create: bool = False) -> Optional[Dict[str, Dict[str, Any]]]:
@@ -27,11 +58,46 @@ def _vault_entry(create: bool = False) -> Optional[Dict[str, Dict[str, Any]]]:
             return None
         sid = session['sid'] = secrets.token_urlsafe(32)
         session.modified = True
+    expiry = _expiry_enabled()
+    if create and expiry:
+        # 서버 모드: 쿠키도 마지막 요청으로부터 PERMANENT_SESSION_LIFETIME 뒤에 끝난다
+        session.permanent = True
     with _vault_lock:
+        now = time.monotonic()
         entry = _vault.get(sid)
+        if entry is not None and expiry:
+            touched = _vault_touched.get(sid, now)
+            if now - touched > VAULT_IDLE_TTL:
+                logger.info('오래 쓰지 않은 로그인 정보를 지웠습니다')
+                _vault.pop(sid, None)
+                _vault_touched.pop(sid, None)
+                entry = None
         if entry is None and create:
             entry = _vault[sid] = {'credentials': {}, 'cards': {}}
+        if entry is not None:
+            _vault_touched[sid] = now
+        if expiry:
+            _sweep_locked(now)
         return entry
+
+
+# ──────────────────────────────── 로그아웃·카드 삭제를 알고 싶은 곳 (폰 앱의 자동 재개 작업 등)
+
+#: fn(event, user_id). event: 'logout' | 'card_cleared'
+_session_listeners: List[Callable[[str, Optional[str]], None]] = []
+
+
+def add_session_listener(fn: Callable[[str, Optional[str]], None]) -> None:
+    if fn not in _session_listeners:
+        _session_listeners.append(fn)
+
+
+def notify_session_event(event: str, user_id: Optional[str]) -> None:
+    for fn in list(_session_listeners):
+        try:
+            fn(event, user_id)
+        except Exception:  # noqa: BLE001 - 리스너 하나 때문에 로그아웃이 실패하면 안 된다
+            logger.exception('session listener failed')
 
 
 def _vault_drop(kind: str, provider: str) -> None:
@@ -215,4 +281,5 @@ def clear_all_session() -> None:
     if sid:
         with _vault_lock:
             _vault.pop(sid, None)
+            _vault_touched.pop(sid, None)
     session.clear()

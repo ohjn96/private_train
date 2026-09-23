@@ -7,7 +7,7 @@ import threading
 import requests
 from datetime import datetime
 from functools import wraps
-from flask import Blueprint, request, session, redirect, url_for, Response, jsonify
+from flask import Blueprint, current_app, request, session, redirect, url_for, Response, jsonify
 
 from webui.services import ServiceManager, SeatOption
 from webui.services.telegram_service import TelegramService
@@ -71,7 +71,11 @@ def _setup_telegram_callbacks():
 
     # Capture current session state while in request context
     # so callbacks can work from the Telegram polling thread (no Flask context)
+    # 서버 모드는 텔레그램을 쓰지 않는다. 여러 사람의 비밀번호·카드를 전역 한 곳에
+    # 복사해 두면 마지막 사람 것만 남아 섞이고 로그아웃해도 남으므로 아예 두지 않는다.
     try:
+        if current_app.config.get("SERVER_MODE"):
+            raise LookupError("server mode")
         _provider = None
         if is_logged_in():
             _provider = get_current_provider()
@@ -454,15 +458,16 @@ def start_reservation():
     # below has no request context once this view function returns.
     card = get_card_settings(provider)
 
-    # Setup telegram remote control callbacks (also captures session state needed
-    # by the thread, e.g. stored credentials/card settings for recovery/payment)
-    _setup_telegram_callbacks()
-
     # 검사와 점유를 원자적으로. 버튼 연타나 탭 여러 개에서 동시에 들어와도
     # 매크로가 두 개 뜨지 않는다 (두 개가 뜨면 같은 열차를 중복 예약하게 된다).
     owner = current_user_id()
     if not tg.try_start_macro(owner=owner):
         return jsonify({"success": False, "message": busy_message(tg)})
+
+    # Setup telegram remote control callbacks (also captures session state needed
+    # by the thread, e.g. stored credentials/card settings for recovery/payment).
+    # 자리를 얻은 뒤에 한다: 바쁠 때 들어온 남의 요청이 전역 정보를 덮어쓰지 않게.
+    _setup_telegram_callbacks()
 
     global STOP_MACRO
     STOP_MACRO = False
