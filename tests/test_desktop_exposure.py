@@ -258,5 +258,18 @@ class StartReservationCsrfTest(unittest.TestCase):
                 threading.Event().wait(0.01)
 
 
+class SecurityHeadersTest(unittest.TestCase):
+    def test_every_response_has_headers(self):
+        client = make_app().test_client()
+        for path in ('/login', '/manifest.webmanifest', '/sw.js', '/api/telegram/status', '/nope'):
+            resp = client.get(path)
+            self.assertEqual(resp.headers.get('Referrer-Policy'), 'no-referrer', path)
+            self.assertEqual(resp.headers.get('X-Content-Type-Options'), 'nosniff', path)
+            csp = resp.headers.get('Content-Security-Policy', '')
+            self.assertIn("connect-src 'self'", csp, path)
+            self.assertIn("frame-ancestors 'none'", csp, path)
+            self.assertNotIn('unsafe-eval', csp)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -65,6 +65,7 @@ def create_app(config_name: str = 'default', server_mode: bool | None = None) ->
     app.config['SERVER_MODE'] = server_mode
 
     _install_host_check(app)
+    _install_security_headers(app)
 
     app.secret_key = _load_secret_key()
     # 자바스크립트에서 세션 쿠키를 못 읽게, 다른 사이트에서 온 POST 에는 안 실리게
@@ -206,6 +207,33 @@ class _FailureThrottle:
     def reset(self, key: str) -> None:
         with self._lock:
             self._failures.pop(key, None)
+
+
+#: 화면이 쓰는 것만 허용하는 CSP. 템플릿에 인라인 <script>·onclick 과 style 이 많고,
+#: Tailwind(vendor/tailwindcss.js)가 실행 중에 <style> 을 만들어 'unsafe-inline' 은 필요하다.
+#: 그래도 바깥 스크립트 로드, 바깥으로의 fetch/폼 전송, 다른 사이트의 iframe 삽입은 막는다.
+CONTENT_SECURITY_POLICY = '; '.join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+
+def _install_security_headers(app: Flask) -> None:
+    @app.after_request
+    def security_headers(resp):
+        # 주소(예: 폰 앱의 /__auth?t=토큰)가 바깥 사이트로 Referer 에 실려 나가지 않게
+        resp.headers.setdefault('Referrer-Policy', 'no-referrer')
+        resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        resp.headers.setdefault('Content-Security-Policy', CONTENT_SECURITY_POLICY)
+        return resp
 
 
 def _install_access_gate(app: Flask) -> None:
