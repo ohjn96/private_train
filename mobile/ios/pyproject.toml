@@ -48,6 +48,8 @@ requires = [
     "charset-normalizer==3.3.2",
     "idna==3.8",
     "pyaes==1.6.1",
+    # 한국 시간(Asia/Seoul) 계산용 (순수 파이썬)
+    "tzdata==2025.2",
 ]
 
 [tool.briefcase.app.trainreservation.iOS]

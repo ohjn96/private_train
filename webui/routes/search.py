@@ -7,6 +7,7 @@ from flask import (
     flash, get_flashed_messages
 )
 
+from core.clock import now_kst
 from webui.services import ServiceManager
 from webui.utils.session_helper import (
     get_current_provider, is_logged_in,
@@ -177,7 +178,7 @@ def card_save():
     if not (1 <= expire_month <= 12):
         return jsonify({'success': False, 'message': '유효기간의 월이 올바르지 않습니다.'}), 400
 
-    now = datetime.now()
+    now = now_kst()
     if (expire_year, expire_month) < (now.year, now.month):
         return jsonify({
             'success': False,
@@ -220,7 +221,7 @@ def index():
     search_state = get_search_state(provider)
 
     # Default values
-    default_date = datetime.now().strftime('%Y-%m-%d')
+    default_date = now_kst().strftime('%Y-%m-%d')
     default_time = '00:00'
 
     # Use saved form_data if available, otherwise defaults

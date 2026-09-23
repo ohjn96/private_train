@@ -14,3 +14,5 @@ certifi==2024.8.30
 charset-normalizer
 idna==3.8
 pycryptodome
+# 한국 시간(Asia/Seoul) 계산용. 안드로이드의 시간대 DB 는 파이썬 zoneinfo 가 못 읽는다
+tzdata==2025.2

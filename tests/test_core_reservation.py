@@ -245,7 +245,7 @@ class SearchErrorsTest(unittest.TestCase):
         service = make_service([FakeTrain(0)])
         service._client.search_train = mock.Mock(side_effect=ConnectionError('차단'))
         with FastRateLimit(), self.assertRaises(ConnectionError):
-            service.search(dep='서울', arr='부산', date='20260923', time='060000')
+            service.search(dep='서울', arr='부산', date='20990923', time='060000')
 
     def test_same_minute_train_on_next_page_is_kept(self):
         """1페이지 마지막과 같은 분에 출발하는 열차가 2페이지로 밀려도 놓치지 않는다."""
@@ -256,7 +256,7 @@ class SearchErrorsTest(unittest.TestCase):
         trains.append(FakeTrain(12))
         service = make_service(trains)
         with FastRateLimit():
-            got = service.search(dep='서울', arr='부산', date='20260923', time='060000',
+            got = service.search(dep='서울', arr='부산', date='20990923', time='060000',
                                  until_time=trains[-1].dep_time)
         self.assertIn('999', [t.train_number for t in got])
 

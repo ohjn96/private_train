@@ -37,7 +37,7 @@ import logging
 import os
 import threading
 import time
-from datetime import date, datetime
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +276,8 @@ def _add_debug_routes(app) -> None:
     def debug_fake_job():
         """코레일 없이 가짜 매크로를 띄운다 (자동 복구 시험). ?stall=1 이면 조회가 멈춘 흉내."""
         _FakeService.stall = request.args.get('stall') == '1'
-        today = date.today().strftime('%Y%m%d')
+        from core.clock import today_kst
+        today = today_kst()
         job = {
             'user_id': 'debug', 'password': 'debug', 'owner': 'debug', 'fake': True,
             'trains': [{'train_name': 'KTX', 'train_number': '101', 'dep_date': today,
@@ -335,25 +336,15 @@ def _job_from(service, selected_trains, seat_option, card, passenger_count, sequ
 
 
 def _departed(train: dict, now: datetime) -> bool:
-    """이미 떠난 열차인가 (날짜만 있으면 그 날이 지났을 때)."""
-    dep_date = str(train.get('dep_date') or '')
-    dep_time = str(train.get('dep_time') or '')
-    if not dep_date:
-        return False
-    try:
-        if len(dep_time) >= 4:
-            dep = datetime.strptime(dep_date + dep_time[:4], '%Y%m%d%H%M')
-            return dep <= now
-        return datetime.strptime(dep_date, '%Y%m%d').date() < now.date()
-    except ValueError:
-        return False
+    """이미 떠난 열차인가 (날짜만 있으면 그 날이 지났을 때). 한국 시간 기준."""
+    from core.clock import train_departed
+    return train_departed(train, now)
 
 
 def _job_is_stale(job: dict, now: datetime | None = None) -> bool:
-    """고른 열차가 모두 이미 떠났다면 되살리지 않는다."""
-    now = now or datetime.now()
-    trains = job.get('trains') or []
-    return not trains or all(_departed(t, now) for t in trains)
+    """고른 열차가 모두 이미 떠났다면 되살리지 않는다. now 를 안 주면 지금 한국 시각."""
+    from core.clock import all_departed
+    return all_departed(job.get('trains') or [], now)
 
 
 def _give_up(message: str) -> None:

@@ -36,9 +36,9 @@ class FakeTrain:
     def __init__(self, i, has_seat=False):
         self.train_type_name = 'KTX'
         self.train_no = str(100 + i)
-        self.dep_date = '20260923'
+        self.dep_date = '20990923'
         self.dep_time = '%02d%02d00' % (6 + (i * 10) // 60, (i * 10) % 60)
-        self.arr_date = '20260923'
+        self.arr_date = '20990923'
         self.arr_time = self.dep_time
         self.dep_name = '서울'
         self.arr_name = '부산'
@@ -161,7 +161,7 @@ class SearchPagingTest(unittest.TestCase):
         """until_time 없이 부르면 API 호출은 딱 한 번."""
         svc = make_service(self.trains)
         with FastRateLimit():
-            got = svc.search(dep='서울', arr='부산', date='20260923', time='000000')
+            got = svc.search(dep='서울', arr='부산', date='20990923', time='000000')
         self.assertEqual(len(svc._client.kinds('search')), 1)
         self.assertEqual(len(got), 10)
 
@@ -173,7 +173,7 @@ class SearchPagingTest(unittest.TestCase):
         """
         svc = make_service(self.trains)
         with FastRateLimit():
-            got = svc.search(dep='서울', arr='부산', date='20260923', time='060000',
+            got = svc.search(dep='서울', arr='부산', date='20990923', time='060000',
                              until_time=self.trains[20].dep_time)
         self.assertEqual(len(svc._client.kinds('search')), 3)
         # 다음 장은 마지막 열차 시각부터 부르므로 한 편씩 겹치고, 겹친 건 걸러낸다
@@ -184,7 +184,7 @@ class SearchPagingTest(unittest.TestCase):
     def test_max_pages_is_capped(self):
         svc = make_service(self.trains)
         with FastRateLimit():
-            svc.search(dep='서울', arr='부산', date='20260923', time='060000',
+            svc.search(dep='서울', arr='부산', date='20990923', time='060000',
                        until_time='235959')
         self.assertLessEqual(len(svc._client.kinds('search')), 5)
 
