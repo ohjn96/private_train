@@ -4,10 +4,14 @@
 - JobStore        되살릴 매크로 작업을 앱 데이터 폴더의 JSON 파일에 원자적으로 저장
 - load_or_create_token  설치마다 만든 무작위 토큰 (WebView 만 서버에 붙게)
 - IOSBridge       mobile_runtime.set_bridge() 에 꽂는 객체 (안드로이드 Bridge.kt 와 같은 네 메서드)
-- ServerHost      공통 런타임을 백그라운드 스레드로 띄우고, 응답을 확인하고, 필요하면 소켓을 다시 연다
+- ServerHost      공통 런타임을 무작위 포트로 띄우고, /__hello 로 우리 서버인지 확인한 뒤에만 토큰을 쓰고,
+                  필요하면 소켓을 다시 연다
+- is_own_url      WebView 안에서 열어도 되는 주소 (확인한 포트의 127.0.0.1 만)
 
 iOS 호출(절전 방지, 알림, 파일 보호)은 native 객체로 주입한다 (실제 구현은 ios_native.py).
 """
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -15,6 +19,7 @@ import secrets
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -174,31 +179,87 @@ class IOSBridge:
             logger.exception('could not schedule on main thread')
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """리다이렉트를 따라가지 않는다 (쿠키 헤더가 다른 주소로 따라가지 않게)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
+def hello_mac(token: str, nonce: str) -> str:
+    """mobile_runtime.hello_mac 과 같은 계산: hex(HMAC-SHA256(key=token, msg=nonce))."""
+    return hmac.new(token.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+
+
+def is_own_url(url: str, port) -> bool:
+    """WebView 안에서 열어도 되는 주소인가: 확인을 마친 우리 서버(http://127.0.0.1:<port>)뿐.
+
+    쿠키는 포트를 가리지 않으므로, 같은 127.0.0.1 의 다른 포트(다른 앱일 수 있음)로 가면
+    토큰 쿠키가 그쪽으로 간다. 그래서 포트까지 맞아야 한다.
+    """
+    if not port:
+        return False
+    try:
+        parts = urllib.parse.urlsplit(url or '')
+        return (parts.scheme == 'http' and parts.hostname == '127.0.0.1'
+                and parts.port == int(port) and not parts.username and not parts.password)
+    except ValueError:
+        return False
+
+
+def is_external_web_url(url: str) -> bool:
+    """사파리로 넘겨도 되는 바깥 주소 (http/https, 127.0.0.1·localhost 가 아님)."""
+    try:
+        parts = urllib.parse.urlsplit(url or '')
+    except ValueError:
+        return False
+    return (parts.scheme in ('http', 'https') and bool(parts.hostname)
+            and parts.hostname not in ('127.0.0.1', 'localhost', '::1'))
+
+
 class ServerHost:
     """공통 런타임(mobile_runtime)을 띄우고 지켜본다.
 
-    iOS 는 앱이 뒤로 가서 멈춰(suspend) 있는 동안 듣고 있던 소켓을 회수할 수 있다
-    (Apple TN2277). 그러면 다시 앞으로 왔을 때 WebView 가 서버에 붙지 못한다.
-    그래서 werkzeug.serving.make_server 를 감싸 서버 객체를 잡아 두고, 응답이 없으면
-    같은 Flask 앱으로 소켓만 새로 연다 (매크로·로그인 상태는 그대로 메모리에 남아 있다).
+    - 포트는 0(운영체제가 고르는 빈 포트)으로 띄운다. 실제 포트는 make_server 를 감싸 읽거나
+      bridge.onServerReady(port) → set_port 로 받는다.
+    - 토큰은 그 포트의 서버가 /__hello 로 "토큰을 안다" 고 증명한 뒤에만 보낸다
+      (verified_port). 다른 앱이 그 포트를 차지하고 우리 행세를 해도 토큰을 주지 않는다.
+    - iOS 는 앱이 뒤로 가서 멈춰(suspend) 있는 동안 듣고 있던 소켓을 회수할 수 있다
+      (Apple TN2277). 응답이 없으면 같은 Flask 앱으로 소켓만 새로 연다 (포트가 바뀔 수 있어
+      다시 확인한다). 매크로·로그인 상태는 그대로 메모리에 남아 있다.
     """
 
-    def __init__(self, runtime, data_dir, port: int, token: str, version: str):
+    def __init__(self, runtime, data_dir, port: int, token: str, version: str, port_file=None):
         self.runtime = runtime            # mobile_runtime 모듈 (테스트에선 가짜)
         self.data_dir = str(data_dir)
-        self.port = int(port)
+        self.start_port = int(port)       # 보통 0
+        self.port = None                  # 서버가 실제로 연 포트 (아직 확인 전)
+        self.verified_port = None         # /__hello 로 확인을 마친 포트. 토큰은 여기로만 보낸다
         self.token = token
         self.version = version
+        self.port_file = Path(port_file) if port_file else None
         self._server = None
         self._make_server_args = None
         self._lock = threading.Lock()
 
     def set_port(self, port: int) -> None:
-        self.port = int(port)
+        """bridge.onServerReady 가 부른다. 포트가 바뀌면 다시 확인해야 한다."""
+        with self._lock:
+            port = int(port)
+            if port != self.port:
+                self.port = port
+                self.verified_port = None
 
     @property
     def base_url(self) -> str:
-        return f'http://127.0.0.1:{self.port}'
+        """확인을 마친 서버 주소. 확인 전엔 RuntimeError (토큰을 실어 보낼 곳이 없다)."""
+        port = self.verified_port
+        if not port:
+            raise RuntimeError('서버를 아직 확인하지 못했습니다')
+        return f'http://127.0.0.1:{port}'
 
     @property
     def auth_url(self) -> str:
@@ -215,7 +276,7 @@ class ServerHost:
 
     def _serve(self) -> None:
         try:
-            self.runtime.start(self.data_dir, self.port, self.token, self.version, debug=False)
+            self.runtime.start(self.data_dir, self.start_port, self.token, self.version, debug=False)
         except Exception:  # noqa: BLE001
             logger.exception('python server crashed')
 
@@ -230,19 +291,69 @@ class ServerHost:
             with host._lock:
                 host._server = server
                 host._make_server_args = (args, kwargs)
-                host.port = server.server_port  # 포트 0(무작위)으로 띄워도 실제 포트를 안다
+            host.set_port(server.server_port)  # 포트 0(무작위)으로 띄워도 실제 포트를 안다
             return server
 
         make_server._ios_original = original
-        serving.make_server = make_server  # mobile_runtime.start 가 함수 안에서 import 한다
+        serving.make_server = make_server  # mobile_runtime._bind 가 함수 안에서 import 한다
+
+    def _known_port(self):
+        if self.port:
+            return self.port
+        server_port = getattr(self.runtime, 'server_port', None)
+        if server_port is not None:
+            try:
+                port = server_port(0)
+            except Exception:  # noqa: BLE001
+                port = None
+            if port:
+                self.set_port(port)
+        return self.port
+
+    def verify(self, timeout: float = 2.0) -> bool:
+        """그 포트의 서버가 토큰을 아는지(= 우리 서버인지) /__hello 로 확인한다. 쿠키는 안 싣는다."""
+        port = self._known_port()
+        if not port:
+            return False
+        nonce = secrets.token_hex(16)  # 매번 새로 (응답을 재사용할 수 없게)
+        try:
+            with _opener.open(f'http://127.0.0.1:{port}/__hello?nonce={nonce}', timeout=timeout) as resp:
+                if resp.status != 200:
+                    return False
+                given = json.loads(resp.read(4096).decode('utf-8')).get('mac', '')
+        except (urllib.error.URLError, OSError, ValueError, AttributeError):
+            return False
+        if not isinstance(given, str) or not hmac.compare_digest(given, hello_mac(self.token, nonce)):
+            logger.warning('127.0.0.1:%s 의 서버가 확인을 통과하지 못했습니다', port)
+            return False
+        with self._lock:
+            if self.port != port:
+                return False  # 확인하는 사이에 포트가 바뀌었다
+            changed = self.verified_port != port
+            self.verified_port = port
+        if changed:
+            self._write_port_file(port)
+        return True
+
+    def _write_port_file(self, port: int) -> None:
+        """확인을 마친 포트를 앱 데이터 폴더에 적는다 (CI 스모크 테스트·진단용, 비밀 아님)."""
+        if self.port_file is None:
+            return
+        try:
+            _atomic_write(self.port_file, str(port).encode())
+        except OSError:
+            logger.warning('포트 파일을 쓰지 못했습니다', exc_info=True)
 
     def is_up(self, timeout: float = 2.0) -> bool:
+        """먼저 /__hello 로 확인하고, 확인된 서버에만 토큰을 실어 /__health 를 부른다."""
+        if not self.verify(timeout):
+            return False
         req = urllib.request.Request(f'{self.base_url}/__health',
                                      headers={'Cookie': f'{TOKEN_COOKIE}={self.token}'})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - 127.0.0.1
+            with _opener.open(req, timeout=timeout) as resp:
                 return resp.status == 200
-        except (urllib.error.URLError, OSError, ValueError):
+        except (urllib.error.URLError, OSError, ValueError, RuntimeError):
             return False
 
     def wait_until_up(self, timeout: float = 90.0, interval: float = 0.3) -> bool:
@@ -254,7 +365,7 @@ class ServerHost:
         return False
 
     def reopen_listener(self) -> bool:
-        """듣는 소켓만 새로 연다. 새로 열었으면 True (WebView 를 다시 불러야 한다)."""
+        """듣는 소켓만 새로 연다. 새로 열었으면 True (확인 후 WebView 를 다시 불러야 한다)."""
         with self._lock:
             old, captured = self._server, self._make_server_args
         if old is None or captured is None:
@@ -270,10 +381,10 @@ class ServerHost:
         except OSError:
             pass
         args, kwargs = captured
-        server = original(*args, **kwargs)  # allow_reuse_address 라 같은 포트를 바로 다시 쓴다
+        server = original(*args, **kwargs)  # 포트 0 이면 새 무작위 포트
         with self._lock:
             self._server = server
-            self.port = server.server_port
+        self.set_port(server.server_port)  # 확인이 풀린다 → wait_until_up 이 다시 확인
         threading.Thread(target=server.serve_forever, daemon=True, name='python-server-2').start()
-        logger.warning('reopened listening socket on %s', self.base_url)
+        logger.warning('reopened listening socket on 127.0.0.1:%s', server.server_port)
         return True

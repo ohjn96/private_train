@@ -2,7 +2,10 @@
 """iPhone 앱 입구 (BeeWare Toga).
 
 안드로이드와 같은 구조: 공통 런타임(mobile_runtime)이 공통 웹 화면(webui/)을 폰 안
-127.0.0.1(PORT) 에 띄우고, 이 앱은 그걸 WebView 로 보여준다. 코레일 호출은 이 폰에서 나간다.
+127.0.0.1 의 무작위 포트에 띄우고, 이 앱은 그걸 WebView 로 보여준다. 코레일 호출은 이 폰에서 나간다.
+
+토큰은 그 포트의 서버가 /__hello 로 우리 서버임을 증명한 뒤에만 보내고(ServerHost.verify),
+WebView 는 확인한 http://127.0.0.1:<포트> 만 연다. 바깥 링크는 사파리로 넘긴다.
 
 iPhone 의 한계: 앱이 화면에 떠 있는 동안에만 돈다 (iOS 는 뒤로 간 앱을 몇 초 안에 멈춘다).
 그래서 매크로가 도는 동안엔 화면 자동 잠금을 끈다 (IOSBridge.onMacroState).
@@ -16,13 +19,15 @@ from pathlib import Path
 import toga
 from toga.style import Pack
 
-from .ios_bridge import IOSBridge, JobStore, ServerHost, load_or_create_token
+from .ios_bridge import IOSBridge, JobStore, ServerHost, is_external_web_url, is_own_url, load_or_create_token
 
 logger = logging.getLogger(__name__)
 
-#: 앱 안 서버 포트 (안드로이드 ServerService.PORT 와 같다). 여기 한 곳에만 둔다.
-#: 런타임이 무작위 포트(0)를 지원하게 되면 0 으로 바꾸면 된다: ServerHost 가 실제 포트를 읽는다.
-PORT = 17650
+#: 앱 안 서버 포트. 0 = 운영체제가 빈 포트를 고른다 (고정 포트는 다른 앱이 먼저 차지하고
+#: 우리 행세를 할 수 있다). 실제 포트는 ServerHost 가 받아 /__hello 로 확인한다.
+PORT = 0
+#: 확인을 마친 포트를 적어 두는 파일 (앱 데이터 폴더 안). CI 스모크 테스트가 읽는다. 비밀 아님.
+PORT_FILE = 'server_port'
 DISPLAY_NAME = '열차예약'
 
 
@@ -42,7 +47,8 @@ class TrainReservationApp(toga.App):
                          protect=native.protect_file,
                          exclude_from_backup=native.exclude_from_backup)
         token = load_or_create_token(data_dir / 'app_token', protect=native.protect_file)
-        self.host = ServerHost(mobile_runtime, data_dir, PORT, token, str(self.version or '0'))
+        self.host = ServerHost(mobile_runtime, data_dir, PORT, token, str(self.version or '0'),
+                               port_file=data_dir / PORT_FILE)
         self.bridge = IOSBridge(store, native.NativeAPI, self._call_on_main,
                                 on_state=self._show_state, on_server_ready=self.host.set_port)
         self.webview = None
@@ -66,7 +72,9 @@ class TrainReservationApp(toga.App):
         if not up:
             self.status.text = '앱 안의 서버를 시작하지 못했어요. 앱을 완전히 닫았다가 다시 열어 주세요.'
             return
-        self.webview = toga.WebView(url=self.host.auth_url, style=Pack(flex=1))
+        self.webview = toga.WebView(url=self.host.auth_url, style=Pack(flex=1),
+                                    on_navigation_starting=self._on_navigate)
+        _drop_navigation_cleanup(self.webview, self._on_navigate)
         self.main_window.content = self.webview
 
     # ── 메인 스레드
@@ -103,8 +111,28 @@ class TrainReservationApp(toga.App):
         threading.Thread(target=check, daemon=True, name='foreground-check').start()
 
     def _reload(self):
-        if self.webview is not None:
+        """소켓을 다시 열었다 (포트가 바뀌었을 수 있다). 다시 확인된 주소로 새로 연다."""
+        if self.webview is not None and self.host.verified_port:
             self.webview.url = self.host.auth_url
+
+    def _on_navigate(self, widget, url, **kwargs):
+        """WebView 안에서는 확인한 우리 서버만. 바깥 http(s) 링크는 사파리로, 나머지는 막는다."""
+        if url == 'about:blank' or is_own_url(url, self.host.verified_port):
+            return True
+        if is_external_web_url(url):
+            _try(self.native.open_external, url)
+        else:
+            logger.warning('blocked navigation: %s', url.split('?', 1)[0])
+        return False
+
+
+def _drop_navigation_cleanup(webview, handler):
+    """toga 0.5.6 은 on_navigation_starting 이 True 를 돌려주면 cleanup 에서 `webview.url = url` 로
+    그 주소를 다시 연다. 그러면 로그인 같은 POST 폼 제출이 GET 으로 바뀌어 깨진다.
+    허용/차단 판단만 쓰도록 cleanup 없는 handler 로 바꿔 끼운다 (toga 버전을 올리면 다시 확인).
+    """
+    from toga.handlers import wrapped_handler
+    webview._on_navigation_starting = wrapped_handler(webview, handler)
 
 
 def _try(fn, *args):

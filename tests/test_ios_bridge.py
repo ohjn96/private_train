@@ -24,7 +24,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(IOS_SRC))
 
 from trainreservation.ios_bridge import (  # noqa: E402
-    TOKEN_COOKIE, IOSBridge, JobStore, ServerHost, load_or_create_token,
+    TOKEN_COOKIE, IOSBridge, JobStore, ServerHost, hello_mac, is_external_web_url, is_own_url,
+    load_or_create_token,
 )
 
 
@@ -243,8 +244,32 @@ class IOSSupervisorTest(unittest.TestCase):
         self.assertEqual(json.loads(JobStore(self.path).load())['user_id'], 'u')
 
 
+def fake_server_app(token, seen_cookies, impostor=False, hello_status='200 OK'):
+    """mobile_runtime 흉내: /__hello 는 토큰 없이 HMAC, 나머지는 토큰 쿠키가 있어야 200."""
+    from urllib.parse import parse_qs
+
+    def app(environ, start_response):
+        path = environ.get('PATH_INFO', '')
+        cookie = environ.get('HTTP_COOKIE', '')
+        if cookie:
+            seen_cookies.append((path, cookie))
+        if path == '/__hello':
+            if hello_status != '200 OK':
+                start_response(hello_status, [('Location', 'http://127.0.0.1:1/__hello')])
+                return [b'']
+            nonce = parse_qs(environ.get('QUERY_STRING', '')).get('nonce', [''])[0]
+            mac = hello_mac('someone-else' if impostor else token, nonce)
+            start_response('200 OK', [('Content-Type', 'application/json')])
+            return [json.dumps({'mac': mac}).encode()]
+        ok = f'{TOKEN_COOKIE}={token}' in cookie
+        start_response('200 OK' if ok else '403 FORBIDDEN', [('Content-Type', 'text/plain')])
+        return [b'ok' if ok else b'forbidden']
+
+    return app
+
+
 class ServerHostTest(unittest.TestCase):
-    """가짜 런타임이 werkzeug make_server 로 띄운 서버를 ServerHost 가 잡고, 소켓을 다시 여는지."""
+    """무작위 포트, /__hello 확인 뒤에만 토큰 전송, 소켓 재개(포트가 바뀌어도 다시 확인)."""
 
     def setUp(self):
         import werkzeug.serving as serving
@@ -253,54 +278,106 @@ class ServerHostTest(unittest.TestCase):
         self.addCleanup(setattr, serving, 'make_server', self.original_make_server)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        self.seen_cookies = []
 
     def make_runtime(self, token):
-        serving = self.serving
         runtime = types.SimpleNamespace(bridge=None, resumed=[])
-
-        def app(environ, start_response):
-            ok = f'{TOKEN_COOKIE}={token}' in environ.get('HTTP_COOKIE', '')
-            start_response('200 OK' if ok else '403 FORBIDDEN', [('Content-Type', 'text/plain')])
-            return [b'ok' if ok else b'forbidden']
+        app = fake_server_app(token, self.seen_cookies)
 
         def start(files_dir, port, tok, version, debug=False):
             runtime.started = (files_dir, port, tok, version, debug)
-            from werkzeug.serving import make_server  # mobile_runtime 과 같은 방식
-            server = make_server('127.0.0.1', int(port), app, threaded=True)
+            from werkzeug.serving import make_server  # mobile_runtime._bind 와 같은 방식
+            server = make_server('127.0.0.1', int(port or 0), app, threaded=True)
             runtime.server = server
             server.serve_forever()
 
         runtime.set_bridge = lambda b: setattr(runtime, 'bridge', b)
         runtime.resume_job = runtime.resumed.append
         runtime.start = start
-        self.assertIs(serving.make_server, self.original_make_server)
+        self.assertIs(self.serving.make_server, self.original_make_server)
         return runtime
 
-    def test_start_health_and_reopen(self):
+    def serve(self, app):
+        server = self.original_make_server('127.0.0.1', 0, app, threaded=True)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server.server_port
+
+    def test_random_port_verify_then_token_and_reopen(self):
         token = 't' * 40
         runtime = self.make_runtime(token)
-        host = ServerHost(runtime, self.tmp.name, 0, token, '1.2.3')  # 0 = 아무 빈 포트
+        port_file = Path(self.tmp.name) / 'server_port'
+        host = ServerHost(runtime, self.tmp.name, 0, token, '1.2.3', port_file=port_file)
+        with self.assertRaises(RuntimeError):
+            host.auth_url  # 확인 전엔 토큰을 실어 보낼 주소가 없다
         bridge = object()
         host.start(bridge, '{"user_id": "u"}')
         self.assertTrue(host.wait_until_up(10))
         self.assertIs(runtime.bridge, bridge)
         self.assertEqual(runtime.resumed, ['{"user_id": "u"}'])
         self.assertEqual(runtime.started, (self.tmp.name, 0, token, '1.2.3', False))
-        first_port = host.port
-        self.assertNotEqual(first_port, 0)  # 실제 포트를 읽었다
-        self.assertTrue(host.auth_url.startswith(f'http://127.0.0.1:{first_port}/__auth?t='))
+        first = host.verified_port
+        self.assertEqual(first, runtime.server.server_port)
+        self.assertEqual(host.auth_url, f'http://127.0.0.1:{first}/__auth?t={token}')
+        self.assertEqual(port_file.read_text(), str(first))
+        # 쿠키는 /__hello 에는 싣지 않고, 확인 뒤 /__health 에만 실었다
+        self.assertTrue(self.seen_cookies)
+        self.assertEqual({path for path, _ in self.seen_cookies}, {'/__health'})
 
         # 토큰 없는 요청은 막힌다 (CI 스모크 테스트가 기대하는 403 과 같은 원리)
         with self.assertRaises(urllib.error.HTTPError) as ctx:
-            urllib.request.urlopen(f'{host.base_url}/login', timeout=5)
+            urllib.request.urlopen(f'http://127.0.0.1:{first}/login', timeout=5)
         self.assertEqual(ctx.exception.code, 403)
 
         # iOS 가 듣는 소켓을 회수한 상황: 소켓을 닫아 버린다
         runtime.server.socket.close()
         self.assertFalse(host.is_up(timeout=1))
         self.assertTrue(host.reopen_listener())
+        self.assertIsNone(host.verified_port)  # 새 소켓(새 무작위 포트)은 다시 확인해야 한다
         self.assertTrue(host.wait_until_up(10))
+        self.assertEqual(host.verified_port, host._server.server_port)
+        self.assertEqual(port_file.read_text(), str(host.verified_port))
+        self.assertTrue(host.auth_url.startswith(f'http://127.0.0.1:{host.verified_port}/'))
         host._server.shutdown()
+
+    def test_impostor_never_gets_the_token(self):
+        token = 'x' * 40
+        port = self.serve(fake_server_app(token, self.seen_cookies, impostor=True))
+        host = ServerHost(types.SimpleNamespace(), self.tmp.name, 0, token, '1')
+        host.set_port(port)
+        self.assertFalse(host.verify(timeout=2))
+        self.assertFalse(host.is_up(timeout=2))
+        self.assertFalse(host.wait_until_up(timeout=0.5, interval=0.1))
+        self.assertIsNone(host.verified_port)
+        self.assertEqual(self.seen_cookies, [])
+        with self.assertRaises(RuntimeError):
+            host.auth_url
+
+    def test_redirecting_hello_is_rejected(self):
+        token = 'x' * 40
+        port = self.serve(fake_server_app(token, self.seen_cookies, hello_status='302 FOUND'))
+        host = ServerHost(types.SimpleNamespace(), self.tmp.name, 0, token, '1')
+        host.set_port(port)
+        self.assertFalse(host.is_up(timeout=2))
+        self.assertEqual(self.seen_cookies, [])
+
+    def test_port_from_bridge_or_runtime(self):
+        token = 'y' * 40
+        port = self.serve(fake_server_app(token, self.seen_cookies))
+        # onServerReady 가 알려준 포트
+        host = ServerHost(types.SimpleNamespace(), self.tmp.name, 0, token, '1')
+        IOSBridge(JobStore(Path(self.tmp.name) / 'j.json'), FakeNative(), run_now,
+                  on_server_ready=host.set_port).onServerReady(port)
+        self.assertTrue(host.is_up(timeout=2))
+        # 포트가 바뀌었다고 알려오면 확인이 풀린다
+        host.set_port(port + 1 if port < 65535 else port - 1)
+        self.assertIsNone(host.verified_port)
+        # 런타임의 server_port() 로 물어서 얻은 포트
+        runtime = types.SimpleNamespace(server_port=lambda timeout=None: port)
+        host2 = ServerHost(runtime, self.tmp.name, 0, token, '1')
+        self.assertTrue(host2.is_up(timeout=2))
+        self.assertEqual(host2.verified_port, port)
 
     def test_no_job_means_no_resume(self):
         token = 'x' * 40
@@ -312,10 +389,36 @@ class ServerHostTest(unittest.TestCase):
         self.assertEqual(runtime.resumed, [])
         host._server.shutdown()
 
-    def test_is_up_false_when_nothing_listens(self):
-        host = ServerHost(types.SimpleNamespace(), self.tmp.name, 1, 'x' * 40, '1')
+    def test_is_up_false_when_port_unknown_or_closed(self):
+        host = ServerHost(types.SimpleNamespace(), self.tmp.name, 0, 'x' * 40, '1')
+        self.assertFalse(host.is_up(timeout=0.5))  # 포트를 모른다
+        host.set_port(1)
         self.assertFalse(host.is_up(timeout=0.5))
         self.assertFalse(host.wait_until_up(timeout=0.3, interval=0.1))
+
+    def test_hello_mac_matches_runtime(self):
+        sys.path.insert(0, str(ROOT / 'mobile' / 'shared'))
+        self.addCleanup(sys.path.remove, str(ROOT / 'mobile' / 'shared'))
+        import mobile_runtime
+        self.assertEqual(hello_mac('tok', 'n0nce'), mobile_runtime.hello_mac('tok', 'n0nce'))
+
+
+class UrlPolicyTest(unittest.TestCase):
+    def test_own_url_needs_exact_verified_port(self):
+        self.assertTrue(is_own_url('http://127.0.0.1:5000/', 5000))
+        self.assertTrue(is_own_url('http://127.0.0.1:5000/search?x=1', 5000))
+        for url in ('http://127.0.0.1:5001/', 'https://127.0.0.1:5000/', 'http://localhost:5000/',
+                    'http://127.0.0.1/', 'http://evil.com:5000/', 'http://u:p@127.0.0.1:5000/',
+                    'javascript:alert(1)', 'about:blank', '', 'http://127.0.0.1:99999/'):
+            self.assertFalse(is_own_url(url, 5000), url)
+        self.assertFalse(is_own_url('http://127.0.0.1:5000/', None))
+
+    def test_external_web_url(self):
+        self.assertTrue(is_external_web_url('https://www.letskorail.com/'))
+        self.assertTrue(is_external_web_url('http://example.com/a'))
+        for url in ('http://127.0.0.1:1234/', 'http://localhost/', 'tel:1544-7788',
+                    'javascript:x', 'file:///etc/passwd', 'data:text/html,x', ''):
+            self.assertFalse(is_external_web_url(url), url)
 
 
 class AppWiringTest(unittest.TestCase):
@@ -349,6 +452,8 @@ class AppWiringTest(unittest.TestCase):
         fake_toga.App = App
         fake_toga.MainWindow = MainWindow
         fake_toga.Label = fake_toga.Box = fake_toga.WebView = Widget
+        fake_handlers = types.ModuleType('toga.handlers')
+        fake_handlers.wrapped_handler = lambda widget, handler, cleanup=None: ('wrapped', handler, cleanup)
         fake_style = types.ModuleType('toga.style')
         fake_style.Pack = lambda **kw: kw
         self.native = types.ModuleType('trainreservation.ios_native')
@@ -357,11 +462,12 @@ class AppWiringTest(unittest.TestCase):
         self.native.exclude_from_backup = lambda p: None
         self.native.setup_notifications = lambda: self.native.calls.append(('setup',))
         self.native.notify = lambda *a: self.native.calls.append(('notify',) + a)
+        self.native.open_external = lambda url: self.native.calls.append(('open', url))
         self.native.NativeAPI = types.SimpleNamespace(set_idle_timer_disabled=lambda v: None,
                                                       notify=self.native.notify)
         self.runtime = types.ModuleType('mobile_runtime')
         patcher = mock.patch.dict(sys.modules, {
-            'toga': fake_toga, 'toga.style': fake_style,
+            'toga': fake_toga, 'toga.style': fake_style, 'toga.handlers': fake_handlers,
             'trainreservation.ios_native': self.native, 'mobile_runtime': self.runtime,
         })
         patcher.start()
@@ -388,17 +494,41 @@ class AppWiringTest(unittest.TestCase):
         with mock.patch.object(ServerHost, 'start') as start:
             app.startup()
         start.assert_called_once_with(app.bridge, None)
-        self.assertEqual(app.host.port, self.app_module.PORT)
+        self.assertEqual(self.app_module.PORT, 0)  # 무작위 포트
+        self.assertEqual(app.host.start_port, 0)
+        self.assertEqual(app.host.port_file, self.data / 'server_port')
         self.assertEqual(app.host.version, '9.9.9')
         self.assertIn(('setup',), self.native.calls)
         self.assertTrue((self.data / 'app_token').exists())
         self.assertTrue(app.main_window.shown)
 
-        # 서버가 뜨면 WebView 가 /__auth?t=토큰 을 연다
-        with mock.patch.object(ServerHost, 'wait_until_up', return_value=True):
+        # 서버가 확인되면 WebView 가 확인한 포트의 /__auth?t=토큰 을 연다
+        def up(*a, **kw):
+            app.host.verified_port = 43210
+            return True
+
+        with mock.patch.object(ServerHost, 'wait_until_up', side_effect=up):
             asyncio.run(app.on_running())
         self.assertIs(app.main_window.content, app.webview)
-        self.assertEqual(app.webview.url, app.host.auth_url)
+        self.assertEqual(app.webview.url, 'http://127.0.0.1:43210/__auth?t=' + app.host.token)
+        # 탐색 제한 handler 가 붙었고, toga 의 cleanup(주소 다시 열기)은 뺐다
+        self.assertEqual(app.webview.kwargs['on_navigation_starting'], app._on_navigate)
+        self.assertEqual(app.webview._on_navigation_starting, ('wrapped', app._on_navigate, None))
+
+    def test_navigation_policy(self):
+        app = self.make_app()
+        with mock.patch.object(ServerHost, 'start'):
+            app.startup()
+        app.host.verified_port = 43210
+        self.assertTrue(app._on_navigate(None, url='http://127.0.0.1:43210/search'))
+        self.assertTrue(app._on_navigate(None, url='about:blank'))
+        self.assertFalse(app._on_navigate(None, url='http://127.0.0.1:43211/'))  # 다른 앱일 수 있는 포트
+        self.assertFalse(app._on_navigate(None, url='https://www.letskorail.com/pay'))
+        self.assertFalse(app._on_navigate(None, url='javascript:alert(1)'))
+        opened = [c[1] for c in self.native.calls if c[0] == 'open']
+        self.assertEqual(opened, ['https://www.letskorail.com/pay'])  # 바깥 링크만 사파리로
+        app.host.verified_port = None
+        self.assertFalse(app._on_navigate(None, url='http://127.0.0.1:43210/'))
 
     def test_startup_resumes_saved_job(self):
         (self.data / 'macro_job.json').write_text('{"user_id": "u"}', encoding='utf-8')
@@ -442,10 +572,17 @@ class AppWiringTest(unittest.TestCase):
             app.startup()
         app._on_foreground(app.main_window)  # WebView 가 뜨기 전엔 아무것도 안 한다
         app.webview = types.SimpleNamespace(url=None)
+        app.host.verified_port = 1111
         done = threading.Event()
+
+        def reopened(**kw):
+            app.host.verified_port = 2222  # 새 소켓은 다른 포트일 수 있다
+            done.set()
+            return True
+
         with mock.patch.object(ServerHost, 'is_up', return_value=False), \
                 mock.patch.object(ServerHost, 'reopen_listener', return_value=True), \
-                mock.patch.object(ServerHost, 'wait_until_up', side_effect=lambda **kw: done.set() or True):
+                mock.patch.object(ServerHost, 'wait_until_up', side_effect=reopened):
             app._on_foreground(app.main_window)
             self.assertTrue(done.wait(5))
             for _ in range(50):
@@ -454,7 +591,7 @@ class AppWiringTest(unittest.TestCase):
                 threading.Event().wait(0.02)
         for fn, a in app.scheduled:
             fn(*a)
-        self.assertEqual(app.webview.url, app.host.auth_url)
+        self.assertEqual(app.webview.url, 'http://127.0.0.1:2222/__auth?t=' + app.host.token)
 
 
 if __name__ == '__main__':

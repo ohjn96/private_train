@@ -142,6 +142,14 @@ def exclude_from_backup(path) -> None:
         raise OSError(f'exclude from backup failed for {path}')
 
 
+def open_external(url: str) -> None:
+    """바깥 링크는 사파리로 (메인 스레드). WebView 안에서는 우리 서버만 연다."""
+    ns_url = NSURL.URLWithString(url)
+    if ns_url is None:
+        return
+    UIApplication.sharedApplication.openURL_options_completionHandler_(ns_url, ns_from_py({}), None)
+
+
 class NativeAPI:
     """IOSBridge 에 넘기는 native 객체."""
 

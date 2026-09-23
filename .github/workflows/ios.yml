@@ -27,9 +27,9 @@ permissions:
 env:
   BRIEFCASE_VERSION: '0.4.4'
   BUNDLE_ID: com.ohjn96.trainreservation
-  # 앱 안 서버 포트. mobile/ios/src/trainreservation/app.py 의 PORT 와 같아야 한다
-  # (tests/test_ios_build_tools.py 가 확인한다)
-  APP_PORT: 17650
+  # 앱 안 서버는 무작위 포트로 뜬다. 앱이 /__hello 로 확인을 마친 포트를 데이터 폴더(Documents)의
+  # 이 파일에 적는다 (app.py 의 PORT_FILE, tests/test_ios_build_tools.py 가 이름을 맞춰 본다)
+  PORT_FILE: server_port
   XCODE_BUNDLE: build/trainreservation/ios/xcode   # mobile/ios 기준, Briefcase 가 만드는 곳
 
 jobs:
@@ -74,7 +74,10 @@ jobs:
         run: briefcase build iOS --no-input
 
       # 시뮬레이터는 맥의 네트워크를 같이 쓰므로, 앱 안 서버(127.0.0.1)에 러너에서 바로 붙을 수 있다.
-      # 토큰 없이 /login 을 부르면 403 이어야 한다 = 파이썬 서버가 떴고 토큰 검사도 켜져 있다.
+      # 포트는 무작위라 앱 데이터 폴더의 포트 파일에서 읽는다 (앱이 서버를 확인한 뒤에 쓴다).
+      # - 토큰 없이 /login → 403 (파이썬 서버가 떴고 토큰 검사가 켜져 있다)
+      # - /__hello?nonce= → HMAC(토큰) 이 맞다, 토큰 쿠키로 /__health → 200
+      #   (시뮬레이터는 파일 보호를 강제하지 않아 러너가 앱 폴더의 토큰 파일을 읽을 수 있다)
       - name: 시뮬레이터 스모크 테스트
         working-directory: mobile/ios
         run: |
@@ -97,13 +100,21 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
           xcrun simctl launch "$UDID" "$BUNDLE_ID"
-          CODE=000
+          DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
+          echo "data container: $DATA"
+          PORT=""
           for i in $(seq 1 60); do
-            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${APP_PORT}/login" || true)
-            echo "try $i: HTTP $CODE"
-            [ "$CODE" = "403" ] && break
+            PORT=$(cat "$DATA/Documents/$PORT_FILE" 2>/dev/null || true)
+            [ -n "$PORT" ] && break
+            echo "try $i: 포트 파일을 기다리는 중"
             sleep 3
           done
+          echo "server port: ${PORT:-없음}"
+          CODE=000
+          if [ -n "$PORT" ]; then
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:${PORT}/login" || true)
+            echo "/login without token: HTTP $CODE"
+          fi
           # 화면(WebView)이 그려질 시간을 조금 주고 스크린샷
           sleep 10
           mkdir -p "$RUNNER_TEMP/ios-smoke"
@@ -112,10 +123,21 @@ jobs:
             --predicate 'process == "TrainReservation"' > "$RUNNER_TEMP/ios-smoke/app.log" 2>&1 || true
           tail -n 80 "$RUNNER_TEMP/ios-smoke/app.log" || true
           if [ "$CODE" != "403" ]; then
-            echo "앱 안 서버가 응답하지 않습니다 (마지막 HTTP $CODE, 기대값 403)" >&2
+            echo "앱 안 서버가 응답하지 않습니다 (포트 ${PORT:-없음}, HTTP $CODE, 기대값 403)" >&2
             exit 1
           fi
-          # 토큰이 있으면 들어가진다 (/__auth 가 쿠키를 주고 / 로 보낸다)
+          PORT="$PORT" TOKEN_FILE="$DATA/Documents/app_token" python3 - <<'PY'
+          import hashlib, hmac, json, os, secrets, urllib.request
+          port, token = os.environ['PORT'], open(os.environ['TOKEN_FILE']).read().strip()
+          base = f'http://127.0.0.1:{port}'
+          nonce = secrets.token_hex(16)
+          mac = json.load(urllib.request.urlopen(f'{base}/__hello?nonce={nonce}', timeout=5))['mac']
+          assert hmac.compare_digest(mac, hmac.new(token.encode(), nonce.encode(), hashlib.sha256).hexdigest()), 'hello mac mismatch'
+          req = urllib.request.Request(f'{base}/__health', headers={'Cookie': f'app_token={token}'})
+          health = json.load(urllib.request.urlopen(req, timeout=5))
+          assert health.get('ok') is True, health
+          print('hello OK, health', health)
+          PY
           echo "smoke test OK"
 
       - name: 스모크 테스트 스크린샷·로그

@@ -250,10 +250,14 @@ class ConfigTest(unittest.TestCase):
                        'briefcase create iOS', 'briefcase build iOS', 'simctl install', 'simctl launch',
                        'CODE_SIGNING_ALLOWED=NO', '-sdk iphoneos', 'Payload', '.ipa', 'gh release upload'):
             self.assertIn(needle, script)
-        # 앱의 포트와 CI 스모크 테스트 포트가 같다
+        # 앱은 무작위 포트(0)로 뜨고, CI 는 앱이 적은 포트 파일에서 포트를 읽는다 (이름이 같아야 한다)
         app_py = (IOS / 'src' / 'trainreservation' / 'app.py').read_text(encoding='utf-8')
-        port = re.search(r'^PORT = (\d+)$', app_py, re.MULTILINE).group(1)
-        self.assertEqual(str(wf['env']['APP_PORT']), port)
+        self.assertEqual(re.search(r'^PORT = (\d+)$', app_py, re.MULTILINE).group(1), '0')
+        port_file = re.search(r"^PORT_FILE = '([^']+)'$", app_py, re.MULTILINE).group(1)
+        self.assertEqual(wf['env']['PORT_FILE'], port_file)
+        self.assertNotIn('APP_PORT', wf['env'])
+        for needle in ('get_app_container', 'Documents/$PORT_FILE', '/__hello?nonce=', '/__health'):
+            self.assertIn(needle, script)
 
 
 if __name__ == '__main__':
