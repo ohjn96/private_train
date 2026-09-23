@@ -1,0 +1,185 @@
+name: Build iOS App
+
+# v 태그를 푸시하면 서명 안 된 .ipa 를 빌드해 Release 에 첨부합니다 (데스크톱·안드로이드와 같은 태그).
+#   git tag v2.4.0 && git push origin v2.4.0
+# 수동 실행(Actions 탭 > Run workflow)도 가능하며, 이때는 아티팩트만 남습니다.
+#
+# 서명: 하지 않습니다. 유료 Apple 개발자 계정이 없으므로, 받은 사람이 Sideloadly 로
+# 자기 Apple ID(무료)로 서명해 설치합니다 (7일마다 다시 서명). mobile/ios/README.md 참고.
+#
+# 단계:
+#   1. 공통 코드 동기화 + iOS 용 순수 파이썬 wheel (MarkupSafe, pyaes)
+#   2. briefcase create iOS → Xcode 프로젝트, 표시 이름·unsigned 빌드 보정
+#   3. briefcase build iOS (시뮬레이터) → 시뮬레이터에서 실행해 서버가 뜨는지 확인 (스모크 테스트)
+#   4. xcodebuild 로 기기(iphoneos) Release 빌드, 서명 없이 → Payload/*.app 을 zip 해서 .ipa
+#
+# 확인한 버전(2026-09): briefcase 0.4.4 (템플릿 v0.4.4, Python 3.12 support b9, 최소 iOS 13).
+# 확실하지 않은 점은 각 단계 주석에 적었습니다.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Release 업로드
+
+env:
+  BRIEFCASE_VERSION: '0.4.4'
+  BUNDLE_ID: com.ohjn96.trainreservation
+  # 앱 안 서버 포트. mobile/ios/src/trainreservation/app.py 의 PORT 와 같아야 한다
+  # (tests/test_ios_build_tools.py 가 확인한다)
+  APP_PORT: 17650
+  XCODE_BUNDLE: build/trainreservation/ios/xcode   # mobile/ios 기준, Briefcase 가 만드는 곳
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 앱에 싣는 파이썬 버전 = briefcase 를 돌리는 파이썬 버전
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: VERSION 과 태그 일치 확인
+        run: |
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "태그(${GITHUB_REF_NAME#v}) 와 VERSION 파일($VERSION) 이 다릅니다." >&2
+            exit 1
+          fi
+
+      - name: 공통 코드 동기화 + 순수 파이썬 wheel
+        run: |
+          python mobile/ios/sync_sources.py
+          python mobile/ios/tools/make_pure_markupsafe.py
+          ls -la mobile/ios/wheels
+
+      - name: Briefcase 설치
+        run: python -m pip install "briefcase==${BRIEFCASE_VERSION}"
+
+      - name: Xcode 프로젝트 만들기
+        working-directory: mobile/ios
+        run: |
+          briefcase create iOS --no-input
+          python tools/prepare_xcode_project.py "$XCODE_BUNDLE"
+
+      - name: 시뮬레이터 빌드
+        working-directory: mobile/ios
+        run: briefcase build iOS --no-input
+
+      # 시뮬레이터는 맥의 네트워크를 같이 쓰므로, 앱 안 서버(127.0.0.1)에 러너에서 바로 붙을 수 있다.
+      # 토큰 없이 /login 을 부르면 403 이어야 한다 = 파이썬 서버가 떴고 토큰 검사도 켜져 있다.
+      - name: 시뮬레이터 스모크 테스트
+        working-directory: mobile/ios
+        run: |
+          APP=$(find "$XCODE_BUNDLE/build/Debug-iphonesimulator" -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$APP" || { echo "시뮬레이터 .app 을 찾지 못했습니다" >&2; exit 1; }
+          echo "app: $APP"
+          # 사용 가능한 iPhone 시뮬레이터 하나 (가장 최근 iOS)
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          runtimes = sorted((r for r in data if ".iOS-" in r), key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")])
+          for r in reversed(runtimes):
+              phones = [d for d in data[r] if d["name"].startswith("iPhone")]
+              if phones:
+                  print(phones[0]["udid"]); break
+          ')
+          test -n "$UDID" || { echo "iPhone 시뮬레이터가 없습니다" >&2; xcrun simctl list devices; exit 1; }
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          CODE=000
+          for i in $(seq 1 60); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${APP_PORT}/login" || true)
+            echo "try $i: HTTP $CODE"
+            [ "$CODE" = "403" ] && break
+            sleep 3
+          done
+          # 화면(WebView)이 그려질 시간을 조금 주고 스크린샷
+          sleep 10
+          mkdir -p "$RUNNER_TEMP/ios-smoke"
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/ios-smoke/simulator.png" || true
+          xcrun simctl spawn "$UDID" log show --last 10m --style compact \
+            --predicate 'process == "TrainReservation"' > "$RUNNER_TEMP/ios-smoke/app.log" 2>&1 || true
+          tail -n 80 "$RUNNER_TEMP/ios-smoke/app.log" || true
+          if [ "$CODE" != "403" ]; then
+            echo "앱 안 서버가 응답하지 않습니다 (마지막 HTTP $CODE, 기대값 403)" >&2
+            exit 1
+          fi
+          # 토큰이 있으면 들어가진다 (/__auth 가 쿠키를 주고 / 로 보낸다)
+          echo "smoke test OK"
+
+      - name: 스모크 테스트 스크린샷·로그
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-simulator-smoke
+          path: ${{ runner.temp }}/ios-smoke/
+          if-no-files-found: ignore
+
+      # 서명 없이 기기용으로 빌드한다. Sideloadly 가 설치할 때 사용자의 Apple ID 로 서명한다.
+      # prepare_xcode_project.py 가 support package 의 codesign 줄을 ad-hoc 서명으로 바꿔 두었다
+      # (그렇지 않으면 표준 라이브러리 C 확장을 framework 로 바꾸는 단계에서 빈 인증서로 실패).
+      - name: 기기용 빌드 (서명 없음)
+        working-directory: mobile/ios
+        run: |
+          cd "$XCODE_BUNDLE"
+          PROJECT=$(find . -maxdepth 1 -name '*.xcodeproj' | head -1)
+          xcodebuild build \
+            -project "$PROJECT" \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -quiet
+          # Briefcase 프로젝트는 -project 빌드 결과를 프로젝트 옆 build/<구성>-<sdk>/ 에 둔다
+          # (시뮬레이터 빌드의 build/Debug-iphonesimulator 와 같은 규칙)
+          APP=$(find build/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$APP" || { echo "기기용 .app 을 찾지 못했습니다" >&2; find build -maxdepth 2; exit 1; }
+          echo "DEVICE_APP=$PWD/$APP" >> "$GITHUB_ENV"
+
+      - name: .ipa 만들기
+        run: |
+          NAME=$(basename "$DEVICE_APP" .app)
+          test -x "$DEVICE_APP/$NAME" || { echo "실행 파일이 없습니다: $DEVICE_APP/$NAME" >&2; exit 1; }
+          lipo -info "$DEVICE_APP/$NAME"
+          plutil -p "$DEVICE_APP/Info.plist" | grep -E 'CFBundleDisplayName|CFBundleShortVersionString|CFBundleIdentifier|NSAllowsLocalNetworking'
+          # 앱 안에 파이썬 코드·패키지가 실렸는지 (위치는 템플릿이 정하므로 찾아서 확인)
+          for f in markupsafe/_native.py pyaes/aes.py webui/templates/base.html mobile_runtime.py trainreservation/app.py; do
+            find "$DEVICE_APP" -path "*/$f" | grep -q . || { echo "앱에 $f 가 없습니다" >&2; exit 1; }
+          done
+          if find "$DEVICE_APP" -path '*/markupsafe/_speedups*' | grep -q .; then
+            echo "markupsafe C 확장이 섞였습니다 (순수 wheel 이 아닌 걸 받음)" >&2; exit 1
+          fi
+          STAGE="$RUNNER_TEMP/ipa"
+          rm -rf "$STAGE" && mkdir -p "$STAGE/Payload" dist
+          cp -R "$DEVICE_APP" "$STAGE/Payload/"
+          (cd "$STAGE" && zip -qry "$GITHUB_WORKSPACE/dist/TrainReservationApp-v${VERSION}.ipa" Payload)
+          ls -la dist
+
+      - name: 아티팩트 업로드
+        uses: actions/upload-artifact@v7
+        with:
+          name: TrainReservationApp-v${{ env.VERSION }}-ios
+          path: dist/*.ipa
+
+      - name: Release 에 첨부
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 데스크톱·안드로이드 빌드가 Release 를 먼저 만들었을 수도, 아닐 수도 있다
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes ""
+          gh release upload "$GITHUB_REF_NAME" dist/*.ipa --clobber

@@ -1,0 +1,11 @@
+# sync_sources.py 가 저장소 루트에서 복사해 오는 공통 코드 (원본은 webui/ core/ korail2/ mobile/shared/)
+/src/webui/
+/src/core/
+/src/korail2/
+/src/mobile_runtime.py
+# tools/make_pure_markupsafe.py 가 만드는 순수 파이썬 wheel
+/wheels/
+# Briefcase 산출물
+/build/
+/dist/
+/logs/

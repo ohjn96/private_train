@@ -184,6 +184,13 @@ Restart=on-failure
 [Releases](https://github.com/ohjn96/private_train/releases) 에서 `TrainReservationApp-v<버전>.apk` 를 받아 설치하세요.
 설치·빌드·서명 방법은 [mobile/android/README.md](mobile/android/README.md).
 
+### iPhone 앱 (.ipa)
+
+아이폰도 앱을 깔아 **폰에서 직접** 돌릴 수 있습니다. 단, **앱을 화면에 띄워 둔 동안에만** 매크로가 돕니다
+(iOS 제약. 도는 동안엔 자동 잠금이 꺼집니다). Mac·유료 개발자 계정 없이, Windows PC 의
+[Sideloadly](https://sideloadly.io/) 와 무료 Apple ID 로 `TrainReservationApp-v<버전>.ipa` 를 설치합니다 (7일마다 다시 서명).
+설치·빌드 방법은 [mobile/ios/README.md](mobile/ios/README.md).
+
 ### Oracle Cloud 에 올리기 (무료, 폰에서 접속, 여러 명)
 
 PC 를 계속 켜 둘 수 없을 때. Oracle Cloud Always Free VM 에 **서버 버전**(`python -m server`)을
@@ -408,11 +415,11 @@ private_train/
 │   ── 앱 3개 ──
 ├── desktop/                    # ① PC 앱: python -m desktop (= python main.py), exe 빌드(build/), 헤드리스
 ├── server/                     # ② 서버: python -m server, 여러 명·웹 푸시, setup-server.sh
-├── mobile/                     # ③ 안드로이드 앱(APK): 폰 안에서 webui 를 띄운다
+├── mobile/                     # ③ 폰 앱: 안드로이드(APK)·iPhone(.ipa), 폰 안에서 webui 를 띄운다
 │
 ├── tests/                      # 회귀 테스트 (네트워크 불필요)
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
-├── .github/workflows/          # 태그 푸시 시 exe(Windows/macOS)·APK 자동 빌드
+├── .github/workflows/          # 태그 푸시 시 exe(Windows/macOS)·APK·IPA 자동 빌드
 ├── main.py                     # 하위 호환 진입점 (= python -m desktop)
 ├── VERSION                     # 버전 단일 출처
 ├── LICENSE                     # 개인 사용 라이선스 (재배포·상업이용 금지)
