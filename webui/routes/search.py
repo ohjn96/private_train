@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Search routes with multi-provider session support."""
+import logging
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import (
@@ -13,6 +14,8 @@ from webui.utils.session_helper import (
     get_search_state, set_search_trains,
     get_card_settings, set_card_settings, clear_card_settings
 )
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('search', __name__)
 
@@ -122,8 +125,10 @@ def search_more():
             'has_more': len(trains_data) > 0
         })
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        # 예외 문구에는 내부 경로·코레일 응답 원문이 섞일 수 있어 화면엔 일반 문구만 보낸다
+        logger.exception('추가 열차 조회 실패')
+        return jsonify({'error': '열차를 더 불러오지 못했습니다. 잠시 뒤 다시 시도해주세요.'}), 500
 
 
 @bp.route('/api/card/status', methods=['GET'])
@@ -151,7 +156,14 @@ def card_status():
 def card_save():
     """Save card auto-payment settings for the current provider."""
     provider = get_current_provider()
-    data = request.get_json(silent=True) or request.form
+    data = request.get_json(silent=True)
+    if data is None:
+        data = request.form
+    if not hasattr(data, 'get'):
+        return jsonify({'success': False, 'message': '요청 형식이 올바르지 않습니다.'}), 400
+    text_fields = ('card_number', 'card_password', 'validation_number', 'card_expire', 'card_type')
+    if any(not isinstance(data.get(k) or '', str) for k in text_fields):
+        return jsonify({'success': False, 'message': '카드 정보는 문자열로 보내주세요.'}), 400
 
     card_number = (data.get('card_number') or '').replace('-', '').strip()
     card_password = (data.get('card_password') or '').strip()

@@ -7,7 +7,7 @@ from webui.services.telegram_service import (
 )
 from webui.utils.session_helper import (
     get_current_provider, is_logged_in, get_credentials,
-    get_any_logged_in_provider, mask_user
+    get_any_logged_in_provider, mask_user, current_user_id
 )
 
 bp = Blueprint('telegram', __name__, url_prefix='/api/telegram')
@@ -29,7 +29,24 @@ def block_bot_settings_in_server_mode():
                         'message': '서버 모드에서는 텔레그램 대신 웹 푸시 알림을 씁니다.'}), 403
     if request.endpoint in _LOGIN_REQUIRED and not is_logged_in():
         return jsonify({'success': False, 'message': '로그인이 필요합니다.'}), 401
+    if request.endpoint in _LOGIN_REQUIRED and not _is_bot_owner(TelegramService.get_instance()):
+        return jsonify({'success': False,
+                        'message': '다른 사용자가 연결한 텔레그램 봇입니다. 그 사용자만 바꾸거나 끊을 수 있습니다.'}), 403
     return None
+
+
+def _bot_owner(tg: TelegramService) -> str:
+    """지금 연결된(없으면 저장돼 있는) 봇을 연결한 코레일 ID. 모르면 ''."""
+    if tg.bot_token:
+        return tg.owner or ''
+    saved = load_saved_settings()
+    return saved.get('owner', '') if saved.get('token') else ''
+
+
+def _is_bot_owner(tg: TelegramService) -> bool:
+    """주인이 없는 봇(환경변수·예전 설정 파일)은 로그인한 누구나 다룰 수 있다."""
+    owner = _bot_owner(tg)
+    return not owner or owner == current_user_id()
 
 
 def _pairing_payload(tg: TelegramService) -> dict | None:
@@ -43,9 +60,18 @@ def _pairing_payload(tg: TelegramService) -> dict | None:
 @bp.route('/configure', methods=['POST'])
 def configure():
     """Configure the Telegram bot with token and optional chat_id."""
-    data = request.get_json() or {}
-    bot_token = data.get('bot_token', '').strip()
-    chat_id = data.get('chat_id', '').strip()
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'message': '요청 형식이 올바르지 않습니다.'}), 400
+    bot_token = data.get('bot_token') or ''
+    chat_id = data.get('chat_id') or ''
+    if isinstance(chat_id, int) and not isinstance(chat_id, bool):
+        chat_id = str(chat_id)  # 채팅 ID 는 숫자로 보내도 받아 준다
+    if not isinstance(bot_token, str) or not isinstance(chat_id, str):
+        return jsonify({'success': False, 'message': '봇 토큰과 채팅 ID 는 문자열로 보내주세요.'}), 400
+    bot_token, chat_id = bot_token.strip(), chat_id.strip()
 
     # 토큰 없이 부르면 서버에 저장해 둔 설정으로 다시 붙는다 (페이지 로드 때 자동 연결)
     if not bot_token:
@@ -59,7 +85,8 @@ def configure():
     result = tg.configure(bot_token, chat_id)
 
     if result['success']:
-        save_settings(bot_token, tg.chat_id or '')
+        tg.owner = current_user_id()
+        save_settings(bot_token, tg.chat_id or '', tg.owner)
 
         # Store web session credentials if user is logged in
         try:
@@ -119,20 +146,20 @@ def status():
     if tg.bot_token and tg.chat_id:
         saved = load_saved_settings()
         if saved['token'] == tg.bot_token and saved['chat_id'] != tg.chat_id:
-            save_settings(tg.bot_token, tg.chat_id)
+            save_settings(tg.bot_token, tg.chat_id, tg.owner)
     status = tg.get_status()
     # 로그인 안 한 사람(같은 LAN 의 다른 기기 등)에게 채팅 ID 는 알려주지 않는다
-    if not is_logged_in():
+    logged_in = is_logged_in()
+    if not logged_in:
         status.update(chat_id='', provider='')
 
-    # 남의 매크로 상태와 로그는 가리고, 누가 쓰는 중인지만 알려준다
+    # 남의 매크로 상태와 로그는 가리고, 누가 쓰는 중인지만 알려준다.
+    # 로그인 안 한 사람에게는 누가·언제부터인지도 알려주지 않는다.
     from webui.routes.reservation import owns_macro
-    if not owns_macro(tg):
+    if not logged_in or not owns_macro(tg):
         if status['macro_running']:
-            status['busy'] = {
-                'user': mask_user(tg.macro_owner),
-                'since': status['macro_start_time'],
-            }
+            status['busy'] = ({'user': mask_user(tg.macro_owner), 'since': status['macro_start_time']}
+                              if logged_in else {'user': mask_user(None), 'since': None})
         status.update(macro_running=False, macro_info={}, macro_attempt=0,
                       macro_start_time=None, has_logs=False, last_result=None, resumed_at=None)
     return jsonify(status)

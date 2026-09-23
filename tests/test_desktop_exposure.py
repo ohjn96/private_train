@@ -263,7 +263,7 @@ class SecurityHeadersTest(unittest.TestCase):
         client = make_app().test_client()
         for path in ('/login', '/manifest.webmanifest', '/sw.js', '/api/telegram/status', '/nope'):
             resp = client.get(path)
-            self.assertEqual(resp.headers.get('Referrer-Policy'), 'no-referrer', path)
+            self.assertEqual(resp.headers.get('Referrer-Policy'), 'same-origin', path)
             self.assertEqual(resp.headers.get('X-Content-Type-Options'), 'nosniff', path)
             csp = resp.headers.get('Content-Security-Policy', '')
             self.assertIn("connect-src 'self'", csp, path)

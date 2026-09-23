@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Authentication routes (코레일 단일 서비스)."""
-from flask import Blueprint, request, session, redirect, url_for, render_template
+from flask import Blueprint, current_app, request, session, redirect, url_for, render_template
 
 from webui.services import ServiceManager
 from webui.utils.session_helper import (
@@ -24,6 +24,19 @@ def login():
     provider = PROVIDER
 
     if request.method == "POST":
+        # IP 마다 1분에 10번까지 (성공·실패 모두 센다). 남의 코레일 계정 비밀번호를
+        # 여기서 대입해 보지 못하게. 성공으로 초기화하면 내 계정으로 끼워 넣어 우회할 수 있다.
+        throttle = current_app.extensions.get("login_throttle")
+        ip = request.remote_addr or "?"
+        if throttle is not None:
+            if throttle.blocked(ip):
+                return render_template(
+                    "login.html",
+                    error="로그인 시도가 너무 많습니다. 1분 뒤에 다시 시도해주세요.",
+                    provider=provider,
+                ), 429
+            throttle.fail(ip)
+
         user_id = request.form.get("user_id", "").strip()
         password = request.form.get("password", "").strip()
 
