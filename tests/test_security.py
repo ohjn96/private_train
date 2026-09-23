@@ -155,6 +155,43 @@ class AccessGateTest(unittest.TestCase):
         resp = client.post('/gate?next=//evil.example', data={'password': 'letmein'})
         self.assertEqual(resp.headers['Location'], '/')
 
+    def test_next_rejects_tricky_targets(self):
+        from webui import safe_next
+        for bad in ('//evil.example', '/\\evil.example', '/\\/evil.example', 'https://evil.example',
+                    'evil.example', '/\tevil', '/a\r\nb', '', None,
+                    'javascript:alert(1)', '///evil.example'):
+            self.assertEqual(safe_next(bad), '/', repr(bad))
+        for good in ('/', '/login', '/search?x=1&y=2', '/a/b#c'):
+            self.assertEqual(safe_next(good), good)
+
+    def test_backslash_next_is_not_followed(self):
+        client = self.make_client('letmein')
+        resp = client.post('/gate?next=/%5Cevil.example', data={'password': 'letmein'})
+        self.assertEqual(resp.headers['Location'], '/')
+
+    @mock.patch('webui.time.sleep')
+    def test_too_many_failures_get_429(self, _sleep):
+        client = self.make_client('letmein')
+        for _ in range(5):
+            self.assertEqual(client.post('/gate', data={'password': 'nope'}).status_code, 200)
+        # 맞는 비밀번호라도 잠긴 동안은 막는다
+        resp = client.post('/gate', data={'password': 'letmein'})
+        self.assertEqual(resp.status_code, 429)
+        # 다른 IP 는 영향 없음
+        other = client.post('/gate', data={'password': 'letmein'},
+                            environ_base={'REMOTE_ADDR': '10.0.0.9'})
+        self.assertEqual(other.status_code, 302)
+
+    @mock.patch('webui.time.sleep')
+    def test_lock_expires(self, _sleep):
+        client = self.make_client('letmein')
+        with mock.patch('webui.time.monotonic', return_value=1000.0):
+            for _ in range(5):
+                client.post('/gate', data={'password': 'nope'})
+            self.assertEqual(client.post('/gate', data={'password': 'letmein'}).status_code, 429)
+        with mock.patch('webui.time.monotonic', return_value=1301.0):
+            self.assertEqual(client.post('/gate', data={'password': 'letmein'}).status_code, 302)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

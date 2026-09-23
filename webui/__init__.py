@@ -5,8 +5,10 @@ import ipaddress
 import logging
 import os
 import secrets
+import threading
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from flask import Flask, redirect, render_template, request, session, url_for
 
@@ -151,6 +153,55 @@ def _install_host_check(app: Flask) -> None:
         return None
 
 
+def safe_next(target: str | None) -> str:
+    """/gate?next= 로 받은 되돌아갈 주소. 같은 사이트 경로가 아니면 '/'.
+
+    '//evil.example', '/\\evil.example'(브라우저가 \\ 를 / 로 읽는다), 'https://…',
+    제어 문자가 섞인 값 등을 걸러 낸다.
+    """
+    if not target or not target.startswith('/') or target.startswith('//'):
+        return '/'
+    if '\\' in target or any(ord(c) < 0x20 or ord(c) == 0x7f for c in target):
+        return '/'
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc:
+        return '/'
+    return target
+
+
+#: 접근 비밀번호 무차별 대입 막기: IP 마다 GATE_WINDOW 초 안에 GATE_MAX_FAILURES 번 틀리면 429
+GATE_MAX_FAILURES = 5
+GATE_WINDOW = 5 * 60
+
+
+class _FailureThrottle:
+    def __init__(self, limit: int, window: float):
+        self.limit, self.window = limit, window
+        self._failures: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def _recent(self, key: str, now: float) -> list[float]:
+        times = [t for t in self._failures.get(key, []) if now - t < self.window]
+        if times:
+            self._failures[key] = times
+        else:
+            self._failures.pop(key, None)
+        return times
+
+    def blocked(self, key: str) -> bool:
+        with self._lock:
+            return len(self._recent(key, time.monotonic())) >= self.limit
+
+    def fail(self, key: str) -> None:
+        with self._lock:
+            now = time.monotonic()
+            self._failures[key] = self._recent(key, now) + [now]
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self._failures.pop(key, None)
+
+
 def _install_access_gate(app: Flask) -> None:
     """APP_PASSWORD 가 설정돼 있으면 모든 페이지 앞에 접근 비밀번호를 세운다.
 
@@ -171,18 +222,24 @@ def _install_access_gate(app: Flask) -> None:
             return {'success': False, 'message': '접근 비밀번호가 필요합니다.'}, 401
         return redirect(url_for('gate', next=request.full_path))
 
+    throttle = _FailureThrottle(GATE_MAX_FAILURES, GATE_WINDOW)
+    app.extensions['gate_throttle'] = throttle
+
     @app.route('/gate', methods=['GET', 'POST'])
     def gate():
         error = None
         if request.method == 'POST':
+            ip = request.remote_addr or '?'
+            if throttle.blocked(ip):
+                return render_template(
+                    'gate.html', error='여러 번 틀려서 잠시 막혔습니다. 5분 뒤에 다시 시도하세요.'), 429
             given = request.form.get('password', '')
             if hmac.compare_digest(given.encode(), password.encode()):
+                throttle.reset(ip)
                 session['gate_ok'] = True
-                target = request.args.get('next') or '/'
                 # 외부 주소로 튕기지 않도록 같은 사이트 경로만 허용
-                if not target.startswith('/') or target.startswith('//'):
-                    target = '/'
-                return redirect(target)
+                return redirect(safe_next(request.args.get('next')))
+            throttle.fail(ip)
             time.sleep(1)  # 무차별 대입을 느리게
             error = '비밀번호가 틀렸습니다.'
         return render_template('gate.html', error=error)
