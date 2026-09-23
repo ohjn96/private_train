@@ -3,6 +3,7 @@
 기본 바인딩/디버그, 텔레그램 채팅 페어링 코드."""
 import os
 import sys
+import threading
 import unittest
 from unittest import mock
 
@@ -193,6 +194,68 @@ class DesktopDefaultsTest(unittest.TestCase):
         kwargs = self.run_web({'HOST': '0.0.0.0', 'FLASK_DEBUG': 'true'})
         self.assertEqual(kwargs['host'], '0.0.0.0')
         self.assertTrue(kwargs['debug'])
+
+
+class StartReservationCsrfTest(unittest.TestCase):
+    """예약 시작은 POST + 같은 사이트에서만. 다른 사이트의 <img>·폼으로는 못 켠다."""
+
+    def setUp(self):
+        import webui.routes.reservation as reservation
+        self.reservation = reservation
+        session_helper._vault.clear()
+        self.tg = TelegramService.get_instance()
+        self.tg.set_macro_state(False)
+        self.started = []
+        self.patch = mock.patch.object(reservation, 'run_reservation_loop',
+                                       lambda *a, **k: (self.started.append(1),
+                                                        self.tg.set_macro_state(False)))
+        self.patch.start()
+        from webui.services import ServiceManager
+        from webui.services.korail_service import KorailService
+
+        def fake_login(svc, user_id, password):
+            svc._user_id, svc._password = user_id, password
+            svc._client = type('C', (), {'logined': True})()
+            return True
+
+        self.login_patches = [
+            mock.patch.object(KorailService, 'login', fake_login),
+            mock.patch.object(KorailService, 'is_logged_in', lambda svc: svc._client is not None),
+        ]
+        [p.start() for p in self.login_patches]
+        ServiceManager._services.clear()
+        self.client = make_app().test_client()
+        sign_in(self.client, 'me')
+
+    def tearDown(self):
+        self.patch.stop()
+        [p.stop() for p in self.login_patches]
+        from webui.services import ServiceManager
+        ServiceManager._services.clear()
+        self.reservation.STOP_MACRO = True
+        self.tg.set_macro_state(False)
+        self.tg._macro_owner = None
+        session_helper._vault.clear()
+
+    def test_get_is_not_allowed(self):
+        self.assertEqual(self.client.get('/start_reservation').status_code, 405)
+
+    def test_cross_site_is_refused(self):
+        for headers in ({'Sec-Fetch-Site': 'cross-site'}, {'Sec-Fetch-Site': 'same-site'},
+                        {'Origin': 'http://evil.example'}):
+            resp = self.client.post('/start_reservation', headers=headers)
+            self.assertEqual(resp.status_code, 403, headers)
+        self.assertEqual(self.started, [])
+
+    def test_same_origin_is_accepted(self):
+        for headers in ({'Sec-Fetch-Site': 'same-origin'},
+                        {'Origin': 'http://localhost'}, {}):
+            resp = self.client.post('/start_reservation', headers=headers)
+            self.assertTrue(resp.get_json()['success'], (headers, resp.get_json()))
+            for _ in range(100):
+                if not self.tg._macro_running:
+                    break
+                threading.Event().wait(0.01)
 
 
 if __name__ == '__main__':

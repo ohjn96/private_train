@@ -110,16 +110,16 @@ class OneMacroAtATimeTest(ServerTestCase):
         super().tearDown()
 
     def test_second_user_is_told_who_is_busy(self):
-        self.assertTrue(self.alice.get('/start_reservation').get_json()['success'])
+        self.assertTrue(self.alice.post('/start_reservation').get_json()['success'])
         self.assertEqual(self.tg.macro_owner, '010-1111-1111')
 
-        resp = self.bob.get('/start_reservation').get_json()
+        resp = self.bob.post('/start_reservation').get_json()
         self.assertFalse(resp['success'])
         self.assertIn('010***', resp['message'])
         self.assertNotIn('1111', resp['message'])
 
     def test_status_hides_other_users_macro(self):
-        self.alice.get('/start_reservation')
+        self.alice.post('/start_reservation')
         mine = self.alice.get('/api/telegram/status').get_json()
         theirs = self.bob.get('/api/telegram/status').get_json()
         self.assertTrue(mine['macro_running'])
@@ -129,7 +129,7 @@ class OneMacroAtATimeTest(ServerTestCase):
         self.assertEqual(theirs['busy']['user'], '010***')
 
     def test_cannot_stop_someone_elses_macro(self):
-        self.alice.get('/start_reservation')
+        self.alice.post('/start_reservation')
         reservation.STOP_MACRO = False
         self.assertEqual(self.bob.post('/stop_macro').status_code, 403)
         self.assertFalse(reservation.STOP_MACRO)
@@ -137,20 +137,20 @@ class OneMacroAtATimeTest(ServerTestCase):
         self.assertTrue(reservation.STOP_MACRO)
 
     def test_cannot_read_someone_elses_logs(self):
-        self.alice.get('/start_reservation')
+        self.alice.post('/start_reservation')
         self.tg.push_log('log', '앨리스의 비밀 로그')
         body = self.bob.get('/macro_stream').get_data(as_text=True)
         self.assertNotIn('앨리스', body)
         self.assertIn('stream_end', body)
 
     def test_next_user_can_start_after_first_finishes(self):
-        self.alice.get('/start_reservation')
+        self.alice.post('/start_reservation')
         self.release.set()
         for _ in range(50):
             if not self.tg._macro_running:
                 break
             threading.Event().wait(0.05)
-        self.assertTrue(self.bob.get('/start_reservation').get_json()['success'])
+        self.assertTrue(self.bob.post('/start_reservation').get_json()['success'])
         self.assertEqual(self.tg.macro_owner, '010-2222-2222')
 
 

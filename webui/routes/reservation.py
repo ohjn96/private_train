@@ -390,7 +390,24 @@ def run_reservation_loop(
     return reason
 
 
-@bp.route("/start_reservation")
+def is_same_origin_request() -> bool:
+    """다른 사이트가 몰래 보낸 요청(CSRF)인가를 가린다.
+
+    브라우저가 붙이는 Sec-Fetch-Site 를 먼저 보고, 없으면(오래된 브라우저) Origin 의
+    호스트가 이 서버 주소와 같은지 본다. 둘 다 없으면 브라우저 밖(스크립트·테스트)이라 통과.
+    """
+    from urllib.parse import urlsplit
+
+    site = request.headers.get("Sec-Fetch-Site")
+    if site is not None:
+        return site in ("same-origin", "none")
+    origin = request.headers.get("Origin")
+    if origin is None:
+        return True
+    return urlsplit(origin).netloc.lower() == (request.host or "").lower()
+
+
+@bp.route("/start_reservation", methods=["POST"])
 @login_required
 def start_reservation():
     """Start the reservation macro on a background thread and return immediately.
@@ -400,6 +417,11 @@ def start_reservation():
     closing the tab or refreshing no longer stops the macro - it keeps running on
     the server, and reconnecting just replays the shared log buffer.
     """
+    # 예전엔 GET 이라 다른 사이트의 <img src=".../start_reservation"> 만으로도 매크로가
+    # 시작됐다. POST 로만 받고, 다른 사이트에서 온 요청은 거절한다.
+    if not is_same_origin_request():
+        return jsonify({"success": False, "message": "다른 사이트에서 온 요청은 받지 않습니다."}), 403
+
     tg = TelegramService.get_instance()
     provider = get_current_provider()
     service = ServiceManager.get_service(provider)
