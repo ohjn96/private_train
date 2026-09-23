@@ -47,6 +47,12 @@ def start(files_dir: str, port: int, token: str, version: str, debug: bool = Fal
     server.serve_forever()
 
 
+def stop_macro() -> None:
+    """상단 알림의 [매크로 중단]. 프로세스를 죽이지 않고 매크로만 정상적으로 멈춘다."""
+    import webui.routes.reservation as reservation
+    reservation.STOP_MACRO = True
+
+
 def _require_token(app, token: str) -> None:
     from flask import request
 

@@ -16,7 +16,9 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.util.Log
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -27,6 +29,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import java.net.HttpURLConnection
 import java.net.URL
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -44,6 +47,7 @@ class MainActivity : Activity() {
     }
 
     private lateinit var webView: WebView
+    private lateinit var content: FrameLayout
     private lateinit var loading: View
     private lateinit var loadingText: TextView
     private val baseUrl = "http://127.0.0.1:${ServerService.PORT}"
@@ -57,26 +61,10 @@ class MainActivity : Activity() {
         // 밝은 바탕이므로 상태바 아이콘을 어둡게
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
 
-        webView = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true          // 호출 간격 등 화면 설정 기억
-            settings.mediaPlaybackRequiresUserGesture = false  // 예약 성공 알림음
-            settings.setSupportZoom(false)
-            webChromeClient = WebChromeClient()        // alert() / confirm()
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    val url = request.url
-                    if (url.host == "127.0.0.1") return false
-                    // 바깥 링크는 브라우저로
-                    startActivity(Intent(Intent.ACTION_VIEW, url))
-                    return true
-                }
-            }
-            visibility = View.INVISIBLE
-        }
+        webView = createWebView()
         loading = buildLoadingView()
 
-        val content = FrameLayout(this).apply {
+        content = FrameLayout(this).apply {
             setBackgroundColor(Color.WHITE)
             addView(webView, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             addView(loading, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -98,7 +86,8 @@ class MainActivity : Activity() {
         val token = AppToken.get(this)
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
-            setCookie(baseUrl, "android_token=$token; Path=/; SameSite=Strict")
+            // HttpOnly: 화면의 스크립트가 토큰을 읽지 못하게
+            setCookie(baseUrl, "android_token=$token; Path=/; SameSite=Strict; HttpOnly")
             flush()
         }
 
@@ -108,9 +97,87 @@ class MainActivity : Activity() {
         main.postDelayed({ askBatteryExemptionIfNeeded() }, 1500)
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createWebView(): WebView =
+        WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true          // 호출 간격 등 화면 설정 기억
+            settings.mediaPlaybackRequiresUserGesture = false  // 예약 성공 알림음
+            settings.setSupportZoom(false)
+            webChromeClient = WebChromeClient()        // alert() / confirm()
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    val url = request.url
+                    if (url.host == "127.0.0.1") return false
+                    // 바깥 링크는 브라우저로
+                    startActivity(Intent(Intent.ACTION_VIEW, url))
+                    return true
+                }
+
+                // 화면(렌더러) 프로세스가 죽어도 앱은 살린다. 기본 동작은 앱 프로세스째
+                // 종료라, 같은 프로세스에서 도는 매크로까지 끊긴다.
+                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                    Log.w("MainActivity", "WebView renderer gone (crash=${detail.didCrash()})")
+                    content.removeView(webView)
+                    webView.destroy()
+                    webView = createWebView().apply { visibility = View.VISIBLE }
+                    content.addView(webView, 0, ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                    webView.loadUrl("$baseUrl/")
+                    return true
+                }
+            }
+            visibility = View.INVISIBLE
+        }
+
+    override fun onResume() {
+        super.onResume()
+        webView.onResume()
+        warnIfNotificationsOff()
+    }
+
+    override fun onPause() {
+        // 화면이 안 보일 때는 웹뷰를 쉬게 한다 (매크로는 서비스에서 계속 돈다).
+        // 돌아오면 화면이 상태를 다시 받아 온다 (visibilitychange).
+        webView.onPause()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        webView.destroy()
+        super.onDestroy()
+    }
+
+    private var notificationWarned = false
+
+    /** 알림이 꺼져 있으면 예약 성공을 놓치므로 한 번 안내한다 (앱을 열 때마다 최대 한 번). */
+    private fun warnIfNotificationsOff() {
+        if (notificationWarned || NotificationManagerCompat.from(this).areNotificationsEnabled()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !getSharedPreferences("app", MODE_PRIVATE).getBoolean("notif_asked", false)
+        ) {
+            return  // 아직 권한을 물어보는 중
+        }
+        notificationWarned = true
+        AlertDialog.Builder(this)
+            .setTitle("알림이 꺼져 있어요")
+            .setMessage("좌석을 잡아도 알려드릴 수 없어요. 결제 기한을 놓치지 않도록 알림을 켜 주세요.")
+            .setPositiveButton("알림 켜기") { _, _ ->
+                startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                )
+            }
+            .setNegativeButton("나중에", null)
+            .show()
+    }
+
     @Deprecated("Activity 기본 뒤로가기를 WebView 뒤로가기로 바꾼다")
     override fun onBackPressed() {
-        if (webView.canGoBack()) {
+        // 첫 화면(검색)에서는 같은 화면 기록을 거슬러 가지 않고 바로 앱을 뒤로 보낸다
+        val path = Uri.parse(webView.url ?: "").path ?: "/"
+        if (path != "/" && webView.canGoBack()) {
             webView.goBack()
         } else {
             // 끄지 않고 뒤로 보낸다. 매크로는 서비스에서 계속 돈다.
@@ -166,6 +233,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
+            getSharedPreferences("app", MODE_PRIVATE).edit().putBoolean("notif_asked", true).apply()
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
     }

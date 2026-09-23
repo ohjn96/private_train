@@ -16,12 +16,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <!-- Tailwind CSS CDN (for development) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Flatpickr Date Picker -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+    <!-- Tailwind·달력은 앱에 같이 싣는다 (static/vendor). CDN 에서 받으면 연결이 약할 때
+         화면이 깨지거나 시작·중단 버튼까지 멈추고, 외부 스크립트가 앱 권한으로 돈다. -->
+    <script src="{{ url_for('static', filename='vendor/tailwindcss.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/flatpickr.min.css') }}">
+    <script src="{{ url_for('static', filename='vendor/flatpickr.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/flatpickr-ko.js') }}"></script>
     <script>
         tailwind.config = {
             theme: {

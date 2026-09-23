@@ -452,7 +452,8 @@ def macro_stream():
         idle_count = 0
         while True:
             # Collect new events
-            new_events = [e for e in tg._macro_logs if e["id"] > last_id]
+            # 매크로 스레드가 동시에 로그를 붙이므로 복사본을 돈다 (deque mutated during iteration)
+            new_events = [e for e in list(tg._macro_logs) if e["id"] > last_id]
             for event in new_events:
                 last_id = event["id"]
                 yield f"data: {json.dumps(event)}\n\n"
@@ -461,7 +462,7 @@ def macro_stream():
             # Check if macro has ended
             if not tg._macro_running:
                 # Flush remaining
-                remaining = [e for e in tg._macro_logs if e["id"] > last_id]
+                remaining = [e for e in list(tg._macro_logs) if e["id"] > last_id]
                 for event in remaining:
                     last_id = event["id"]
                     yield f"data: {json.dumps(event)}\n\n"

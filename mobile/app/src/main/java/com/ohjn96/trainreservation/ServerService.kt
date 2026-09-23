@@ -29,6 +29,7 @@ class ServerService : Service() {
     companion object {
         const val PORT = 17650
         const val ACTION_STOP = "com.ohjn96.trainreservation.STOP"
+        const val ACTION_STOP_MACRO = "com.ohjn96.trainreservation.STOP_MACRO"
         private const val TAG = "ServerService"
 
         /** 매크로가 도는 중이라는 표시. 프로세스가 죽었다 살아났을 때 알리려고 디스크에 남긴다. */
@@ -64,7 +65,12 @@ class ServerService : Service() {
         instance = this
         Bridge.appContext = applicationContext
         Notifications.createChannels(this)
-        goForeground()
+        if (!goForeground()) {
+            // 시스템이 백그라운드에서 다시 띄울 때 포그라운드 시작이 거부될 수 있다
+            // (Android 12+). 죽지 말고 조용히 멈춘다. 앱을 열면 다시 시작된다.
+            stopSelf()
+            return
+        }
         warnIfMacroWasLost()
         startPythonServer()
     }
@@ -87,11 +93,26 @@ class ServerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            shutdown()
+        when (intent?.action) {
+            ACTION_STOP -> {
+                shutdown()
+                return START_NOT_STICKY
+            }
+            ACTION_STOP_MACRO -> {
+                // 결제 중일 수도 있으니 프로세스를 죽이지 않고 매크로만 멈추게 한다
+                thread(name = "stop-macro", isDaemon = true) {
+                    try {
+                        Python.getInstance().getModule("android_main").callAttr("stop_macro")
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "stop_macro failed", e)
+                    }
+                }
+            }
+        }
+        if (!goForeground()) {
+            stopSelf()
             return START_NOT_STICKY
         }
-        goForeground()
         // 시스템이 메모리 때문에 죽였다가 여유가 생기면 다시 띄운다
         return START_STICKY
     }
@@ -130,12 +151,19 @@ class ServerService : Service() {
         goForeground()
     }
 
-    private fun goForeground() {
+    /** 상단 알림을 띄우고 포그라운드로. 시스템이 거부하면 false. */
+    private fun goForeground(): Boolean {
         val notification = buildServiceNotification()
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         } else 0
-        ServiceCompat.startForeground(this, Notifications.SERVICE_ID, notification, type)
+        return try {
+            ServiceCompat.startForeground(this, Notifications.SERVICE_ID, notification, type)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground refused", e)
+            false
+        }
     }
 
     private fun buildServiceNotification() =
@@ -144,18 +172,23 @@ class ServerService : Service() {
             .setContentTitle(if (macroRunning) "예약 매크로 실행 중" else "열차 예약 대기 중")
             .setContentText(
                 if (macroRunning) macroSummary.ifEmpty { "좌석을 찾는 중입니다" }
-                else "앱을 닫아도 켜져 있습니다. 끄려면 [종료]"
+                else "앱을 닫아도 켜져 있어요. 끄려면 [종료]"
             )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(Notifications.openAppIntent(this))
-            .addAction(0, "종료", stopIntent())
+            // 매크로가 도는 중엔 [매크로 중단] (결제 도중에 프로세스를 죽이지 않게), 쉴 땐 [종료]
+            .addAction(0, if (macroRunning) "매크로 중단" else "종료", stopIntent())
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
 
     private fun stopIntent(): PendingIntent {
-        val intent = Intent(this, ServerService::class.java).setAction(ACTION_STOP)
-        return PendingIntent.getService(this, 1, intent, PendingIntent.FLAG_IMMUTABLE)
+        val action = if (macroRunning) ACTION_STOP_MACRO else ACTION_STOP
+        val intent = Intent(this, ServerService::class.java).setAction(action)
+        return PendingIntent.getService(
+            this, if (macroRunning) 2 else 1, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
     }
 
     private fun acquireLocks() {

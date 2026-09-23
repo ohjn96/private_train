@@ -402,9 +402,12 @@ class TelegramService:
                 logger.exception('log sink failed')
 
     def clear_logs(self):
-        """Clear the log buffer."""
+        """Clear the log buffer.
+
+        번호(_log_counter)는 0 으로 되돌리지 않는다. 이미 열려 있던 스트림은 "마지막으로 본
+        번호" 이후만 보내므로, 되돌리면 새 매크로의 초반 로그를 이미 본 것으로 건너뛴다.
+        """
         self._macro_logs.clear()
-        self._log_counter = 0
         self._log_event.clear()
 
     def store_web_session(self, provider: str, credentials: dict):

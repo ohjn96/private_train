@@ -227,7 +227,13 @@ def index():
 
     # On GET, restore saved trains if available
     if request.method == 'GET' and search_state.get('trains'):
-        trains = search_state['trains']
+        # 지난 날짜의 결과는 버린다. 그대로 두면 이미 떠난 열차로 매크로를 시작할 수 있다.
+        if saved_form.get('date', default_date) < default_date:
+            search_state['trains'] = []
+            search_state['selected_indices'] = []
+            session.modified = True
+        else:
+            trains = search_state['trains']
 
     if request.method == 'POST' and 'search' in request.form:
         # Always save the submitted form_data so the page shows the same inputs after redirect

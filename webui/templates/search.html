@@ -14,7 +14,7 @@
                 <h2 class="text-xl font-bold tracking-tight">예약했어요</h2>
                 <p id="successDetail" class="text-sm text-rail-muted mt-0.5"></p>
             </div>
-            <button type="button" aria-label="닫기" onclick="document.getElementById('successBanner').classList.add('hidden')"
+            <button type="button" aria-label="닫기" onclick="const b = document.getElementById('successBanner'); b.classList.add('hidden'); try { localStorage.setItem('dismissedSuccess', b.dataset.message || ''); } catch (e) {}"
                     class="w-11 h-11 -mr-2 -mt-2 flex items-center justify-center text-rail-muted">
                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
             </button>
@@ -110,9 +110,9 @@
                                placeholder="날짜 선택" readonly
                                class="flex-1 min-w-0 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink cursor-pointer">
                         <div class="flex gap-1.5" role="group" aria-label="빠른 날짜">
-                            <button type="button" class="quick-date h-9 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="0">오늘</button>
-                            <button type="button" class="quick-date h-9 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="1">내일</button>
-                            <button type="button" class="quick-date h-9 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="2">모레</button>
+                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="0">오늘</button>
+                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="1">내일</button>
+                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="2">모레</button>
                         </div>
                     </div>
                     <div class="h-px bg-rail-line/70"></div>
@@ -160,7 +160,7 @@
 
             <!-- 인원 / 좌석 / 호출 간격: 작은 알약 모양 선택 -->
             <div class="flex flex-wrap gap-2">
-                <label class="h-9 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]">
+                <label class="h-10 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]">
                     <span class="text-rail-muted whitespace-nowrap">인원</span>
                     <select id="passengerCount" data-testid="passenger-count"
                             class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm"
@@ -169,7 +169,7 @@
                         <option value="2">2명</option>
                     </select>
                 </label>
-                <label class="h-9 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]">
+                <label class="h-10 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]">
                     <span class="text-rail-muted whitespace-nowrap">좌석</span>
                     <select id="seatOption" data-testid="seat-option"
                             class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm">
@@ -179,7 +179,7 @@
                         <option value="SPECIAL_ONLY">특실만</option>
                     </select>
                 </label>
-                <label class="h-9 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]"
+                <label class="h-10 pl-3 pr-2 rounded-[10px] border border-rail-line bg-white flex items-center gap-1 text-[13px]"
                        title="코레일에 조회를 보내는 간격. 짧을수록 빨리 잡지만 차단 위험이 커집니다.">
                     <span class="text-rail-muted whitespace-nowrap">간격</span>
                     <select id="callInterval" data-testid="call-interval"
@@ -192,7 +192,7 @@
                     </select>
                 </label>
                 <select id="passengerMode" data-testid="passenger-mode"
-                        class="hidden h-9 px-3 rounded-[10px] border border-rail-line bg-white font-semibold text-rail-ink text-sm">
+                        class="hidden h-10 px-3 rounded-[10px] border border-rail-line bg-white font-semibold text-rail-ink text-sm">
                     <option value="together" selected>2명 함께 예약</option>
                     <option value="sequential">1명씩 순차 예약 (취소표 노림)</option>
                 </select>
@@ -333,7 +333,7 @@
                 <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat" class="accent-[#C8102E]">
                 <span>10초 반복</span>
             </label>
-            <button type="button" id="ackBtn" data-testid="ack-button" class="h-9 px-3 rounded-lg border border-rail-line text-sm hover:bg-rail-ground transition-colors">알림음 끄기</button>
+            <button type="button" id="ackBtn" data-testid="ack-button" class="h-10 px-3 rounded-lg border border-rail-line text-sm hover:bg-rail-ground transition-colors">알림음 끄기</button>
         </div>
         <div class="flex gap-2">
             <button type="button" id="startBtn" data-testid="reserve-start"
@@ -621,10 +621,10 @@
 <!-- Log Drawer (always rendered for both web and Telegram macro logs) -->
 <div id="logDrawer" data-testid="log-panel"
      class="fixed bottom-0 left-0 right-0 z-40 transform transition-transform duration-300 ease-in-out"
-     style="transform: translateY(calc(100% - 48px));">
+     style="transform: translateY(calc(100% - 56px));">
 
     <!-- Drawer Handle (Always Visible) -->
-    <div class="bg-rail-ink text-white px-4 py-3 rounded-t-2xl cursor-pointer flex items-center justify-between shadow-lg"
+    <div class="bg-rail-ink text-white h-14 px-4 rounded-t-2xl cursor-pointer flex items-center justify-between shadow-lg"
          onclick="toggleLogDrawer()" data-testid="log-toggle-button">
         <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse" id="logStatusDot" data-testid="log-status-indicator"></span>
@@ -638,12 +638,12 @@
         <div class="flex items-center gap-2 flex-shrink-0">
             <!-- 폰: 긴 열차 목록 맨 아래까지 내려가지 않아도 되게 여기서 시작/중단 -->
             <button type="button" id="barStartBtn" data-testid="bar-start"
-                    class="hidden lg:!hidden px-3 py-1 rounded-lg bg-ktx-primary text-white text-sm font-semibold"
+                    class="hidden lg:!hidden h-10 px-4 rounded-xl bg-ktx-primary text-white text-sm font-semibold"
                     onclick="event.stopPropagation(); document.getElementById('startBtn')?.click();">
                 예약 시작
             </button>
             <button type="button" id="barStopBtn" data-testid="bar-stop"
-                    class="hidden lg:!hidden px-3 py-1 rounded-lg bg-red-600 text-white text-sm font-semibold"
+                    class="hidden lg:!hidden h-10 px-4 rounded-xl bg-white text-rail-ink text-sm font-semibold"
                     onclick="event.stopPropagation(); document.getElementById('stopBtn')?.click();">
                 중단
             </button>
@@ -659,10 +659,10 @@
     </div>
 </div>
 
-<!-- Spacer sized to the drawer's fully-open height (handle 48px + h-48 content 192px)
+<!-- Spacer sized to the drawer's fully-open height (handle 56px + h-48 content 192px)
      so the page can still scroll the last section (card settings) above the drawer
      even while it's expanded. -->
-<div class="h-60"></div>
+<div class="h-64"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -674,7 +674,7 @@ function toggleLogDrawer() {
     const isOpen = drawer.style.transform === 'translateY(0px)';
 
     if (isOpen) {
-        drawer.style.transform = 'translateY(calc(100% - 48px))';
+        drawer.style.transform = 'translateY(calc(100% - 56px))';
         icon.classList.add('rotate-180');
     } else {
         drawer.style.transform = 'translateY(0px)';
@@ -753,7 +753,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize Flatpickr for date input
     const dateInput = document.getElementById('dateInput');
-    if (dateInput) {
+    if (dateInput && !window.flatpickr) {
+        // 달력 스크립트를 못 불렀으면 휴대폰 기본 날짜 선택기로 (나머지 화면은 계속 동작)
+        dateInput.type = 'date';
+        dateInput.readOnly = false;
+        document.querySelectorAll('.quick-date').forEach(btn => btn.addEventListener('click', () => {
+            const d = new Date();
+            d.setDate(d.getDate() + Number(btn.dataset.offset));
+            dateInput.value = d.toISOString().slice(0, 10);
+        }));
+    }
+    if (dateInput && window.flatpickr) {
         flatpickr(dateInput, {
             locale: 'ko',
             dateFormat: 'Y-m-d',
@@ -933,12 +943,14 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) {
                 console.error('Error loading more trains:', error);
                 // On error, reset button to manual retry
-                loadMoreBtn.innerHTML = '<span class="text-red-500">재시도 (오류 발생)</span>';
+                loadMoreBtn.innerHTML = '<span class="text-ktx-primary">불러오지 못했어요 · 다시 시도</span>';
+                loadMoreBtn.dataset.failed = '1';
             } finally {
                 isLoading = false;
                 if (!loadMoreBtn.classList.contains('cursor-not-allowed')) {
                     loadMoreBtn.disabled = false;
-                    loadMoreBtn.innerHTML = originalBtnContent;
+                    if (!loadMoreBtn.dataset.failed) loadMoreBtn.innerHTML = originalBtnContent;
+                    delete loadMoreBtn.dataset.failed;
                 }
             }
         };
@@ -950,9 +962,10 @@ document.addEventListener('DOMContentLoaded', function() {
             threshold: 0.1
         };
 
+        const autoLoad = window.matchMedia('(min-width: 1024px)').matches;
         let observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
-                if (entry.isIntersecting && !isLoading && !loadMoreBtn.disabled) {
+                if (autoLoad && entry.isIntersecting && !isLoading && !loadMoreBtn.disabled) {
                     loadMoreTrains();
                 }
             });
@@ -1113,6 +1126,7 @@ document.addEventListener('DOMContentLoaded', function() {
         div.className = colors[type] || colors.info;
         div.textContent = message;
         logContainer.appendChild(div);
+        while (logContainer.childElementCount > 500) logContainer.firstElementChild.remove();
         logContainer.scrollTop = logContainer.scrollHeight;
     }
 
@@ -1120,9 +1134,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (soundRepeatId) clearInterval(soundRepeatId);
 
         successSound.currentTime = 0;
-        successSound.play();
+        successSound.play().catch(() => {});  // 자동 재생이 막힌 브라우저에서도 조용히
 
-        const soundOption = document.querySelector('input[name="sound_option"]:checked').value;
+        const soundOption = document.querySelector('input[name="sound_option"]:checked')?.value || 'once';
         if (soundOption === 'repeat') {
             soundRepeatId = setInterval(() => {
                 successSound.currentTime = 0;
@@ -1160,16 +1174,38 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('passenger_count', passengerCount);
             formData.append('sequential', passengerCount === '2' && passengerMode === 'sequential' ? 'true' : 'false');
 
-            await fetch('/reserve_select', { method: 'POST', body: formData });
-
-            // Kick off the macro on the server - it now runs on a background thread,
-            // independent of this page/tab, so closing or refreshing won't stop it.
-            const resp = await fetch('/start_reservation');
-            const data = await resp.json();
+            if (startBtn.disabled) return;
+            startBtn.disabled = true;
+            let data;
+            try {
+                await fetch('/reserve_select', { method: 'POST', body: formData });
+                // Kick off the macro on the server - it now runs on a background thread,
+                // independent of this page/tab, so closing or refreshing won't stop it.
+                const resp = await fetch('/start_reservation');
+                if (resp.redirected && resp.url.includes('/login')) {
+                    alert('로그인이 만료됐어요. 다시 로그인해 주세요.');
+                    window.location.href = '/login';
+                    return;
+                }
+                data = await resp.json();
+            } catch (e) {
+                alert('예약을 시작하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.');
+                return;
+            } finally {
+                startBtn.disabled = false;
+            }
             if (!data.success) {
                 alert(data.message || '예약 시작에 실패했습니다.');
                 return;
             }
+
+            // 지난 실행의 기록을 다시 받는 중이던 연결이 있으면 닫고 새로 붙는다
+            // (그대로 두면 새 매크로의 초반 로그와 성공 알림을 놓친다)
+            if (macroStreamSource) {
+                macroStreamSource.close();
+                macroStreamSource = null;
+            }
+            historyReplayed = true;
 
             // Watch progress the same way a Telegram-triggered macro is watched -
             // this is also what lets a refresh reconnect and replay the log history.
@@ -1246,10 +1282,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Reservation (and possibly payment) succeeded - keep the
                     // stream open until 'stream_end' so payment log lines still arrive.
                     log(data.message, 'success');
-                    if (isLive) {
-                        playSound();
-                        showSuccess(data.message);
-                    }
+                    // 백그라운드에서 성공하고 끝난 뒤 앱을 열면 기록 재생(isLive=false)으로 온다.
+                    // 그때도 무엇이 예약됐고 결제가 남았는지는 보여줘야 한다. 소리만 뺀다.
+                    showSuccess(data.message, !isLive);
+                    if (isLive) playSound();
                     break;
                 case 'error':
                     log(data.message, 'error');
@@ -1384,10 +1420,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    function showSuccess(message) {
+    function showSuccess(message, fromHistory = false) {
         const banner = document.getElementById('successBanner');
         if (!banner) return;
-        if (message.includes('결제 완료')) {
+        // 예약과 결제 말고 다른 success 로그에는 반응하지 않는다
+        const isReserved = message.startsWith('예약 성공');
+        const isPaid = message.startsWith('결제 완료');
+        if (!isReserved && !isPaid) return;
+        // 사용자가 이미 닫은 결과는 다시 띄우지 않는다
+        try {
+            if (fromHistory && isReserved && localStorage.getItem('dismissedSuccess') === message) return;
+        } catch (e) {}
+        banner.dataset.message = isReserved ? message : (banner.dataset.message || '');
+        if (isPaid) {
             document.getElementById('payPending').classList.add('hidden');
             document.getElementById('payDone').classList.remove('hidden');
         } else {
