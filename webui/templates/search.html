@@ -22,6 +22,17 @@
 </a>
 {%- endmacro %}
 
+{% macro bg_warn() -%}
+{# 폰 앱(안드로이드)만: 배터리 최적화 예외가 아니면 한 줄로 알리고 다시 요청하게 한다. 다른 곳에선 /__app/battery 가 404 라 숨은 채로 남는다. #}
+<div data-bg-warn role="status" class="hidden items-start gap-3 rounded-[14px] bg-[#FDF1DD] px-3.5 py-3">
+    <div class="flex-1 min-w-0">
+        <p class="text-[13px] font-semibold text-[#7A4200]">배터리 최적화가 켜져 있어요</p>
+        <p class="text-xs leading-relaxed text-[#7A4200]">화면이 꺼지면 예약 찾기가 멈출 수 있어요.<span data-bg-tip class="block mt-0.5"></span></p>
+    </div>
+    <button type="button" data-bg-fix class="h-9 px-3.5 rounded-xl bg-ktx-primary hover:bg-ktx-secondary text-white text-[13px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors">예외 요청</button>
+</div>
+{%- endmacro %}
+
 {% macro view_header(title, back=None, sub_id=None) -%}
 <header class="lg:hidden h-14 -mx-1 flex items-center gap-0.5">
     {% if back %}<a href="{{ back }}" data-back aria-label="이전 단계" class="w-11 h-11 rounded-full flex items-center justify-center text-rail-ink flex-shrink-0">{{ ic_back() }}</a>{% else %}<span class="w-1"></span>{% endif %}
@@ -387,6 +398,7 @@
 <section data-view="run" class="view hidden flex-col gap-3 lg:gap-4">
     {{ view_header('진행', back='#/search', sub_id='runRoute') }}
     {{ step_row(back='#/search', hint_id='runHint') }}
+    {% if not server_mode %}{{ bg_warn() }}{% endif %}
 
     <!-- 예약 성공 (로그 스트림에서 성공이 오면 보인다) -->
     <section id="successBanner" data-testid="success-banner" class="hidden bg-white border border-rail-line rounded-[20px] p-5" role="status" aria-live="polite">
@@ -594,6 +606,7 @@
 <section data-view="settings" class="view hidden flex-col gap-3 lg:gap-4">
     {{ view_header('설정') }}
     {{ runbar('lg:!hidden') }}
+    {% if not server_mode %}{{ bg_warn() }}{% endif %}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div class="flex flex-col gap-4 min-w-0">
             <h2 class="-mb-2 mx-1 text-[13px] font-semibold text-rail-muted">알림</h2>
@@ -2835,4 +2848,34 @@ async function clearCardSettings() {
     }
 }
 </script>
+{% if not server_mode %}
+<script>
+// ─── 폰 앱: 배터리 최적화 예외 상태 줄 (진행·설정 화면) ─────────
+(function() {
+    const boxes = () => document.querySelectorAll('[data-bg-warn]');
+    async function refresh() {
+        let data = null;
+        try {
+            const resp = await fetch('/__app/battery', { cache: 'no-store' });
+            if (resp.ok) data = await resp.json();
+        } catch (e) {}
+        const show = !!(data && data.supported && data.exempt === false);
+        boxes().forEach(box => {
+            box.classList.toggle('hidden', !show);
+            box.classList.toggle('flex', show);
+            const tip = box.querySelector('[data-bg-tip]');
+            if (tip) tip.textContent = (show && data.tip) ? data.tip : '';
+        });
+    }
+    document.querySelectorAll('[data-bg-fix]').forEach(btn => btn.addEventListener('click', async function() {
+        try { await fetch('/__app/battery', { method: 'POST' }); } catch (e) {}
+    }));
+    // 설정 화면에서 돌아오면 다시 확인한다
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') refresh();
+    });
+    refresh();
+})();
+</script>
+{% endif %}
 {% endblock %}

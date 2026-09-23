@@ -11,6 +11,8 @@
 - bridge.onServerReady(port)              (있으면) 서버가 실제로 연 포트. port=0 으로 시작하면
                                           운영체제가 빈 포트를 고르므로 플랫폼은 이걸로 주소를 안다.
                                           없는 플랫폼은 server_port() 로 물어봐도 된다.
+- bridge.batteryStatus() -> json 문자열    (있으면) 배터리 최적화 예외 여부·제조사별 안내.
+  bridge.requestBatteryExemption()        (있으면) 예외 요청 화면을 띄운다. 화면은 /__app/battery 로 쓴다.
 
 서버 확인 (/__hello):
 - 토큰을 쿠키로 보내기 전에, 그 포트에 떠 있는 게 정말 우리 서버인지 확인한다.
@@ -103,6 +105,7 @@ def start(files_dir: str, port: int, token: str, version: str, debug: bool = Fal
     _require_token(app, token)
     _wire_platform()
     _add_health_route(app)
+    _add_battery_routes(app)
     if debug:
         _add_debug_routes(app)
     _ready.set()
@@ -566,6 +569,37 @@ def _add_health_route(app) -> None:
             'phase': phase,
             'phase_seconds': round(time.monotonic() - since) if phase else 0,
         }
+
+
+def _add_battery_routes(app) -> None:
+    """배터리 최적화 예외 상태·요청 (안드로이드만). 브리지에 없으면 404 → 화면이 줄을 숨긴다."""
+    from flask import request
+
+    from webui.routes.reservation import is_same_origin_request
+
+    @app.route('/__app/battery', methods=['GET', 'POST'])
+    def app_battery():
+        bridge = _bridge()
+        status = getattr(bridge, 'batteryStatus', None)
+        ask = getattr(bridge, 'requestBatteryExemption', None)
+        if status is None or ask is None:
+            return {'supported': False}, 404
+        if request.method == 'POST':
+            if not is_same_origin_request():
+                return {'error': 'origin'}, 403
+            try:
+                ask()
+            except Exception:  # noqa: BLE001
+                logger.exception('requestBatteryExemption failed')
+                return {'ok': False}, 500
+            return {'ok': True}
+        try:
+            data = json.loads(str(status()))
+        except Exception:  # noqa: BLE001
+            logger.exception('batteryStatus failed')
+            return {'supported': False}, 500
+        data['supported'] = True
+        return data, 200, {'Cache-Control': 'no-store'}
 
 
 # ──────────────────────────────────────────────── 진행 표시 (헬스체크용)

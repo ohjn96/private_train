@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""폰 헬스체크: 로그마다 진행 시각 갱신, 예약·결제 중 표시(phase)."""
+"""폰 헬스체크: 로그마다 진행 시각 갱신, 예약·결제 중 표시(phase), 배터리 예외 경로."""
 import json
 import os
 import sys
@@ -155,6 +155,7 @@ class HealthAndHeartbeatTest(unittest.TestCase):
         Bridge.calls = []
         self.app = Flask(__name__)
         mobile_runtime._add_health_route(self.app)
+        mobile_runtime._add_battery_routes(self.app)
         self.client = self.app.test_client()
         self.tg = TelegramService.get_instance()
 
@@ -182,6 +183,24 @@ class HealthAndHeartbeatTest(unittest.TestCase):
         mobile_runtime._last_progress['at'] = time.monotonic() - 500
         tg.push_log('log', '재로그인 대기 중')
         self.assertLess(time.monotonic() - mobile_runtime._last_progress['at'], 5)
+
+    def test_battery_status_and_request(self):
+        Bridge.exempt = False
+        data = self.client.get('/__app/battery').get_json()
+        self.assertEqual(data['exempt'], False)
+        self.assertTrue(data['supported'])
+        self.assertEqual(self.client.post('/__app/battery').status_code, 200)
+        self.assertIn(('ask_battery', None), Bridge.calls)
+        # 다른 사이트에서 온 요청은 거절
+        resp = self.client.post('/__app/battery', headers={'Sec-Fetch-Site': 'cross-site'})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_battery_route_404_without_bridge_support(self):
+        class Plain:
+            pass
+        mobile_runtime.set_bridge(Plain)
+        self.assertEqual(self.client.get('/__app/battery').status_code, 404)
+        mobile_runtime.set_bridge(Bridge)
 
 
 if __name__ == '__main__':
