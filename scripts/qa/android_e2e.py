@@ -53,8 +53,19 @@ def job_xml() -> str:
     return sh(f'run-as {PKG} cat shared_prefs/job.xml 2>/dev/null')
 
 
-def http(path, cookie=None, follow=False, timeout=10):
-    """(status, headers, body). 리다이렉트는 따라가지 않는다."""
+def http(path, cookie=None, follow=False, timeout=10, _retry=True):
+    """(status, headers, body). 리다이렉트는 따라가지 않는다.
+
+    연결이 안 되면 (앱이 다시 떠서 포트가 바뀜) 포트를 다시 찾아 한 번 더 시도한다.
+    """
+    st = _http(path, cookie, follow, timeout)
+    if st[0] == 0 and _retry and state.get('tok'):
+        if forward(state['tok'], 20):
+            st = _http(path, cookie, follow, timeout)
+    return st
+
+
+def _http(path, cookie, follow, timeout):
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *a, **k):
             return None
@@ -105,7 +116,7 @@ def hello_ok(tok: str) -> bool:
     import hashlib
     import hmac
     nonce = os.urandom(16).hex()
-    st, _, body = http(f'/__hello?nonce={nonce}')
+    st, _, body = http(f'/__hello?nonce={nonce}', _retry=False)
     if st != 200:
         return False
     try:
@@ -120,10 +131,13 @@ state = {'device_port': None}
 
 def forward(tok: str | None = None, timeout=120) -> int | None:
     """앱 서버의 무작위 포트를 찾아 HOST_PORT 로 넘긴다. tok 을 주면 /__hello 로 우리 서버인지 확인."""
+    if tok:
+        state['tok'] = tok
+
     def find():
         for port in listening_ports():
             adb('forward', f'tcp:{HOST_PORT}', f'tcp:{port}')
-            if tok is None or hello_ok(tok):
+            if tok is None or (hello_ok(tok) and _http('/__health', tok, False, 5)[0] == 200):
                 state['device_port'] = port
                 return port
         return None
@@ -459,7 +473,11 @@ def main():
     time.sleep(2)
     adb('wait-for-device')
     if not args.no_install:
-        out = adb('install', '-r', args.apk, timeout=300)
+        out = adb('install', '-r', '-d', args.apk, timeout=300)  # -d: 다른 버전(더 높은 버전)이 깔려 있어도
+        if 'Success' not in out:  # 서명이 다르거나 낮출 수 없으면 지우고 새로
+            print(f'  (설치 재시도: {out.strip().splitlines()[-1][:120] if out.strip() else ""})')
+            adb('uninstall', PKG)
+            out = adb('install', args.apk, timeout=300)
         record('APK 설치', 'Success' in out, out.strip().splitlines()[-1] if out.strip() else '')
 
     tok = {}
