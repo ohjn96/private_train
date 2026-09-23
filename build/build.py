@@ -41,7 +41,7 @@ BUILD_CONFIG = {
             # pycryptodome 은 배포 이름, 실제 모듈 이름은 Crypto
             'Crypto', 'Crypto.Cipher.AES', 'Crypto.Util.Padding',
         ],
-        'collect_submodules': ['app', 'korail2'],
+        'collect_submodules': ['app', 'core', 'korail2'],
     },
     'ktx': {
         'script': 'ktx_main_web.py',
