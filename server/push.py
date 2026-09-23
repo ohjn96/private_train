@@ -35,6 +35,32 @@ MAX_DEVICES_PER_USER = 5
 #: 푸시 서버가 전달을 포기하기까지 기다리는 시간(초). 예약 성공은 늦게라도 알아야 한다.
 TTL_SECONDS = 6 * 60 * 60
 
+#: 브라우저가 실제로 쓰는 푸시 서비스 주소. 아무 URL 이나 받으면 로그인한 사람이
+#: 서버를 시켜 내부망 주소(169.254.169.254 등)로 요청을 보내게 할 수 있다 (SSRF).
+PUSH_HOSTS = {
+    'fcm.googleapis.com',               # Chrome, Edge(안드로이드), 삼성 인터넷
+    'updates.push.services.mozilla.com',  # Firefox
+    'web.push.apple.com',               # Safari, iPhone 홈 화면 앱
+}
+#: 하위 도메인까지 받는 곳 (Edge 데스크톱: wns2-*.notify.windows.com 등)
+PUSH_HOST_SUFFIXES = ('.notify.windows.com',)
+
+
+def is_push_endpoint(endpoint: str) -> bool:
+    """알려진 푸시 서비스의 https 주소인가."""
+    from urllib.parse import urlsplit
+    if not isinstance(endpoint, str) or not endpoint.startswith('https://'):
+        return False
+    try:
+        parts = urlsplit(endpoint)
+        port = parts.port
+    except ValueError:
+        return False
+    if parts.username or parts.password or port not in (None, 443):
+        return False
+    host = (parts.hostname or '').lower()
+    return host in PUSH_HOSTS or host.endswith(PUSH_HOST_SUFFIXES)
+
 
 def _write_private(path: Path, data: bytes) -> None:
     """본인만 읽을 수 있게(600) 원자적으로 쓴다."""
@@ -121,6 +147,10 @@ class WebPusher:
         payload = json.dumps({'title': title, 'body': body, 'url': url}, ensure_ascii=False)
         sent = 0
         for sub in self.store.get(user_id):
+            if not is_push_endpoint(sub.get('endpoint', '')):
+                # 허용 목록 전에 저장된 이상한 주소: 보내지 않고 지운다
+                self.store.remove(user_id, sub.get('endpoint', ''))
+                continue
             try:
                 webpush(
                     sub,
@@ -188,7 +218,7 @@ def subscribe():
     sub = (request.get_json(silent=True) or {}).get('subscription') or {}
     keys = sub.get('keys') or {}
     endpoint = sub.get('endpoint', '')
-    if not endpoint.startswith('https://') or not keys.get('p256dh') or not keys.get('auth'):
+    if not is_push_endpoint(endpoint) or not keys.get('p256dh') or not keys.get('auth'):
         return jsonify({'success': False, 'message': '잘못된 구독 정보입니다.'}), 400
     _pusher().store.add(current_user_id(), {'endpoint': endpoint, 'keys': {
         'p256dh': keys['p256dh'], 'auth': keys['auth']}})

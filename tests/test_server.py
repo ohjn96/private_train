@@ -225,6 +225,30 @@ class PushTest(ServerTestCase):
         bad = {'endpoint': 'http://evil/', 'keys': {'p256dh': 'k', 'auth': 'a'}}
         self.assertEqual(client.post('/api/push/subscribe', json={'subscription': bad}).status_code, 400)
 
+    def test_only_known_push_services(self):
+        from server.push import is_push_endpoint
+        for good in ('https://fcm.googleapis.com/fcm/send/abc',
+                     'https://updates.push.services.mozilla.com/wpush/v2/abc',
+                     'https://web.push.apple.com/QK', 'https://wns2-bl2p.notify.windows.com/w/?token=x',
+                     'https://db5p.notify.windows.com/w/?token=x', 'https://fcm.googleapis.com:443/x'):
+            self.assertTrue(is_push_endpoint(good), good)
+        for bad in ('http://fcm.googleapis.com/x', 'https://169.254.169.254/latest/meta-data',
+                    'https://127.0.0.1:5050/api', 'https://fcm.googleapis.com.evil.example/x',
+                    'https://evilnotify.windows.com/x', 'https://notify.windows.com.evil/x',
+                    'https://user@fcm.googleapis.com/x', 'https://fcm.googleapis.com:8443/x',
+                    'https://localhost/x', '', None, 'https://[::1]/x'):
+            self.assertFalse(is_push_endpoint(bad), bad)
+        client = self.client_for('me')
+        ssrf = {'endpoint': 'https://169.254.169.254/x', 'keys': {'p256dh': 'k', 'auth': 'a'}}
+        self.assertEqual(client.post('/api/push/subscribe', json={'subscription': ssrf}).status_code, 400)
+
+    def test_send_skips_and_drops_stored_unknown_endpoint(self):
+        self.pusher.store.add('me', {'endpoint': 'https://10.0.0.1/x', 'keys': {'p256dh': 'k', 'auth': 'a'}})
+        with mock.patch('server.push.webpush') as wp:
+            self.assertEqual(self.pusher.send('me', 't', 'b'), 0)
+            wp.assert_not_called()
+        self.assertEqual(self.pusher.store.get('me'), [])
+
     def test_device_moves_to_new_owner(self):
         self.pusher.store.add('alice', SUB)
         self.pusher.store.add('bob', SUB)
