@@ -55,7 +55,10 @@ class ServerService : Service() {
         private const val HEALTH_INTERVAL_S = 30L
         /** 연속으로 이만큼 응답이 없으면(약 2분) 프로세스를 다시 띄운다 */
         private const val HEALTH_MAX_FAILURES = 4
-        /** 매크로가 이 시간(초) 동안 한 번도 조회하지 못하면 멈춘 것으로 본다 */
+        /**
+         * 매크로가 이 시간(초) 동안 아무 진행(조회·로그)이 없으면 멈춘 것으로 본다.
+         * 예약·결제 중(/__health 의 phase)에는 아무리 오래 걸려도 다시 띄우지 않는다.
+         */
         private const val STALL_LIMIT_S = 180
 
         @Volatile
@@ -212,7 +215,13 @@ class ServerService : Service() {
         }
         healthFailures = 0
         val stalled = status.optInt("stalled_seconds", 0)
+        // 예약·결제 중이면 느려도 절대 죽이지 않는다 (결제 도중에 끊기면 좌석만 잡고 결제를 못 한다)
+        val phase = if (status.isNull("phase")) "" else status.optString("phase", "")
         if (status.optBoolean("macro_running") && stalled >= STALL_LIMIT_S) {
+            if (phase.isNotEmpty()) {
+                Log.w(TAG, "macro quiet for ${stalled}s but in '$phase' phase: not restarting")
+                return
+            }
             restartProcess("매크로가 ${stalled}초 동안 멈춤")
         }
     }
