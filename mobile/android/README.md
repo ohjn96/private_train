@@ -90,8 +90,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 제약
 
-- **iPhone 은 안 됩니다.** iOS 는 앱을 내리면 백그라운드 작업을 멈추고, 앱스토어 없이 설치도 어렵습니다.
-  iPhone 은 서버 버전(`server/`)을 홈 화면 앱으로 쓰세요.
+- iPhone 은 별도 앱이 있습니다 (`mobile/ios/README.md`, 화면이 켜져 있을 때만 동작).
 - Android 8.0 (API 26) 이상. 요즘 폰(arm64)과 에뮬레이터(x86_64)용만 싣습니다.
-- 화면에 필요한 Tailwind·달력 스크립트를 인터넷(CDN)에서 받으므로 인터넷이 필요합니다
-  (어차피 코레일 조회에도 필요).
+- 화면에 필요한 스타일·달력 스크립트는 앱에 들어 있어 따로 받지 않습니다.

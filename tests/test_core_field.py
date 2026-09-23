@@ -522,7 +522,10 @@ class ThrottleTest(unittest.TestCase):
         time.sleep(0.05)
         tb = threading.Thread(target=go, args=(b, 3, stop_b), daemon=True)
         tb.start()
-        time.sleep(0.05)
+        # B 의 간격 설정은 A 가 게이트에서 기다리는 동안(락을 쥔 채) 잠시 막힐 수 있다
+        deadline = time.monotonic() + 3
+        while limiter.min_interval != 3.0 and time.monotonic() < deadline:
+            time.sleep(0.01)
         stop_a.set()
         ta.join(5)
         self.assertEqual(limiter.min_interval, 3.0, 'A 가 끝나도 아직 도는 B 의 간격을 되돌리지 않는다')

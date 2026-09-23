@@ -185,7 +185,9 @@ class DesktopModeUnchangedTest(unittest.TestCase):
                         return_value={'token': '', 'chat_id': ''}):
             resp = client.post('/api/telegram/configure', json={'bot_token': ''})
         self.assertNotEqual(resp.status_code, 403)
-        html = client.get('/').get_data(as_text=True)
+        # 홈 화면이 진짜 코레일에 로그인하러 나가지 않게 서비스를 가짜로
+        with mock.patch('webui.routes.search.ServiceManager.get_service', return_value=mock.MagicMock()):
+            html = client.get('/').get_data(as_text=True)
         self.assertIn('id="tgBotToken"', html)
         self.assertNotIn('data-testid="push-card"', html)
         session_helper._vault.clear()

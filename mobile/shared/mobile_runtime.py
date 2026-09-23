@@ -367,7 +367,7 @@ def _job_is_stale(job: dict, now: datetime | None = None) -> bool:
 def _give_up(message: str) -> None:
     try:
         _bridge().clearJob()
-        _bridge().notifyEvent('gave_up', '⚠️ 예약 매크로를 다시 시작하지 못했어요', message)
+        _bridge().notifyEvent('gave_up', '예약 매크로를 다시 시작하지 못했어요', message)
     except Exception:  # noqa: BLE001
         logger.exception('gave_up 알림 실패')
 
@@ -418,7 +418,7 @@ def _start_job(job: dict, resumed: bool) -> None:
             tg.resumed_at = datetime.now().isoformat(timespec='seconds')
             # 로그인까지 되고 매크로 자리를 얻은 뒤에 알린다 (그 전엔 아직 "다시 시작" 이 아니다)
             try:
-                _bridge().notifyEvent('resumed', '🔄 예약 매크로를 다시 시작했어요',
+                _bridge().notifyEvent('resumed', '예약 매크로를 다시 시작했어요',
                                       '휴대폰이 앱을 정리했거나 재부팅돼서, 하던 매크로를 자동으로 이어서 돌려요.')
             except Exception:  # noqa: BLE001
                 logger.exception('resumed 알림 실패')

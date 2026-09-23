@@ -132,7 +132,7 @@ class ServerService : Service() {
         val summary = prefs.getString(KEY_SUMMARY, "").orEmpty()
         prefs.edit().clear().apply()
         Notifications.showEvent(
-            this, "lost", "⚠️ 예약 매크로가 멈췄어요",
+            this, "lost", "예약 매크로가 멈췄어요",
             "휴대폰이 메모리를 정리하면서 앱이 다시 시작됐어요. 앱을 열어 다시 로그인하고 매크로를 시작해 주세요." +
                 if (summary.isNotEmpty()) "\n대상: $summary" else ""
         )

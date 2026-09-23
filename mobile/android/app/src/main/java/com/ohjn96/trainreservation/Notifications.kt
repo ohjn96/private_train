@@ -123,7 +123,7 @@ object Notifications {
     fun showRestartNeeded(context: Context) {
         createChannels(context)
         showEvent(
-            context, "restart_needed", "⚠️ 예약 찾기가 멈췄어요 — 눌러서 다시 시작",
+            context, "restart_needed", "예약 찾기가 멈췄어요 — 눌러서 다시 시작",
             "휴대폰이 백그라운드에서 앱을 다시 켜지 못하게 했어요. 이 알림을 누르면 앱이 열리고 하던 예약 찾기를 이어서 해요.\n" +
                 "자주 멈추면 앱의 설정 탭에서 배터리 예외를 켜 주세요."
         )
