@@ -32,6 +32,7 @@ def login():
                 "login.html",
                 error="아이디와 비밀번호를 입력해주세요.",
                 provider=provider,
+                user_id=user_id,
             )
 
         result = ServiceManager.login(provider, user_id, password)
@@ -48,6 +49,7 @@ def login():
                 "login.html",
                 error=error_msg,
                 provider=provider,
+                user_id=user_id,
             )
 
     # GET: Already logged in to this provider? Go to search

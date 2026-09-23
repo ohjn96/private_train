@@ -29,7 +29,7 @@ BUILD_CONFIG = {
         # --specpath 기준으로 상대경로가 풀리므로 원본 경로는 절대경로로 준다
         'data': [
             f'{ROOT_DIR / "webui" / "templates"}{DATA_SEP}webui/templates',
-            f'{ROOT_DIR / "webui" / "static"}{DATA_SEP}webui/static',
+            # webui/static 은 Tailwind 원본(css/input.css)을 빼고 담는다 (static_data() 참고)
             f'{ROOT_DIR / "VERSION"}{DATA_SEP}.',
             # 라이선스 고지: BSD 등 번들 구성요소는 바이너리 배포 시 고지문을 함께 제공해야 한다
             f'{ROOT_DIR / "LICENSE"}{DATA_SEP}.',
@@ -45,13 +45,37 @@ BUILD_CONFIG = {
         ],
         'collect_submodules': ['desktop', 'webui', 'core', 'korail2'],
     },
-    'ktx': {
-        'script': 'ktx_main_web.py',
-        'name': 'KTXReservationApp',
-        'data': [f'{ROOT_DIR / "static"}{DATA_SEP}static'],
-        'hidden_imports': ['flask', 'flask.sessions'],
-    }
 }
+
+#: 번들에 넣지 않을 webui/static 아래 파일 (빌드 입력일 뿐 실행 중에는 쓰지 않는다)
+STATIC_EXCLUDE = {'css/input.css'}
+
+
+def static_data(static_dir: Path = ROOT_DIR / 'webui' / 'static') -> list[str]:
+    """webui/static 을 --add-data 항목으로. STATIC_EXCLUDE 에 든 파일은 뺀다.
+
+    --add-data 는 폴더 단위로만 넣을 수 있어, 제외할 파일이 든 폴더는 파일마다 따로 넣는다.
+    """
+    excluded = {static_dir / rel for rel in STATIC_EXCLUDE}
+    entries = []
+
+    def add(path: Path) -> None:
+        dest = Path('webui/static') / path.relative_to(static_dir)
+        if path.is_file():
+            dest = dest.parent
+        entries.append(f'{path}{DATA_SEP}{dest.as_posix()}')
+
+    def walk(folder: Path) -> None:
+        for path in sorted(folder.iterdir()):
+            if path in excluded:
+                continue
+            if path.is_dir() and any(e.is_relative_to(path) for e in excluded):
+                walk(path)
+            else:
+                add(path)
+
+    walk(static_dir)
+    return entries
 
 
 def get_pyinstaller_cmd(config: dict) -> list[str]:
@@ -69,7 +93,7 @@ def get_pyinstaller_cmd(config: dict) -> list[str]:
     ]
 
     # Add data files
-    for data in config.get('data', []):
+    for data in config.get('data', []) + static_data():
         cmd.append(f'--add-data={data}')
 
     # Add hidden imports

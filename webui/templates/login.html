@@ -19,7 +19,7 @@
         <form method="POST" class="bg-white border border-rail-line rounded-[20px] p-5 space-y-4">
             <div>
                 <label for="user_id" class="block text-[13px] font-medium text-rail-muted mb-1.5">아이디</label>
-                <input type="text" id="user_id" name="user_id" required
+                <input type="text" id="user_id" name="user_id" required value="{{ user_id|default('') }}"
                        placeholder="010-0000-0000 또는 이메일" inputmode="text" autocomplete="username"
                        class="w-full h-12 px-4 rounded-xl border border-rail-line bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary text-base">
                 <p id="user_id_hint" class="mt-1 text-xs text-rail-muted hidden">전화번호: 010-0000-0000 형식</p>
