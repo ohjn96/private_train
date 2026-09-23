@@ -12,6 +12,14 @@ mobile/
 
 플랫폼별 차이는 `mobile_runtime.set_bridge()` 로 꽂는 연결부(알림, 절전 방지, 작업 암호화 저장)뿐이다.
 
+플랫폼이 지켜야 할 것 (자세한 건 `shared/mobile_runtime.py` 맨 위):
+- `start(files_dir, 0, token, version, debug)` — 포트 0 이면 빈 포트를 고른다. 실제 포트는
+  `bridge.onServerReady(port)`(있으면) 로 오고, 다른 스레드에서 `mobile_runtime.server_port(timeout)` 로도 얻는다.
+- 토큰(쿠키 또는 `/__auth?t=`)을 보내기 전에 `GET /__hello?nonce=<무작위>` 의 `mac` 이
+  `hex(HMAC-SHA256(key=token, msg=nonce))` 와 같은지 확인한다.
+- 자동 재개가 실제로 시작되면 파이썬이 `notifyEvent('resumed', …)` 를 보낸다. 플랫폼이 미리 알리지 않는다.
+- 좌석을 잡는 순간 `clearJob()` 이 온다 (결제 도중 죽어도 다시 예약하지 않게).
+
 ## iPhone (`ios/`)
 
 BeeWare(Briefcase + Toga) 로 만든 앱. 파이썬이 앱 안에서 같은 공통 런타임을 띄우고 WebView 로 보여준다.

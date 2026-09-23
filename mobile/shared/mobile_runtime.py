@@ -8,16 +8,29 @@
 - bridge.onMacroState(running, summary)   매크로가 돌기 시작/멈춤 → 절전 방지, 상단 표시
 - bridge.notifyEvent(kind, title, body)   예약 성공·결제·중단 → 폰 알림
 - bridge.saveJob(json) / bridge.clearJob() 되살릴 작업 저장/삭제 (플랫폼이 암호화해 둔다)
+- bridge.onServerReady(port)              (있으면) 서버가 실제로 연 포트. port=0 으로 시작하면
+                                          운영체제가 빈 포트를 고르므로 플랫폼은 이걸로 주소를 안다.
+                                          없는 플랫폼은 server_port() 로 물어봐도 된다.
+
+서버 확인 (/__hello):
+- 토큰을 쿠키로 보내기 전에, 그 포트에 떠 있는 게 정말 우리 서버인지 확인한다.
+  GET /__hello?nonce=<무작위> → {"mac": hex(HMAC-SHA256(key=token, msg=nonce))}.
+  토큰 없이 부를 수 있고, 토큰 자체는 알려주지 않는다. 플랫폼은 mac 이 맞을 때만 쿠키를 싣는다.
 안드로이드는 Kotlin Bridge(android_main.py), iPhone 은 파이썬 구현(ios app)을 꽂는다.
 
 자동 복구:
 - 매크로를 시작하면 작업 내용(열차·좌석·간격·로그인·카드)을 bridge.saveJob 으로 넘긴다.
   플랫폼이 암호화해 저장한다 (안드로이드 Keystore, iPhone 데이터 보호).
 - 정상적으로 끝나면(예약 성공·사용자 중단·로그인 포기) bridge.clearJob.
+- 좌석을 잡는 순간(결제 전) 바로 bridge.clearJob. 결제 도중 죽어도 같은 열차를 다시 예약하지
+  않는다 (중복 예약 방지). 그때 결제는 사용자가 직접 해야 한다 (예약 성공 알림에 안내돼 있다).
+  2인 순차 예약에서 첫 좌석만 잡고 죽었다면 나머지 좌석도 자동으로 이어 잡지 않는다.
+- 사용자가 로그아웃하면 작업을 지우고, 카드를 지우면 작업(과 도는 매크로)에서도 카드를 뺀다.
 - 예기치 않은 오류로 끝나면 잠시 뒤 같은 작업으로 다시 시작한다 (횟수 제한).
 - 프로세스가 죽었다 살아나면 플랫폼이 저장된 작업으로 resume_job() 을 부른다.
 - /__health 로 서버가 살아 있는지, 매크로가 멈춰 있지 않은지 알려준다 (안드로이드는 30초마다 확인).
 """
+import hashlib
 import hmac
 import json
 import logging
@@ -43,6 +56,9 @@ _started = threading.Event()
 #: _wire_platform 이 끝났다 (자동 재개는 이걸 기다린 뒤 시작한다)
 _ready = threading.Event()
 
+#: 자동 재개가 서버 준비(_wire_platform)를 기다리는 최대 시간(초)
+READY_TIMEOUT = 120
+
 #: 예기치 않은 오류로 끝난 매크로를 다시 시작하는 한도: CRASH_WINDOW 초 안에 CRASH_LIMIT 번
 CRASH_LIMIT = 3
 CRASH_WINDOW = 30 * 60
@@ -50,6 +66,17 @@ _crash_times: list[float] = []
 
 #: 마지막으로 조회를 시도한 시각 (헬스체크가 "멈췄는지" 판단하는 데 쓴다)
 _last_progress = {'at': time.monotonic()}
+
+#: 서버가 실제로 연 포트 (start 가 채운다)
+_port = {'value': None}
+_port_ready = threading.Event()
+
+#: 지금 도는 매크로의 작업. job: 저장한 작업(dict), reserved: 이번 실행에서 좌석을 잡았나
+_active = {'job': None, 'reserved': False, 'card': None}
+_active_lock = threading.Lock()
+
+#: /__hello 의 nonce 최대 길이
+_MAX_NONCE = 128
 
 
 def start(files_dir: str, port: int, token: str, version: str, debug: bool = False) -> None:
@@ -61,8 +88,7 @@ def start(files_dir: str, port: int, token: str, version: str, debug: bool = Fal
     os.environ['HOME'] = files_dir
     os.environ['TRAIN_APP_VERSION'] = version
     logging.basicConfig(level=logging.INFO)
-
-    from werkzeug.serving import make_server
+    _quiet_request_logs()
 
     from webui import create_app
 
@@ -74,9 +100,53 @@ def start(files_dir: str, port: int, token: str, version: str, debug: bool = Fal
         _add_debug_routes(app)
     _ready.set()
 
-    server = make_server('127.0.0.1', int(port), app, threaded=True)
-    logger.info('app server on 127.0.0.1:%s', port)
-    server.serve_forever()
+    _bind(app, port).serve_forever()
+
+
+def _quiet_request_logs() -> None:
+    """요청 로그에 첫 주소 /__auth?t=<토큰> 이 그대로 찍히지 않게 (logcat 은 다른 앱도 읽을 수 있다)."""
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
+
+def _bind(app, port):
+    """127.0.0.1 에 서버를 열고 실제 포트를 플랫폼에 알린다.
+
+    port=0: 운영체제가 빈 포트를 고른다. 고정 포트는 다른 앱이 먼저 차지하고 우리 행세를
+    할 수 있다 (WebView 가 그쪽에 토큰 쿠키를 보내게 된다).
+    """
+    from werkzeug.serving import make_server
+
+    server = make_server('127.0.0.1', int(port or 0), app, threaded=True)
+    actual = server.server_port
+    _port['value'] = actual
+    _port_ready.set()
+    logger.info('app server on 127.0.0.1:%s', actual)
+    _report_port(actual)
+    return server
+
+
+def server_port(timeout: float | None = None) -> int | None:
+    """서버가 실제로 연 포트. 아직 안 떴으면 timeout 초까지 기다린다 (None=계속)."""
+    _port_ready.wait(timeout)
+    return _port['value']
+
+
+def hello_mac(token: str, nonce: str) -> str:
+    """/__hello 응답. 플랫폼 쪽도 같은 식으로 계산해 비교한다."""
+    return hmac.new(token.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+
+
+def _report_port(port: int) -> None:
+    try:
+        ready = getattr(_bridge(), 'onServerReady', None)
+    except RuntimeError:
+        return
+    if ready is None:
+        return
+    try:
+        ready(port)
+    except Exception:  # noqa: BLE001
+        logger.exception('onServerReady failed')
 
 
 def resume_job(job_json: str) -> None:
@@ -101,7 +171,7 @@ def _require_token(app, token: str) -> None:
 
     @app.before_request
     def check_token():
-        if request.endpoint == 'app_auth':
+        if request.endpoint in ('app_auth', 'app_hello'):
             return None
         given = request.cookies.get(TOKEN_COOKIE, '')
         if not hmac.compare_digest(given.encode(), token.encode()):
@@ -116,6 +186,15 @@ def _require_token(app, token: str) -> None:
             return 'forbidden', 403
         resp = redirect('/')
         resp.set_cookie(TOKEN_COOKIE, token, httponly=True, samesite='Strict', path='/')
+        return resp
+
+    @app.route('/__hello', endpoint='app_hello')
+    def app_hello():
+        """이 포트의 서버가 토큰을 아는 우리 서버인지 증명한다 (토큰은 내보내지 않는다)."""
+        nonce = request.args.get('nonce', '')
+        if not nonce or len(nonce) > _MAX_NONCE:
+            return {'error': 'nonce'}, 400
+        resp = {'mac': hello_mac(token, nonce)}, 200, {'Cache-Control': 'no-store'}
         return resp
 
 
@@ -255,10 +334,34 @@ def _job_from(service, selected_trains, seat_option, card, passenger_count, sequ
     }
 
 
-def _job_is_stale(job: dict) -> bool:
-    """이미 떠난 날짜의 열차라면 되살리지 않는다."""
-    today = date.today().strftime('%Y%m%d')
-    return all(t.get('dep_date', today) < today for t in job.get('trains') or [{}])
+def _departed(train: dict, now: datetime) -> bool:
+    """이미 떠난 열차인가 (날짜만 있으면 그 날이 지났을 때)."""
+    dep_date = str(train.get('dep_date') or '')
+    dep_time = str(train.get('dep_time') or '')
+    if not dep_date:
+        return False
+    try:
+        if len(dep_time) >= 4:
+            dep = datetime.strptime(dep_date + dep_time[:4], '%Y%m%d%H%M')
+            return dep <= now
+        return datetime.strptime(dep_date, '%Y%m%d').date() < now.date()
+    except ValueError:
+        return False
+
+
+def _job_is_stale(job: dict, now: datetime | None = None) -> bool:
+    """고른 열차가 모두 이미 떠났다면 되살리지 않는다."""
+    now = now or datetime.now()
+    trains = job.get('trains') or []
+    return not trains or all(_departed(t, now) for t in trains)
+
+
+def _give_up(message: str) -> None:
+    try:
+        _bridge().clearJob()
+        _bridge().notifyEvent('gave_up', '⚠️ 예약 매크로를 다시 시작하지 못했어요', message)
+    except Exception:  # noqa: BLE001
+        logger.exception('gave_up 알림 실패')
 
 
 def _start_job(job: dict, resumed: bool) -> None:
@@ -271,40 +374,58 @@ def _start_job(job: dict, resumed: bool) -> None:
     from webui.services import ServiceManager
     from webui.services.telegram_service import TelegramService
 
-    _ready.wait(60)
+    # 감시(_supervise_macros)가 붙기 전에 돌리면 작업 저장·삭제·재시작이 빠진다
+    if not _ready.wait(READY_TIMEOUT):
+        logger.error('서버가 준비되지 않아 작업을 되살리지 않습니다')
+        _give_up('앱이 제대로 시작되지 않았어요. 앱을 열어 매크로를 다시 시작해 주세요.')
+        return
     if _job_is_stale(job):
-        logger.info('지난 날짜의 작업이라 되살리지 않습니다')
+        logger.info('이미 떠난 열차라 되살리지 않습니다')
         _bridge().clearJob()
         return
 
-    service = _FakeService() if job.get('fake') else KorailService()
-    wait = 5
-    while True:
-        try:
-            if service.login(job['user_id'], job['password']):
-                break
-            # 비밀번호가 바뀌었거나 계정이 막혔다: 계속 시도하면 계정만 잠긴다
-            _bridge().clearJob()
-            _bridge().notifyEvent('gave_up', '⚠️ 예약 매크로를 다시 시작하지 못했어요',
-                                  '코레일 로그인이 거부됐어요. 앱을 열어 다시 로그인해 주세요.')
-            return
-        except requests.RequestException:
-            time.sleep(wait)  # 인터넷이 돌아올 때까지 (최대 5분 간격)
-            wait = min(wait * 2, 300)
+    try:
+        service = _FakeService() if job.get('fake') else KorailService()
+        wait = 5
+        while True:
+            try:
+                if service.login(job['user_id'], job['password']):
+                    break
+                # 비밀번호가 바뀌었거나 계정이 막혔다: 계속 시도하면 계정만 잠긴다
+                _give_up('코레일 로그인이 거부됐어요. 앱을 열어 다시 로그인해 주세요.')
+                return
+            except requests.RequestException:
+                time.sleep(wait)  # 인터넷이 돌아올 때까지 (최대 5분 간격)
+                wait = min(wait * 2, 300)
 
-    uid = job['user_id']
-    with ServiceManager._cache_lock:
-        ServiceManager._services[('korail', uid)] = service  # 다시 로그인하면 이 인스턴스를 같이 쓴다
-    tg = TelegramService.get_instance()
-    tg.store_web_session('korail', {'user_id': uid, 'password': job['password']})
-    tg.store_card_settings(job.get('card'))
-    if resumed:
-        tg.resumed_at = datetime.now().isoformat(timespec='seconds')
-    if not tg.try_start_macro(owner=job.get('owner') or uid):
+        uid = job['user_id']
+        with ServiceManager._cache_lock:
+            ServiceManager._services[('korail', uid)] = service  # 다시 로그인하면 이 인스턴스를 같이 쓴다
+        tg = TelegramService.get_instance()
+        tg.store_web_session('korail', {'user_id': uid, 'password': job['password']})
+        tg.store_card_settings(job.get('card'))
+        if not tg.try_start_macro(owner=job.get('owner') or uid):
+            return
+        if resumed:
+            tg.resumed_at = datetime.now().isoformat(timespec='seconds')
+            # 로그인까지 되고 매크로 자리를 얻은 뒤에 알린다 (그 전엔 아직 "다시 시작" 이 아니다)
+            try:
+                _bridge().notifyEvent('resumed', '🔄 예약 매크로를 다시 시작했어요',
+                                      '휴대폰이 앱을 정리했거나 재부팅돼서, 하던 매크로를 자동으로 이어서 돌려요.')
+            except Exception:  # noqa: BLE001
+                logger.exception('resumed 알림 실패')
+        reservation.STOP_MACRO = False
+        seat_option = SeatOption(job.get('seat_option') or 'GENERAL_FIRST')
+    except Exception as e:  # noqa: BLE001 - 깨진 작업·예상 못 한 오류: 조용히 죽지 말고 알린다
+        logger.exception('작업을 되살리지 못했습니다')
+        tg = TelegramService.get_instance()
+        if tg._macro_running and tg.macro_owner == (job.get('owner') or job.get('user_id')):
+            tg.set_macro_state(False)
+        _give_up(f'예상하지 못한 오류로 다시 시작하지 못했어요 ({type(e).__name__}). 앱을 열어 다시 시작해 주세요.')
         return
-    reservation.STOP_MACRO = False
+
     reservation.run_reservation_loop(
-        service, 'korail', job['trains'], SeatOption(job.get('seat_option') or 'GENERAL_FIRST'),
+        service, 'korail', job['trains'], seat_option,
         job.get('card'),
         passenger_count=job.get('passenger_count') or 1,
         sequential=bool(job.get('sequential')),
@@ -328,18 +449,31 @@ def _supervise_macros() -> None:
     from core.reservation import END_CRASH
     from webui.services.telegram_service import TelegramService
 
-    original = reservation.run_reservation_loop
+    from webui.utils.session_helper import add_session_listener
+
+    # 여러 번 불려도(테스트) 한 겹만 감싼다
+    original = getattr(reservation.run_reservation_loop, '__wrapped_loop__',
+                       reservation.run_reservation_loop)
 
     def supervised(service, provider, selected_trains, seat_option, card,
                    passenger_count=1, sequential=False, call_interval=None, owner=None):
         job = _job_from(service, selected_trains, seat_option, card, passenger_count,
                         sequential, call_interval, owner)
+        with _active_lock:
+            _active.update(job=job, reserved=False, card=card)
         if job:
             _bridge().saveJob(json.dumps(job, ensure_ascii=False))
-        reason = original(service, provider, selected_trains, seat_option, card,
-                          passenger_count=passenger_count, sequential=sequential,
-                          call_interval=call_interval, owner=owner)
-        if reason == END_CRASH and job and _crash_budget_left():
+        try:
+            reason = original(service, provider, selected_trains, seat_option, card,
+                              passenger_count=passenger_count, sequential=sequential,
+                              call_interval=call_interval, owner=owner)
+        finally:
+            with _active_lock:
+                job = _active['job']        # 로그아웃 등으로 도중에 지워졌을 수 있다
+                reserved = _active['reserved']
+                _active.update(job=None, reserved=False, card=None)
+        # 좌석을 이미 잡았다면 절대 다시 돌리지 않는다 (같은 열차를 또 예약하게 된다)
+        if reason == END_CRASH and job and not reserved and _crash_budget_left():
             tg = TelegramService.get_instance()
             tg.push_log('warning', '10초 뒤 자동으로 다시 시작합니다...')
             threading.Timer(10, _start_job, args=(job, False)).start()
@@ -349,8 +483,53 @@ def _supervise_macros() -> None:
             _bridge().clearJob()
         return reason
 
+    supervised.__wrapped_loop__ = original
     # 라우트와 텔레그램은 모듈 전역 이름으로 부르므로 여기만 바꾸면 모두 감싸진다
     reservation.run_reservation_loop = supervised
+    reservation.add_macro_listener(_on_macro_event)
+    add_session_listener(_on_session_event)
+
+
+def _on_macro_event(owner, kind, title, body) -> None:
+    """좌석을 잡는 순간(결제 전) 저장된 작업을 지운다.
+
+    결제 도중 프로세스가 죽어도 되살아나서 같은 열차를 또 예약하지 않게 한다.
+    결제가 남았다면 사용자가 직접 한다 (예약 성공 알림에 결제 기한과 함께 안내된다).
+    """
+    if kind != 'reserved':
+        return
+    with _active_lock:
+        if _active['job'] is None:
+            return
+        _active['reserved'] = True
+    _bridge().clearJob()
+
+
+def _on_session_event(event: str, user_id: str | None) -> None:
+    """로그아웃하면 되살릴 작업을 지우고, 카드를 지우면 작업·도는 매크로에서도 카드를 뺀다."""
+    with _active_lock:
+        job = _active['job']
+        if job is None:
+            return
+        if user_id is not None and user_id not in (job.get('owner'), job.get('user_id')):
+            return  # 남의 로그아웃
+        if event == 'logout':
+            _active['job'] = None
+            action = 'clear'
+        elif event == 'card_cleared':
+            job['card'] = None
+            card = _active.get('card')
+            if card:
+                card.clear()  # 도는 매크로가 쥔 카드도 비운다 → 자동결제 안 함
+            # 좌석을 잡은 뒤라면 저장된 작업은 이미 지워졌다. 다시 살리지 않는다.
+            action = None if _active['reserved'] else 'save'
+            data = json.dumps(job, ensure_ascii=False)
+        else:
+            return
+    if action == 'clear':
+        _bridge().clearJob()
+    elif action == 'save':
+        _bridge().saveJob(data)
 
 
 def _add_health_route(app) -> None:
