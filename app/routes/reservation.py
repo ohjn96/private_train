@@ -9,6 +9,8 @@ from flask import Blueprint, request, session, redirect, url_for, Response, json
 from app.services import ServiceManager, SeatOption
 from app.services.telegram_service import TelegramService
 from app.utils.session_helper import (
+    current_user_id,
+    mask_user,
     get_current_provider,
     is_logged_in,
     get_search_state,
@@ -21,6 +23,7 @@ from app.utils.session_helper import (
 from core.rate_limit import DEFAULT_MIN_INTERVAL, clamp_call_interval
 from core.reservation import (  # noqa: F401  (attempt_payment 는 예전 경로 호환)
     MAX_RECOVERY_ATTEMPTS,
+    NotifyingReporter,
     attempt_payment,
     is_login_error,
     run_reservation,
@@ -30,6 +33,31 @@ bp = Blueprint("reservation", __name__)
 
 # Global stop flag for macro
 STOP_MACRO = False
+
+#: 매크로의 중요한 순간(예약 성공·결제·중단)을 추가로 받는 곳. 서버의 웹 푸시가 등록한다.
+#: fn(owner, kind, title, body)
+_macro_listeners: list = []
+
+
+def add_macro_listener(fn) -> None:
+    if fn not in _macro_listeners:
+        _macro_listeners.append(fn)
+
+
+def owns_macro(tg=None) -> bool:
+    """지금 요청한 사람이 매크로(와 그 로그)의 주인인가.
+
+    주인이 기록되지 않은 매크로(헤드리스 등)는 누구나 볼 수 있다.
+    """
+    tg = tg or TelegramService.get_instance()
+    owner = tg.macro_owner
+    return owner is None or owner == current_user_id()
+
+
+def busy_message(tg) -> str:
+    if owns_macro(tg):
+        return "이미 매크로가 실행 중입니다."
+    return f"지금 {mask_user(tg.macro_owner)} 님이 사용 중입니다. 끝나면 다시 시도해주세요."
 
 
 def _setup_telegram_callbacks():
@@ -142,7 +170,8 @@ def _setup_telegram_callbacks():
 
             card = tg.get_stored_card_settings()
 
-            if not tg.try_start_macro():
+            owner = (tg._stored_credentials or {}).get("user_id")
+            if not tg.try_start_macro(owner=owner):
                 return {
                     "success": False,
                     "message": "현재 매크로가 실행 중입니다. /stop 후 다시 시도해주세요.",
@@ -151,6 +180,7 @@ def _setup_telegram_callbacks():
             macro_thread = threading.Thread(
                 target=run_reservation_loop,
                 args=(service, provider, selected_trains, SeatOption.GENERAL_FIRST, card),
+                kwargs={"owner": owner},
                 daemon=True,
                 name="tg-macro",
             )
@@ -278,7 +308,8 @@ def attempt_recovery(provider: str, service) -> tuple[bool, str]:
 
 def run_reservation_loop(
     service, provider: str, selected_trains: list, seat_option, card: dict | None,
-    passenger_count: int = 1, sequential: bool = False, call_interval: float | None = None
+    passenger_count: int = 1, sequential: bool = False, call_interval: float | None = None,
+    owner: str | None = None,
 ):
     """Run the reservation loop and always hand the macro slot back.
 
@@ -291,10 +322,18 @@ def run_reservation_loop(
     global STOP_MACRO
     tg = TelegramService.get_instance()
     STOP_MACRO = False
+
+    reporter = tg
+    if owner and _macro_listeners:
+        def notify(kind, title, body):
+            for listener in list(_macro_listeners):
+                listener(owner, kind, title, body)
+        reporter = NotifyingReporter(tg, notify)
+
     try:
         run_reservation(
             service, selected_trains, seat_option, card,
-            reporter=tg,
+            reporter=reporter,
             should_stop=lambda: STOP_MACRO,
             recover=lambda: attempt_recovery(provider, service),
             provider=provider,
@@ -356,8 +395,9 @@ def start_reservation():
 
     # 검사와 점유를 원자적으로. 버튼 연타나 탭 여러 개에서 동시에 들어와도
     # 매크로가 두 개 뜨지 않는다 (두 개가 뜨면 같은 열차를 중복 예약하게 된다).
-    if not tg.try_start_macro():
-        return jsonify({"success": False, "message": "이미 매크로가 실행 중입니다."})
+    owner = current_user_id()
+    if not tg.try_start_macro(owner=owner):
+        return jsonify({"success": False, "message": busy_message(tg)})
 
     global STOP_MACRO
     STOP_MACRO = False
@@ -369,6 +409,7 @@ def start_reservation():
             "passenger_count": passenger_count,
             "sequential": sequential,
             "call_interval": call_interval,
+            "owner": owner,
         },
         daemon=True,
         name="web-macro",
@@ -382,6 +423,12 @@ def start_reservation():
 def macro_stream():
     """SSE endpoint for streaming macro logs (Telegram-initiated macros visible on web)."""
     tg = TelegramService.get_instance()
+
+    if not owns_macro(tg):
+        # 남의 매크로 로그는 보여주지 않는다
+        def nothing():
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+        return Response(nothing(), mimetype="text/event-stream")
 
     def generate():
         last_id = 0
@@ -423,5 +470,8 @@ def macro_stream():
 def stop_macro():
     """Stop the reservation macro."""
     global STOP_MACRO
+    tg = TelegramService.get_instance()
+    if tg._macro_running and not owns_macro(tg):
+        return jsonify({"success": False, "message": "다른 사용자의 매크로는 멈출 수 없습니다."}), 403
     STOP_MACRO = True
     return jsonify({"success": True})

@@ -90,6 +90,9 @@ class TelegramService:
         self._macro_start_time: Optional[datetime] = None
         self._macro_attempt: int = 0
         self._last_reserve_params: Optional[dict] = None
+        # 지금(또는 마지막으로) 매크로를 돌린 코레일 ID. 로그 버퍼도 이 사람 것이다.
+        # 여러 명이 쓰는 서버에서 남의 로그를 보거나 남의 매크로를 멈추지 못하게 쓴다.
+        self._macro_owner: Optional[str] = None
 
         # Stored web session for background thread usage
         self._stored_provider: Optional[str] = None
@@ -301,6 +304,10 @@ class TelegramService:
         message += f"⏰ {datetime.now().strftime('%H:%M:%S')}"
         return self.send_message(message)
 
+    def send_payment_result(self, success: bool, message: str) -> bool:
+        """자동결제 결과 알림."""
+        return self.send_message(f"💳 {message}" if success else f"⚠️ {message}")
+
     def send_macro_stopped(self, reason: str = '사용자 중단') -> bool:
         """Send notification that macro has stopped."""
         message = (
@@ -333,7 +340,11 @@ class TelegramService:
         self._on_reserve_callback = on_reserve
         self._on_trains_callback = on_trains
 
-    def try_start_macro(self) -> bool:
+    @property
+    def macro_owner(self) -> Optional[str]:
+        return self._macro_owner
+
+    def try_start_macro(self, owner: Optional[str] = None) -> bool:
         """매크로 실행 슬롯을 원자적으로 점유한다.
 
         이미 실행 중이면 False 를 돌려주고 아무것도 바꾸지 않는다. True 를 받은
@@ -344,6 +355,7 @@ class TelegramService:
             if self._macro_running:
                 return False
             self._macro_running = True
+            self._macro_owner = owner
             self._macro_info = {}
             self._macro_start_time = datetime.now()
             self._macro_attempt = 0

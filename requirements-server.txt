@@ -1,0 +1,4 @@
+# 서버 버전(python -m server) 전용. 데스크톱 exe 에는 들어가지 않는다.
+-r requirements.txt
+waitress==3.0.2
+pywebpush==2.5.0

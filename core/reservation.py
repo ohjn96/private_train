@@ -40,6 +40,52 @@ class Reporter(Protocol):
     def send_macro_started(self, train_count: int, trains_summary: str) -> None: ...
     def send_macro_stopped(self) -> None: ...
     def send_reservation_success(self, **info) -> None: ...
+    def send_payment_result(self, success: bool, message: str) -> bool: ...
+
+
+class NotifyingReporter:
+    """다른 reporter 에 전부 그대로 넘기면서, 사람이 알아야 할 순간만 notify 로도 알린다.
+
+    notify(kind, title, body) 의 kind 는 'reserved' / 'paid' / 'pay_failed' / 'stopped'.
+    서버에선 이걸로 웹 푸시를 보낸다. 알림이 실패해도 매크로는 멈추지 않는다.
+    """
+
+    def __init__(self, inner: Reporter, notify: Callable[[str, str, str], None]):
+        self._inner = inner
+        self._notify = notify
+        self._last_problem: str | None = None
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def _safe_notify(self, kind: str, title: str, body: str) -> None:
+        try:
+            self._notify(kind, title, body)
+        except Exception:
+            pass
+
+    def push_log(self, event_type: str, message: str, **extra) -> None:
+        # 멈추기 직전 마지막 로그가 오류(예: 복구 포기)일 때만 중단 사유로 쓴다
+        self._last_problem = message if event_type == "error" else None
+        self._inner.push_log(event_type, message, **extra)
+
+    def send_reservation_success(self, **info) -> None:
+        self._inner.send_reservation_success(**info)
+        route = f"{info.get('dep_station', '')}→{info.get('arr_station', '')}".strip("→")
+        body = " ".join(p for p in (info.get("train_name", ""), info.get("dep_time", ""), route) if p)
+        self._safe_notify("reserved", "🎉 예약 성공", body + "\n결제 기한 안에 결제를 확인하세요.")
+
+    def send_payment_result(self, success: bool, message: str) -> bool:
+        sent = self._inner.send_payment_result(success, message)
+        if success:
+            self._safe_notify("paid", "💳 결제 완료", message)
+        else:
+            self._safe_notify("pay_failed", "⚠️ 결제 실패", message + "\n코레일 앱에서 직접 결제하세요.")
+        return sent
+
+    def send_macro_stopped(self, *args, **kwargs) -> None:
+        self._inner.send_macro_stopped(*args, **kwargs)
+        self._safe_notify("stopped", "⏹️ 예약 매크로 중단", self._last_problem or "매크로가 멈췄습니다.")
 
 
 def is_login_error(error: Exception, provider: str = "korail") -> bool:
@@ -265,11 +311,10 @@ def _run(
                             if pay_success:
                                 pay_msg = f"결제 완료! {train_name} ({dep_time})"
                                 tg.push_log("success", pay_msg)
-                                tg.send_message(f"💳 {pay_msg}")
                             else:
                                 pay_msg = f"결제 실패: {pay_message}"
                                 tg.push_log("error", pay_msg)
-                                tg.send_message(f"⚠️ {pay_msg}")
+                            tg.send_payment_result(pay_success, pay_msg)
 
                         if seats_secured >= passenger_count:
                             # All requested seats secured - reservation is confirmed, so stop

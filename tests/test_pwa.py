@@ -6,6 +6,13 @@ import unittest
 from unittest import mock
 
 
+def status_of(client, path):
+    """정적 파일 응답은 파일 핸들을 쥐고 있으니 닫아 준다 (ResourceWarning 방지)."""
+    resp = client.get(path)
+    resp.close()
+    return resp.status_code
+
+
 def make_client(**env):
     from app import create_app
     with mock.patch.dict(os.environ, env):
@@ -26,8 +33,8 @@ class PwaTest(unittest.TestCase):
         client = make_client()
         data = json.loads(client.get('/manifest.webmanifest').data)
         for icon in data['icons']:
-            self.assertEqual(client.get(icon['src']).status_code, 200, icon['src'])
-        self.assertEqual(client.get('/static/icons/apple-touch-icon.png').status_code, 200)
+            self.assertEqual(status_of(client, icon['src']), 200, icon['src'])
+        self.assertEqual(status_of(client, '/static/icons/apple-touch-icon.png'), 200)
 
     def test_service_worker_is_served_from_root(self):
         resp = make_client().get('/sw.js')
@@ -39,7 +46,7 @@ class PwaTest(unittest.TestCase):
         client = make_client(APP_PASSWORD='letmein')
         self.assertEqual(client.get('/manifest.webmanifest').status_code, 200)
         self.assertEqual(client.get('/sw.js').status_code, 200)
-        self.assertEqual(client.get('/static/icons/icon-192.png').status_code, 200)
+        self.assertEqual(status_of(client, '/static/icons/icon-192.png'), 200)
         self.assertEqual(client.get('/login').status_code, 302)
 
     def test_pages_link_the_manifest(self):

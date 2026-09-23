@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 리눅스 서버(Oracle Cloud Always Free 등, Ubuntu 24.04)에 상주 서비스로 설치한다.
-#   ./scripts/setup-server.sh               웹 모드 (웹 UI + 텔레그램)
-#   ./scripts/setup-server.sh --headless    헤드리스 (텔레그램으로만 조종)
+#   ./scripts/setup-server.sh               서버 버전 (여러 명이 웹으로, 알림은 웹 푸시)
+#   ./scripts/setup-server.sh --headless    헤드리스 (혼자, 텔레그램으로만 조종)
 #   ./scripts/setup-server.sh --tailscale   Tailscale + HTTPS 주소(https://<이름>.ts.net)로 폰에서 접속
 #
 # 여러 번 돌려도 된다. 설정 파일(/etc/train.env)이 이미 있으면 건드리지 않는다.
@@ -36,7 +36,7 @@ sudo apt-get install -y -q python3.12 python3.12-venv git
 echo "==> 2/5 가상환경 + 의존성"
 [[ -x venv/bin/python ]] || python3.12 -m venv venv
 venv/bin/python -m pip install --upgrade pip -q
-venv/bin/python -m pip install -r requirements.txt -q
+venv/bin/python -m pip install -r requirements-server.txt -q
 
 echo "==> 3/5 설정 파일 ($ENV_FILE)"
 if sudo test -f "$ENV_FILE"; then
@@ -57,6 +57,9 @@ APP_PASSWORD=$GATE_PW
 # 서버에선 반드시 false. true 면 웹 디버거가 열려 원격으로 코드를 실행할 수 있다.
 FLASK_DEBUG=false
 NO_BROWSER=1
+
+# 웹 푸시 발신자 표시 (mailto: 또는 https:)
+#VAPID_SUBJECT=mailto:you@example.com
 PORT=5050
 HOST=$BIND
 # HTTPS 뒤에서만 쓸 때 1 (세션 쿠키를 HTTPS 로만 보냄)
@@ -71,7 +74,11 @@ fi
 
 echo "==> 4/5 systemd 서비스 ($UNIT_FILE)"
 EXTRA_ENV=""
-[[ $HEADLESS -eq 1 ]] && EXTRA_ENV="Environment=HEADLESS=1"
+EXEC="$APP_DIR/venv/bin/python -m server"
+if [[ $HEADLESS -eq 1 ]]; then
+    EXTRA_ENV="Environment=HEADLESS=1"
+    EXEC="$APP_DIR/venv/bin/python main.py"
+fi
 sudo tee "$UNIT_FILE" >/dev/null <<EOF
 [Unit]
 Description=Train Reservation App
@@ -84,7 +91,7 @@ WorkingDirectory=$APP_DIR
 EnvironmentFile=$ENV_FILE
 $EXTRA_ENV
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$APP_DIR/venv/bin/python main.py
+ExecStart=$EXEC
 Restart=always
 RestartSec=10
 

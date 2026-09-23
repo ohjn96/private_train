@@ -43,6 +43,9 @@ class RecordingReporter:
     def send_reservation_success(self, **info):
         pass
 
+    def send_payment_result(self, success, message):
+        return True
+
     def kinds(self, event_type):
         return [m for t, m in self.logs if t == event_type]
 

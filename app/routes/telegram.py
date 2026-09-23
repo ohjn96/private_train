@@ -1,16 +1,28 @@
 # -*- coding: utf-8 -*-
 """Telegram bot API routes."""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, current_app, request, jsonify
 
 from app.services.telegram_service import (
     TelegramService, load_saved_settings, save_settings, clear_saved_settings
 )
 from app.utils.session_helper import (
     get_current_provider, is_logged_in, get_credentials,
-    get_any_logged_in_provider
+    get_any_logged_in_provider, mask_user
 )
 
 bp = Blueprint('telegram', __name__, url_prefix='/api/telegram')
+
+#: 서버 모드에서 막는 엔드포인트. 봇은 서버 전체에 하나라 아무나 바꾸거나 끊으면 안 된다.
+#: (서버 모드 알림은 웹 푸시로 한다. status 는 매크로 상태 확인용이라 열어 둔다.)
+_ADMIN_ONLY = {'telegram.configure', 'telegram.disconnect', 'telegram.test_message'}
+
+
+@bp.before_request
+def block_bot_settings_in_server_mode():
+    if current_app.config.get('SERVER_MODE') and request.endpoint in _ADMIN_ONLY:
+        return jsonify({'success': False,
+                        'message': '서버 모드에서는 텔레그램 대신 웹 푸시 알림을 씁니다.'}), 403
+    return None
 
 
 @bp.route('/configure', methods=['POST'])
@@ -72,7 +84,19 @@ def status():
         saved = load_saved_settings()
         if saved['token'] == tg.bot_token and saved['chat_id'] != tg.chat_id:
             save_settings(tg.bot_token, tg.chat_id)
-    return jsonify(tg.get_status())
+    status = tg.get_status()
+
+    # 남의 매크로 상태와 로그는 가리고, 누가 쓰는 중인지만 알려준다
+    from app.routes.reservation import owns_macro
+    if not owns_macro(tg):
+        if status['macro_running']:
+            status['busy'] = {
+                'user': mask_user(tg.macro_owner),
+                'since': status['macro_start_time'],
+            }
+        status.update(macro_running=False, macro_info={}, macro_attempt=0,
+                      macro_start_time=None, has_logs=False)
+    return jsonify(status)
 
 
 @bp.route('/test', methods=['POST'])

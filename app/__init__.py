@@ -46,11 +46,19 @@ def _write_secret_key() -> str:
     return key
 
 
-def create_app(config_name: str = 'default') -> Flask:
-    """Create and configure the Flask application."""
+def create_app(config_name: str = 'default', server_mode: bool | None = None) -> Flask:
+    """Create and configure the Flask application.
+
+    server_mode: 여러 명이 같이 쓰는 서버(`python -m server`)로 띄울 때 True.
+    None 이면 SERVER_MODE 환경변수를 본다. 데스크톱(exe)은 늘 False.
+    """
     app = Flask(__name__,
                 template_folder='templates',
                 static_folder='static')
+
+    if server_mode is None:
+        server_mode = os.environ.get('SERVER_MODE', '').lower() in ('1', 'true', 'yes')
+    app.config['SERVER_MODE'] = server_mode
 
     app.secret_key = _load_secret_key()
     # 자바스크립트에서 세션 쿠키를 못 읽게, 다른 사이트에서 온 POST 에는 안 실리게
@@ -64,7 +72,7 @@ def create_app(config_name: str = 'default') -> Flask:
 
     @app.context_processor
     def inject_version():
-        return {'app_version': get_version()}
+        return {'app_version': get_version(), 'server_mode': app.config['SERVER_MODE']}
 
     _install_access_gate(app)
 

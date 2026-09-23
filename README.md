@@ -177,10 +177,11 @@ Restart=on-failure
   실패합니다. 집에 있는 기기(라즈베리파이, 안 쓰는 노트북)가 이 점에서 안전합니다.
 - **계정 정보가 그 서버에 남습니다.** 환경변수 파일 권한(`chmod 600`)을 꼭 확인하세요.
 
-### Oracle Cloud 에 올리기 (무료, 폰에서 접속)
+### Oracle Cloud 에 올리기 (무료, 폰에서 접속, 여러 명)
 
-PC 를 계속 켜 둘 수 없을 때. Oracle Cloud Always Free VM 에 올리고 폰에서 Tailscale 로 접속합니다.
-포트를 인터넷에 열지 않아도 됩니다.
+PC 를 계속 켜 둘 수 없을 때. Oracle Cloud Always Free VM 에 **서버 버전**(`python -m server`)을
+올리고 폰에서 Tailscale 로 접속합니다. 포트를 인터넷에 열지 않아도 됩니다.
+가족·친구가 같이 쓸 수 있고, 예약 매크로는 한 번에 한 명만 돌립니다. 자세한 건 [server/README.md](server/README.md).
 
 1. Oracle Cloud 가입. **홈 리전을 Seoul 또는 Chuncheon** 으로 (나중에 못 바꿈, 해외 IP 는 코레일이 막을 수 있음)
 2. 인스턴스 생성: 이미지 **Ubuntu 24.04**, Shape 는 Always Free 표시된 것
@@ -188,8 +189,8 @@ PC 를 계속 켜 둘 수 없을 때. Oracle Cloud Always Free VM 에 올리고 
 
 ```bash
 git clone https://github.com/ohjn96/private_train.git && cd private_train
-./scripts/setup-server.sh --tailscale              # 웹 모드 (웹 UI + 텔레그램)
-./scripts/setup-server.sh --headless --tailscale   # 텔레그램으로만 쓸 때
+./scripts/setup-server.sh --tailscale              # 서버 버전 (웹 + 웹 푸시 알림)
+./scripts/setup-server.sh --headless --tailscale   # 혼자, 텔레그램으로만 쓸 때
 ```
 
 4. 폰(과 같이 쓸 가족·친구 폰)에 Tailscale 앱 설치 → 같은 tailnet 에 초대(Share) →
@@ -203,7 +204,8 @@ git clone https://github.com/ohjn96/private_train.git && cd private_train
   로그인 정보를 따로 가지므로, 앱으로 처음 열 때 한 번 더 로그인하면 됩니다.
 - **예약 매크로는 서버에서 돕니다.** Safari·앱을 내리거나 닫아도, 폰을 잠가도 계속 시도합니다.
   다시 열면 그동안의 로그를 이어서 보여줍니다.
-- 앱이 꺼져 있으면 알림음이 안 나므로, **예약 성공 알림은 텔레그램 연동**으로 받으세요.
+- 앱이 꺼져 있어도 **"폰 알림" 카드에서 알림을 켜 두면** 예약 성공·결제·중단을 푸시로 받습니다.
+  (iPhone 은 홈 화면 앱에서 켜야 하고 iOS 16.4 이상)
 
 설정은 `/etc/train.env` 에 있고, 바꾼 뒤엔 `sudo systemctl restart train`. 업데이트는 `git pull` 후
 스크립트를 다시 돌리면 됩니다.
@@ -219,8 +221,9 @@ git clone https://github.com/ohjn96/private_train.git && cd private_train
 > 🔒 코레일 비밀번호와 카드 정보는 브라우저 쿠키가 아니라 서버 메모리에만 둡니다.
 > 그래서 서버를 재시작하면 웹에서 다시 로그인해야 합니다.
 
-> ⚠️ 지금 구조는 **한 번에 한 코레일 계정**만 제대로 동작합니다. 여러 명이 각자 계정으로
-> 동시에 쓰면 로그인·매크로 중단·텔레그램 봇을 서로 공유하게 되니 주의하세요.
+> ℹ️ 여러 명이 각자 코레일 계정으로 로그인할 수 있지만, **예약 매크로는 서버 전체에 한 번에 하나**입니다.
+> 누가 쓰는 중이면 "010*** 님이 사용 중" 이라고 뜨고, 남의 로그를 보거나 멈출 수는 없습니다.
+> 모든 호출이 서버 IP 하나로 나가므로 코레일 차단을 피하려는 제한입니다.
 
 ---
 

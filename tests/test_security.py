@@ -79,7 +79,7 @@ class SecretsStayOffTheCookieTest(unittest.TestCase):
     def test_forged_auth_cookie_does_not_reuse_cached_service(self):
         """다른 사람이 로그인해 둔 인스턴스를 자격증명 없는 세션이 가져가면 안 된다."""
         self.login()
-        other = ServiceManager._services['korail']
+        other = ServiceManager._services[('korail', 'me')]
         intruder = self.client.application.test_client()
         with intruder.session_transaction() as sess:
             sess['auth'] = {'korail': {'logged_in': True, 'user_id': 'me'}}

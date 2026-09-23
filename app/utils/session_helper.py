@@ -98,6 +98,21 @@ def is_logged_in(provider: str = None) -> bool:
     return bool(get_auth_state(provider).get('logged_in') and get_credentials(provider))
 
 
+def current_user_id() -> Optional[str]:
+    """지금 요청을 보낸 사람의 코레일 ID. 로그인 안 했거나 요청 밖이면 None."""
+    try:
+        if is_logged_in(PROVIDER):
+            return get_auth_state(PROVIDER).get('user_id')
+    except RuntimeError:
+        pass  # 요청 컨텍스트 밖 (헤드리스, 텔레그램 스레드)
+    return None
+
+
+def mask_user(user_id: Optional[str]) -> str:
+    """다른 사람에게 보여줄 때 쓰는 가린 ID (010-1234-5678 → 010***)."""
+    return f"{user_id[:3]}***" if user_id else '다른 사용자'
+
+
 def get_logged_in_providers() -> List[str]:
     """Get list of all logged-in providers."""
     return [p for p in [PROVIDER] if is_logged_in(p)]

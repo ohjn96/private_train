@@ -356,12 +356,68 @@
                         중단
                     </button>
                 </div>
+
+                <!-- 다른 사람이 매크로를 쓰는 중일 때 (서버는 한 번에 한 명만) -->
+                <p id="busyNotice" data-testid="busy-notice"
+                   class="hidden w-full text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"></p>
             </div>
         </div>
     </div>
 
     {% endif %}
 
+    {% if server_mode %}
+    <!-- Web Push Card (서버 모드) -->
+    <div class="bg-white rounded-xl shadow-md overflow-hidden" data-testid="push-card">
+        <div class="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+             onclick="document.getElementById('pushBody').classList.toggle('hidden'); document.getElementById('pushChevron').classList.toggle('rotate-180');">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">폰 알림</h3>
+                    <p class="text-xs text-gray-500">앱을 닫아도 예약 성공·결제·중단을 알려줍니다</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2">
+                    <span id="pushStatusDot" class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
+                    <span id="pushStatusText" class="text-sm text-gray-500">확인 중...</span>
+                </div>
+                <svg id="pushChevron" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="pushBody" class="hidden border-t">
+            <div class="p-6 space-y-4">
+                <p id="pushHint" class="hidden text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"></p>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="button" id="pushEnableBtn" onclick="enablePush()"
+                            class="hidden px-5 py-2 rounded-lg bg-ktx-primary text-white text-sm font-medium hover:bg-ktx-secondary transition-colors">
+                        이 기기에서 알림 켜기
+                    </button>
+                    <button type="button" id="pushTestBtn" onclick="testPush()"
+                            class="hidden px-5 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition-colors">
+                        테스트 알림
+                    </button>
+                    <button type="button" id="pushDisableBtn" onclick="disablePush()"
+                            class="hidden px-5 py-2 rounded-lg bg-red-100 text-red-600 text-sm font-medium hover:bg-red-200 transition-colors">
+                        이 기기 알림 끄기
+                    </button>
+                </div>
+                <p class="text-xs text-gray-400">
+                    iPhone: Safari 공유 버튼 → <b>홈 화면에 추가</b> → 홈 화면 아이콘으로 열어서 켜세요 (iOS 16.4 이상).
+                    Android: Chrome 에서 바로 켤 수 있습니다.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
     <!-- Telegram Settings Card (always visible) -->
     <div class="bg-white rounded-xl shadow-md overflow-hidden">
         <!-- Header / Toggle -->
@@ -478,6 +534,8 @@
             </div>
         </div>
     </div>
+
+    {% endif %}
 
     <!-- Card Auto-Payment Settings Card (always visible) -->
     <div class="bg-white rounded-xl shadow-md overflow-hidden">
@@ -1244,6 +1302,16 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('/api/telegram/status')
             .then(r => r.json())
             .then(data => {
+                const busyEl = document.getElementById('busyNotice');
+                if (busyEl) {
+                    if (data.busy) {
+                        busyEl.textContent = `지금 ${data.busy.user} 님이 예약 매크로를 쓰는 중입니다. ` +
+                            '서버에서는 한 번에 한 명만 돌릴 수 있어요. 끝나면 시작할 수 있습니다.';
+                        busyEl.classList.remove('hidden');
+                    } else {
+                        busyEl.classList.add('hidden');
+                    }
+                }
                 const forThisProvider = data.provider === currentProvider;
                 const macroActiveForThisProvider = data.macro_running && forThisProvider;
 
@@ -1312,13 +1380,131 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.persisted) resyncMacroStream();
     });
 
+    {% if server_mode %}
+    // 서버 모드 알림은 웹 푸시 (봇은 서버 전체에 하나라 화면에서 설정하지 않는다)
+    updatePushUI();
+    {% else %}
     // Load telegram status on page load
     loadTelegramSettings();
     checkTelegramStatus();
+    {% endif %}
 
     // Load card auto-payment status on page load
     loadCardStatus();
 });
+
+// ─── Web Push (서버 모드) ─────────────────────────────────────
+
+function urlB64ToUint8Array(base64) {
+    const padded = (base64 + '='.repeat((4 - base64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(padded);
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+function pushSupported() {
+    return window.isSecureContext && 'serviceWorker' in navigator &&
+        'PushManager' in window && 'Notification' in window;
+}
+
+function setPushUI(state, text, hint) {
+    const dot = document.getElementById('pushStatusDot');
+    const label = document.getElementById('pushStatusText');
+    const hintEl = document.getElementById('pushHint');
+    if (!dot) return;
+    const on = state === 'on';
+    dot.className = 'w-2.5 h-2.5 rounded-full ' + (on ? 'bg-green-500' : state === 'blocked' ? 'bg-red-400' : 'bg-gray-300');
+    label.textContent = text;
+    label.className = 'text-sm ' + (on ? 'text-green-600 font-medium' : 'text-gray-500');
+    hintEl.textContent = hint || '';
+    hintEl.classList.toggle('hidden', !hint);
+    document.getElementById('pushEnableBtn').classList.toggle('hidden', state !== 'off');
+    document.getElementById('pushTestBtn').classList.toggle('hidden', !on);
+    document.getElementById('pushDisableBtn').classList.toggle('hidden', !on);
+}
+
+async function updatePushUI() {
+    if (!document.getElementById('pushStatusDot')) return;
+    if (!pushSupported()) {
+        const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+        let hint = '이 브라우저에서는 알림을 쓸 수 없습니다. (HTTPS 주소로 접속해야 합니다)';
+        if (ios && !standalone) hint = 'iPhone 은 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요. Safari 공유 버튼 → 홈 화면에 추가 → 그 아이콘으로 열어 주세요.';
+        setPushUI('unsupported', '사용 불가', hint);
+        return;
+    }
+    if (Notification.permission === 'denied') {
+        setPushUI('blocked', '차단됨', '알림이 차단돼 있습니다. 폰 설정에서 이 앱의 알림을 허용한 뒤 다시 열어 주세요.');
+        return;
+    }
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        const resp = await fetch('/api/push/status?endpoint=' + encodeURIComponent(sub ? sub.endpoint : ''));
+        const data = await resp.json();
+        if (sub && data.this_device) {
+            setPushUI('on', data.devices > 1 ? `켜짐 (기기 ${data.devices}대)` : '켜짐');
+        } else {
+            setPushUI('off', '꺼짐');
+        }
+    } catch (e) {
+        setPushUI('off', '꺼짐');
+    }
+}
+
+async function enablePush() {
+    try {
+        // iOS 는 버튼 탭 안에서 바로 권한을 물어야 한다
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            updatePushUI();
+            return;
+        }
+        const reg = await navigator.serviceWorker.ready;
+        const {publicKey} = await (await fetch('/api/push/key')).json();
+        let sub = await reg.pushManager.getSubscription();
+        if (sub) await sub.unsubscribe();  // 서버 키가 바뀌었을 수 있으니 새로 받는다
+        sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlB64ToUint8Array(publicKey),
+        });
+        const resp = await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({subscription: sub.toJSON()}),
+        });
+        const data = await resp.json();
+        if (!data.success) alert(data.message || '알림을 켜지 못했습니다.');
+    } catch (e) {
+        alert('알림을 켜지 못했습니다: ' + e.message);
+    }
+    updatePushUI();
+}
+
+async function disablePush() {
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+            await fetch('/api/push/unsubscribe', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({endpoint: sub.endpoint}),
+            });
+            await sub.unsubscribe();
+        }
+    } catch (e) {}
+    updatePushUI();
+}
+
+async function testPush() {
+    try {
+        const data = await (await fetch('/api/push/test', {method: 'POST'})).json();
+        alert(data.message);
+    } catch (e) {
+        alert('테스트 알림을 보내지 못했습니다.');
+    }
+}
 
 // ─── Telegram Functions ─────────────────────────────────────
 
