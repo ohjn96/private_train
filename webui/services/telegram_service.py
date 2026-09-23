@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -16,6 +17,37 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+#: 봇 토큰이 들어간 API 주소(https://api.telegram.org/bot123:ABC.../getMe). requests 예외 문구와
+#: urllib3 디버그 로그에 이 주소가 그대로 찍혀 로그 파일로 토큰이 샜다.
+_BOT_TOKEN_RE = re.compile(r'bot\d+:[A-Za-z0-9_-]+')
+
+
+def redact_token(text) -> str:
+    """문자열 속 'bot<토큰>' 을 'bot<숨김>' 으로 바꾼다. 로그·화면에 내보내는 예외 문구는 모두 이걸 거친다."""
+    return _BOT_TOKEN_RE.sub('bot<숨김>', str(text))
+
+
+class _RedactTokenFilter(logging.Filter):
+    """이 모듈과 urllib3 로그에서 봇 토큰을 지운다 (예외 트레이스백 포함)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 - 형식이 깨진 로그라도 버리지는 않는다
+            return True
+        if _BOT_TOKEN_RE.search(message):
+            record.msg, record.args = redact_token(message), ()
+        if record.exc_info and not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text:
+            record.exc_text = redact_token(record.exc_text)
+        return True
+
+
+_redact_filter = _RedactTokenFilter()
+for _name in (__name__, 'urllib3.connectionpool', 'urllib3.util.retry', 'requests'):
+    logging.getLogger(_name).addFilter(_redact_filter)
+
 #: 웹에서 연결한 봇 토큰/채팅 ID 를 서버 재시작 뒤에도 기억하는 파일.
 #: 브라우저 localStorage 는 브라우저·주소(localhost/127.0.0.1)마다 따로라 쉽게 비므로
 #: 서버 쪽에도 남겨 둔다. exe 는 임시 폴더에서 돌기 때문에 홈 디렉터리에 둔다.
@@ -23,28 +55,33 @@ SETTINGS_PATH = Path.home() / '.train_reservation' / 'telegram.json'
 
 
 def load_saved_settings() -> dict:
-    """저장된 {'token', 'chat_id'} 를 돌려준다. 없으면 TELEGRAM_BOT_TOKEN 환경변수."""
+    """저장된 {'token', 'chat_id', 'owner'} 를 돌려준다. 없으면 TELEGRAM_BOT_TOKEN 환경변수.
+
+    owner 는 봇을 연결한 코레일 ID (없으면 ''). 그 사람만 봇을 바꾸거나 끊을 수 있다.
+    """
     try:
         data = json.loads(SETTINGS_PATH.read_text(encoding='utf-8'))
         if data.get('token'):
-            return {'token': data['token'], 'chat_id': data.get('chat_id', '')}
-    except (OSError, ValueError):
+            return {'token': data['token'], 'chat_id': data.get('chat_id', ''),
+                    'owner': data.get('owner') or ''}
+    except (OSError, ValueError, AttributeError):
         pass
     return {
         'token': os.environ.get('TELEGRAM_BOT_TOKEN', ''),
         'chat_id': os.environ.get('TELEGRAM_CHAT_ID', ''),
+        'owner': '',
     }
 
 
-def save_settings(token: str, chat_id: str) -> None:
+def save_settings(token: str, chat_id: str, owner: Optional[str] = None) -> None:
     """토큰은 비밀번호나 마찬가지라 본인만 읽을 수 있게(600) 쓴다."""
     try:
         SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(SETTINGS_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump({'token': token, 'chat_id': chat_id or ''}, f)
+            json.dump({'token': token, 'chat_id': chat_id or '', 'owner': owner or ''}, f)
     except OSError as e:
-        logger.warning(f"텔레그램 설정 저장 실패: {e}")
+        logger.warning(f"텔레그램 설정 저장 실패: {redact_token(e)}")
 
 
 #: /start <코드> 페어링 코드. 헷갈리는 글자(0/O, 1/I/L)는 뺐다.
@@ -76,6 +113,9 @@ class TelegramService:
     def __init__(self):
         self.bot_token: Optional[str] = None
         self.chat_id: Optional[str] = None
+        # 웹에서 봇을 연결한 코레일 ID. 이 사람만 봇 설정·페어링·연결 해제를 할 수 있다
+        # (HOST 를 LAN 에 열고 APP_PASSWORD 가 없을 때 옆 사람이 봇을 가로채지 못하게).
+        self.owner: Optional[str] = None
         self._polling_thread: Optional[threading.Thread] = None
         self._polling_active = False
         self._last_update_id = 0
@@ -188,7 +228,8 @@ class TelegramService:
                 'bot_username': bot_info.get('username', '')
             }
         except requests.RequestException as e:
-            return {'success': False, 'message': f'연결 오류: {str(e)}'}
+            logger.warning(f"텔레그램 봇 연결 실패: {redact_token(e)}")
+            return {'success': False, 'message': f'연결 오류: {redact_token(e)}'}
 
     BOT_COMMANDS = [
         ('start', '연결 / 시작'),
@@ -257,6 +298,7 @@ class TelegramService:
         self.stop_polling()
         self.bot_token = None
         self.chat_id = None
+        self.owner = None
         self._connected = False
         with self._pairing_lock:
             self._pairing = None
@@ -295,7 +337,7 @@ class TelegramService:
                     time.sleep(2)
                 continue
             except requests.RequestException as e:
-                logger.error(f"Telegram API request failed: {e}")
+                logger.error(f"Telegram API request failed: {redact_token(e)}")
                 if attempt < max_retries - 1:
                     time.sleep(2)
                     continue
@@ -532,7 +574,7 @@ class TelegramService:
                 logger.warning(f"Failed to login for standalone service: {provider}")
                 return None, None
         except Exception as e:
-            logger.error(f"Error creating standalone service: {e}")
+            logger.error(f"Error creating standalone service: {redact_token(e)}")
             return None, None
 
     def _skip_backlog(self):
@@ -548,7 +590,7 @@ class TelegramService:
                 self._last_update_id = latest[-1]['update_id'] + 1
                 logger.info(f"묵은 텔레그램 메시지를 건너뜁니다 (offset={self._last_update_id})")
         except Exception as e:
-            logger.warning(f"묵은 메시지 정리 실패: {e}")
+            logger.warning(f"묵은 메시지 정리 실패: {redact_token(e)}")
 
     def start_polling(self):
         """Start polling for incoming bot commands in a background thread."""
@@ -594,10 +636,10 @@ class TelegramService:
                     try:
                         self._handle_update(update)
                     except Exception as e:
-                        logger.exception(f"Telegram update 처리 실패 (건너뜀): {e}")
+                        logger.exception(f"Telegram update 처리 실패 (건너뜀): {redact_token(e)}")
             except Exception as e:
                 consecutive_errors += 1
-                logger.error(f"Telegram polling error: {e}")
+                logger.error(f"Telegram polling error: {redact_token(e)}")
                 # Back off on repeated failures (max 30s)
                 backoff = min(consecutive_errors * 3, 30)
                 time.sleep(backoff)
@@ -693,7 +735,7 @@ class TelegramService:
                     self._on_stop_callback()
                     self.send_message("⏹️ 예약 매크로 중단 요청을 보냈습니다.")
                 except Exception as e:
-                    self.send_message(f"❌ 중단 오류: {str(e)}")
+                    self.send_message(f"❌ 중단 오류: {redact_token(e)}")
             else:
                 self.send_message("ℹ️ 현재 실행 중인 매크로가 없습니다.")
 
@@ -715,7 +757,7 @@ class TelegramService:
                     trains_text = self._on_trains_callback()
                     self.send_message(trains_text)
                 except Exception as e:
-                    self.send_message(f"❌ 열차 목록 조회 오류: {str(e)}")
+                    self.send_message(f"❌ 열차 목록 조회 오류: {redact_token(e)}")
             else:
                 self.send_message("ℹ️ 검색된 열차가 없습니다.\n/reserve 명령어로 먼저 검색해주세요.")
 
@@ -842,7 +884,7 @@ class TelegramService:
                 }
 
             except Exception as e:
-                self.send_message(f"❌ 검색 오류: {str(e)}")
+                self.send_message(f"❌ 검색 오류: {redact_token(e)}")
         else:
             self.send_message(
                 "⚠️ 웹에서 먼저 로그인 후 사용해주세요.\n"
@@ -916,7 +958,7 @@ class TelegramService:
                 if not result.get('success'):
                     self.send_message(f"❌ {result.get('message', '예약 시작 실패')}")
             except Exception as e:
-                self.send_message(f"❌ 예약 시작 오류: {str(e)}")
+                self.send_message(f"❌ 예약 시작 오류: {redact_token(e)}")
 
         self._pending_reserve = None
 
@@ -1070,7 +1112,7 @@ class TelegramService:
                     self.send_message(f"❌ {start_result.get('message', '재시작 실패')}")
 
             except Exception as e:
-                self.send_message(f"❌ 재시작 오류: {str(e)}")
+                self.send_message(f"❌ 재시작 오류: {redact_token(e)}")
         else:
             self.send_message(
                 "⚠️ 콜백이 설정되지 않았습니다.\n"

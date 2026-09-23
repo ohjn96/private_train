@@ -394,21 +394,9 @@ def run_reservation_loop(
     return reason
 
 
-def is_same_origin_request() -> bool:
-    """다른 사이트가 몰래 보낸 요청(CSRF)인가를 가린다.
-
-    브라우저가 붙이는 Sec-Fetch-Site 를 먼저 보고, 없으면(오래된 브라우저) Origin 의
-    호스트가 이 서버 주소와 같은지 본다. 둘 다 없으면 브라우저 밖(스크립트·테스트)이라 통과.
-    """
-    from urllib.parse import urlsplit
-
-    site = request.headers.get("Sec-Fetch-Site")
-    if site is not None:
-        return site in ("same-origin", "none")
-    origin = request.headers.get("Origin")
-    if origin is None:
-        return True
-    return urlsplit(origin).netloc.lower() == (request.host or "").lower()
+# 같은 사이트 검사는 앱 전체(webui._install_csrf_check)가 모든 POST 에 한다.
+# 여기서 한 번 더 보는 건 이 라우트만 따로 쓰일 때를 위한 안전장치다.
+from webui import is_same_origin_request  # noqa: E402
 
 
 @bp.route("/start_reservation", methods=["POST"])

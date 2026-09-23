@@ -65,7 +65,10 @@ def create_app(config_name: str = 'default', server_mode: bool | None = None) ->
     app.config['SERVER_MODE'] = server_mode
 
     _install_host_check(app)
+    _install_csrf_check(app)
     _install_security_headers(app)
+    # 코레일 로그인 무차별 대입 막기 (auth.login 이 쓴다)
+    app.extensions['login_throttle'] = _FailureThrottle(LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW)
 
     app.secret_key = _load_secret_key()
     # 자바스크립트에서 세션 쿠키를 못 읽게, 다른 사이트에서 온 POST 에는 안 실리게
@@ -160,6 +163,54 @@ def _install_host_check(app: Flask) -> None:
         return None
 
 
+#: 바뀌는 요청(POST 등)만 검사한다. GET/HEAD/OPTIONS 는 아무것도 바꾸지 않는다.
+_SAFE_METHODS = {'GET', 'HEAD', 'OPTIONS'}
+
+
+def is_same_origin_request() -> bool:
+    """다른 사이트가 몰래 보낸 요청(CSRF)인가를 가린다.
+
+    1. 브라우저가 붙이는 Sec-Fetch-Site 가 있으면 그것만 본다 (same-origin / none 만 통과).
+    2. 없으면(오래된 브라우저·iOS 16.3 이하 WKWebView) Origin 의 호스트가 이 서버와 같은지.
+       'null' Origin(샌드박스 iframe 등)은 거절한다.
+    3. Origin 도 없으면 Referer 로 같은 걸 본다.
+    4. 셋 다 없으면 브라우저 밖(스크립트·테스트·폰 앱의 네이티브 호출)이라 통과.
+    """
+    site = request.headers.get('Sec-Fetch-Site')
+    if site is not None:
+        return site in ('same-origin', 'none')
+    host = (request.host or '').lower()
+    origin = request.headers.get('Origin')
+    if origin is not None:
+        if origin.strip().lower() == 'null':
+            return False
+        return urlsplit(origin).netloc.lower() == host
+    referer = request.headers.get('Referer')
+    if referer:
+        return urlsplit(referer).netloc.lower() == host
+    return True
+
+
+def _install_csrf_check(app: Flask) -> None:
+    """POST 등 바뀌는 요청은 전부 같은 사이트에서 온 것만 받는다.
+
+    예전엔 /start_reservation 에만 있어서 다른 사이트가 /logout, /stop_macro,
+    /api/card/*, /api/telegram/* 등을 몰래 부를 수 있었다.
+    폰 앱 WebView 는 http://127.0.0.1:<port> 한 곳에서만 돌아 same-origin 으로 통과한다.
+    """
+    @app.before_request
+    def check_same_origin():
+        if request.method in _SAFE_METHODS or is_same_origin_request():
+            return None
+        logger.warning('다른 사이트에서 온 %s %s 요청을 거절 (Origin=%r, Sec-Fetch-Site=%r)',
+                       request.method, request.path, request.headers.get('Origin'),
+                       request.headers.get('Sec-Fetch-Site'))
+        message = '다른 사이트에서 온 요청은 받지 않습니다.'
+        if request.path.startswith('/api/') or request.is_json:
+            return {'success': False, 'message': message}, 403
+        return message, 403, {'Content-Type': 'text/plain; charset=utf-8'}
+
+
 def safe_next(target: str | None) -> str:
     """/gate?next= 로 받은 되돌아갈 주소. 같은 사이트 경로가 아니면 '/'.
 
@@ -179,6 +230,10 @@ def safe_next(target: str | None) -> str:
 #: 접근 비밀번호 무차별 대입 막기: IP 마다 GATE_WINDOW 초 안에 GATE_MAX_FAILURES 번 틀리면 429
 GATE_MAX_FAILURES = 5
 GATE_WINDOW = 5 * 60
+
+#: 코레일 로그인(/login POST): IP 마다 LOGIN_WINDOW 초 안에 LOGIN_MAX_ATTEMPTS 번까지
+LOGIN_MAX_ATTEMPTS = 10
+LOGIN_WINDOW = 60
 
 
 class _FailureThrottle:
@@ -229,8 +284,10 @@ CONTENT_SECURITY_POLICY = '; '.join([
 def _install_security_headers(app: Flask) -> None:
     @app.after_request
     def security_headers(resp):
-        # 주소(예: 폰 앱의 /__auth?t=토큰)가 바깥 사이트로 Referer 에 실려 나가지 않게
-        resp.headers.setdefault('Referrer-Policy', 'no-referrer')
+        # 주소(예: 폰 앱의 /__auth?t=토큰)가 바깥 사이트로 Referer 에 실려 나가지 않게.
+        # 'no-referrer' 는 같은 사이트 POST 의 Origin 까지 'null' 로 만들어 (Sec-Fetch-Site 가 없는
+        # 옛 WKWebView 에서) CSRF 검사가 우리 폼을 막으므로, 같은 사이트 안에서만 보낸다.
+        resp.headers.setdefault('Referrer-Policy', 'same-origin')
         resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
         resp.headers.setdefault('Content-Security-Policy', CONTENT_SECURITY_POLICY)
         return resp
