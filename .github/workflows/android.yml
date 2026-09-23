@@ -9,8 +9,10 @@ name: Build Android App
 #   ANDROID_KEYSTORE_PASSWORD
 #   ANDROID_KEY_ALIAS
 #   ANDROID_KEY_PASSWORD
-# 없으면 디버그 키로 서명합니다. 설치는 되지만 빌드마다 키가 달라서 업데이트할 때
-# 기존 앱을 지우고 다시 깔아야 합니다. (키 만드는 법은 mobile/android/README.md)
+# 태그 빌드(릴리스)는 네 개가 모두 없으면 실패합니다. 디버그 키로 서명한 APK 는 빌드마다
+# 키가 달라서 기존 설치본을 업데이트할 수 없기 때문입니다.
+# 수동 실행은 시크릿이 없으면 디버그 키로 서명하고, 파일 이름에 -debugsigned 를 붙입니다.
+# (키 만드는 법은 mobile/android/README.md)
 on:
   push:
     tags:
@@ -51,13 +53,27 @@ jobs:
       - name: 서명 키 준비
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
+          # 값은 출력하지 않는다. 비어 있는 시크릿의 "이름" 만 알린다.
+          missing=""
+          [ -n "$KEYSTORE_BASE64" ]   || missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ]         || missing="$missing ANDROID_KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ]      || missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -z "$missing" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "APK_SUFFIX=" >> "$GITHUB_ENV"
             echo "릴리스 키로 서명합니다."
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "::error::릴리스 서명 키 시크릿이 없습니다:$missing. 디버그 키로 서명하면 기존 설치본을 업데이트할 수 없어 릴리스를 만들지 않습니다. 저장소 Settings > Secrets > Actions 에 등록하세요 (mobile/android/README.md)."
+            exit 1
           else
-            echo "::warning::서명 키 시크릿이 없어 디버그 키로 서명합니다. 업데이트 시 앱을 지우고 다시 깔아야 합니다."
+            echo "APK_SUFFIX=-debugsigned" >> "$GITHUB_ENV"
+            echo "::warning::서명 키 시크릿이 없어($missing) 디버그 키로 서명합니다. 이 APK 는 시험용이며, 설치된 앱을 업데이트할 수 없습니다."
           fi
 
       - name: 빌드
@@ -66,19 +82,31 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # 태그 빌드는 gradle 에서도 한 번 더 막는다 (키 없이 디버그 서명으로 새지 않게)
+          ANDROID_REQUIRE_RELEASE_KEY: ${{ github.ref_type == 'tag' && '1' || '' }}
         run: ./gradlew assembleRelease --console=plain
+
+      - name: 릴리스 키로 서명됐는지 확인
+        if: github.ref_type == 'tag'
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          CERT=$("$APKSIGNER" verify --print-certs mobile/android/app/build/outputs/apk/release/app-release.apk)
+          if echo "$CERT" | grep -q "CN=Android Debug"; then
+            echo "::error::APK 가 디버그 키로 서명됐습니다. 릴리스로 내보내지 않습니다."
+            exit 1
+          fi
 
       - name: 이름 정리
         run: |
           mkdir -p dist
           cp mobile/android/app/build/outputs/apk/release/app-release.apk \
-             "dist/TrainReservationApp-v${VERSION}.apk"
+             "dist/TrainReservationApp-v${VERSION}${APK_SUFFIX}.apk"
           ls -la dist
 
       - name: 아티팩트 업로드
         uses: actions/upload-artifact@v7
         with:
-          name: TrainReservationApp-v${{ env.VERSION }}-android
+          name: TrainReservationApp-v${{ env.VERSION }}${{ env.APK_SUFFIX }}-android
           path: dist/*.apk
 
       - name: Release 에 첨부

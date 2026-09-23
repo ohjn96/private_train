@@ -11,6 +11,8 @@
 - bridge.onServerReady(port)              (있으면) 서버가 실제로 연 포트. port=0 으로 시작하면
                                           운영체제가 빈 포트를 고르므로 플랫폼은 이걸로 주소를 안다.
                                           없는 플랫폼은 server_port() 로 물어봐도 된다.
+- bridge.batteryStatus() -> json 문자열    (있으면) 배터리 최적화 예외 여부·제조사별 안내.
+  bridge.requestBatteryExemption()        (있으면) 예외 요청 화면을 띄운다. 화면은 /__app/battery 로 쓴다.
 
 서버 확인 (/__hello):
 - 토큰을 쿠키로 보내기 전에, 그 포트에 떠 있는 게 정말 우리 서버인지 확인한다.
@@ -29,6 +31,8 @@
 - 예기치 않은 오류로 끝나면 잠시 뒤 같은 작업으로 다시 시작한다 (횟수 제한).
 - 프로세스가 죽었다 살아나면 플랫폼이 저장된 작업으로 resume_job() 을 부른다.
 - /__health 로 서버가 살아 있는지, 매크로가 멈춰 있지 않은지 알려준다 (안드로이드는 30초마다 확인).
+  로그·조회가 있을 때마다 진행 시각(heartbeat)을 새로 찍고, 예약·결제 중에는 phase 를 실어
+  플랫폼이 그동안은 절대 프로세스를 다시 띄우지 않게 한다 (느린 결제를 멈춘 것으로 오해하지 않게).
 """
 import hashlib
 import hmac
@@ -64,8 +68,13 @@ CRASH_LIMIT = 3
 CRASH_WINDOW = 30 * 60
 _crash_times: list[float] = []
 
-#: 마지막으로 조회를 시도한 시각 (헬스체크가 "멈췄는지" 판단하는 데 쓴다)
+#: 마지막으로 매크로가 뭔가 한 시각 (조회·로그). 헬스체크가 "멈췄는지" 판단하는 데 쓴다
 _last_progress = {'at': time.monotonic()}
+
+#: 되돌릴 수 없는 단계: 'reserve'(예약 요청 중) / 'payment'(결제 중·결제 대기). None 이면 조회 중.
+#: 이게 있는 동안 플랫폼은 매크로가 느려도 프로세스를 다시 띄우지 않는다.
+_phase = {'name': None, 'since': None}
+_phase_lock = threading.Lock()
 
 #: 서버가 실제로 연 포트 (start 가 채운다)
 _port = {'value': None}
@@ -96,6 +105,7 @@ def start(files_dir: str, port: int, token: str, version: str, debug: bool = Fal
     _require_token(app, token)
     _wire_platform()
     _add_health_route(app)
+    _add_battery_routes(app)
     if debug:
         _add_debug_routes(app)
     _ready.set()
@@ -238,20 +248,27 @@ def _wire_platform() -> None:
         return started
 
     original_attempt = tg.update_attempt
+    original_log = tg.push_log
 
     def update_attempt(attempt):
-        _last_progress['at'] = time.monotonic()
+        _heartbeat()
         original_attempt(attempt)
+
+    def push_log(event_type, message, **extra):
+        # 로그가 나온다 = 매크로가 살아서 뭔가 하고 있다 (재로그인 대기·예약·결제 포함)
+        _heartbeat()
+        original_log(event_type, message, **extra)
 
     def try_start_macro_tracked(owner=None):
         started = try_start_macro(owner=owner)
         if started:
-            _last_progress['at'] = time.monotonic()
+            _heartbeat()
         return started
 
     tg.set_macro_state = set_macro_state
     tg.try_start_macro = try_start_macro_tracked
     tg.update_attempt = update_attempt
+    tg.push_log = push_log
     _supervise_macros()
 
 
@@ -454,11 +471,14 @@ def _supervise_macros() -> None:
             _active.update(job=job, reserved=False, card=card)
         if job:
             _bridge().saveJob(json.dumps(job, ensure_ascii=False))
+        untrack = _track_phases(service, card)
         try:
             reason = original(service, provider, selected_trains, seat_option, card,
                               passenger_count=passenger_count, sequential=sequential,
                               call_interval=call_interval, owner=owner)
         finally:
+            untrack()
+            _set_phase(None)
             with _active_lock:
                 job = _active['job']        # 로그아웃 등으로 도중에 지워졌을 수 있다
                 reserved = _active['reserved']
@@ -530,12 +550,131 @@ def _add_health_route(app) -> None:
     def health():
         tg = TelegramService.get_instance()
         running = bool(tg._macro_running)
+        phase, since = current_phase()
         return {
             'ok': True,
             'macro_running': running,
             'attempt': tg._macro_attempt,
             'stalled_seconds': round(time.monotonic() - _last_progress['at']) if running else 0,
+            # 예약·결제 중이면 그 이름. 플랫폼은 이 동안 절대 프로세스를 다시 띄우지 않는다
+            'phase': phase,
+            'phase_seconds': round(time.monotonic() - since) if phase else 0,
         }
+
+
+def _add_battery_routes(app) -> None:
+    """배터리 최적화 예외 상태·요청 (안드로이드만). 브리지에 없으면 404 → 화면이 줄을 숨긴다."""
+    from flask import request
+
+    from webui.routes.reservation import is_same_origin_request
+
+    @app.route('/__app/battery', methods=['GET', 'POST'])
+    def app_battery():
+        bridge = _bridge()
+        status = getattr(bridge, 'batteryStatus', None)
+        ask = getattr(bridge, 'requestBatteryExemption', None)
+        if status is None or ask is None:
+            return {'supported': False}, 404
+        if request.method == 'POST':
+            if not is_same_origin_request():
+                return {'error': 'origin'}, 403
+            try:
+                ask()
+            except Exception:  # noqa: BLE001
+                logger.exception('requestBatteryExemption failed')
+                return {'ok': False}, 500
+            return {'ok': True}
+        try:
+            data = json.loads(str(status()))
+        except Exception:  # noqa: BLE001
+            logger.exception('batteryStatus failed')
+            return {'supported': False}, 500
+        data['supported'] = True
+        return data, 200, {'Cache-Control': 'no-store'}
+
+
+# ──────────────────────────────────────────────── 진행 표시 (헬스체크용)
+
+def _heartbeat() -> None:
+    _last_progress['at'] = time.monotonic()
+
+
+def _set_phase(name: str | None) -> None:
+    with _phase_lock:
+        if _phase['name'] != name:
+            _phase['name'] = name
+            _phase['since'] = time.monotonic() if name else None
+    _heartbeat()
+
+
+def current_phase() -> tuple[str | None, float | None]:
+    with _phase_lock:
+        return _phase['name'], _phase['since']
+
+
+def _track_phases(service, card):
+    """이번 매크로 동안 service 의 예약·결제 호출을 단계로 표시한다. 되돌리는 함수를 돌려준다.
+
+    - reserve() 동안 'reserve'. 좌석을 잡았고 자동결제가 남았으면 결제가 끝날 때까지 'payment' 로 둔다
+      (예약 성공 알림을 보내는 사이에 다시 띄워지면 결제를 못 한다).
+    - pay_with_card() 동안 'payment'. 끝나면 풀린다.
+    - 다음 조회(search)가 시작되면 풀린다.
+    인스턴스에만 덮어쓰고 끝나면 지우므로, 같은 서비스를 쓰는 다른 곳에는 흔적이 남지 않는다.
+    """
+    wrapped = []
+
+    def wrap(method_name, around):
+        original = getattr(service, method_name, None)
+        if original is None or getattr(original, '__phase_tracked__', False):
+            return
+        shadowed = method_name in getattr(service, '__dict__', {})
+
+        def tracked(*args, **kwargs):
+            return around(original, *args, **kwargs)
+
+        tracked.__phase_tracked__ = True
+        try:
+            setattr(service, method_name, tracked)
+        except (AttributeError, TypeError):
+            return
+        wrapped.append((method_name, original, shadowed))
+
+    def around_reserve(original, *args, **kwargs):
+        autopay = bool(card and card.get('auto_pay', True))
+        _set_phase('reserve')
+        result = None
+        try:
+            result = original(*args, **kwargs)
+            return result
+        finally:
+            _set_phase('payment' if autopay and getattr(result, 'success', False) is True else None)
+
+    def around_pay(original, *args, **kwargs):
+        _set_phase('payment')
+        try:
+            return original(*args, **kwargs)
+        finally:
+            _set_phase(None)
+
+    def around_search(original, *args, **kwargs):
+        _set_phase(None)
+        return original(*args, **kwargs)
+
+    wrap('reserve', around_reserve)
+    wrap('pay_with_card', around_pay)
+    wrap('search', around_search)
+
+    def untrack():
+        for method_name, original, shadowed in reversed(wrapped):
+            try:
+                if shadowed:
+                    setattr(service, method_name, original)
+                else:
+                    delattr(service, method_name)
+            except (AttributeError, TypeError):
+                pass
+
+    return untrack
 
 
 class _FakeService:

@@ -55,7 +55,10 @@ class ServerService : Service() {
         private const val HEALTH_INTERVAL_S = 30L
         /** 연속으로 이만큼 응답이 없으면(약 2분) 프로세스를 다시 띄운다 */
         private const val HEALTH_MAX_FAILURES = 4
-        /** 매크로가 이 시간(초) 동안 한 번도 조회하지 못하면 멈춘 것으로 본다 */
+        /**
+         * 매크로가 이 시간(초) 동안 아무 진행(조회·로그)이 없으면 멈춘 것으로 본다.
+         * 예약·결제 중(/__health 의 phase)에는 아무리 오래 걸려도 다시 띄우지 않는다.
+         */
         private const val STALL_LIMIT_S = 180
 
         @Volatile
@@ -63,6 +66,11 @@ class ServerService : Service() {
             private set
 
         private val serverStarted = AtomicBoolean(false)
+
+        /** 되살릴 작업이 있거나 매크로가 돌던 중이었나 (멈췄다고 알릴 가치가 있나) */
+        fun wasWorking(context: Context): Boolean =
+            SecureStore.hasJob(context) ||
+                context.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ACTIVE, false)
 
         fun start(context: Context) {
             val intent = Intent(context, ServerService::class.java)
@@ -90,10 +98,18 @@ class ServerService : Service() {
         Notifications.createChannels(this)
         if (!goForeground()) {
             // 시스템이 백그라운드에서 다시 띄울 때 포그라운드 시작이 거부될 수 있다
-            // (Android 12+). 죽지 말고 조용히 멈춘다. 앱을 열면 다시 시작된다.
-            stopSelf()
+            // (Android 12+). 죽지는 않되, 조용히 멈추지도 않는다: 하던 작업이 있었다면
+            // "눌러서 다시 시작" 알림을 띄운다. 누르면 앱이 열리고 저장된 작업이 이어진다.
+            onForegroundRefused()
             return
         }
+        Notifications.cancel(this, Notifications.ID_RESTART_NEEDED)
+        startPythonServer()
+        startHealthChecks()
+    }
+
+    /** 저장된 작업을 읽는다 (Keystore 복호화라 메인 스레드에선 부르지 않는다). */
+    private fun loadJobOrWarn(): String? {
         val job = SecureStore.loadJob(this)
         if (job != null) {
             // 돌던 매크로가 있었다 (프로세스가 죽었거나 폰을 재부팅함): 이어서 돌린다.
@@ -102,8 +118,7 @@ class ServerService : Service() {
         } else {
             warnIfMacroWasLost()
         }
-        startPythonServer(job)
-        startHealthChecks()
+        return job
     }
 
     /**
@@ -141,11 +156,17 @@ class ServerService : Service() {
             }
         }
         if (!goForeground()) {
-            stopSelf()
+            onForegroundRefused()
             return START_NOT_STICKY
         }
         // 시스템이 메모리 때문에 죽였다가 여유가 생기면 다시 띄운다
         return START_STICKY
+    }
+
+    /** 포그라운드 시작이 거부됐다. 멈추되, 이어서 돌릴 작업이 있으면 사용자에게 알린다. */
+    private fun onForegroundRefused() {
+        if (wasWorking(this)) Notifications.showRestartNeeded(this)
+        stopSelf()
     }
 
     override fun onDestroy() {
@@ -155,12 +176,14 @@ class ServerService : Service() {
         super.onDestroy()
     }
 
-    private fun startPythonServer(job: String?) {
+    private fun startPythonServer() {
         if (!serverStarted.compareAndSet(false, true)) return
         val filesDir = filesDir.absolutePath
-        val token = AppToken.get(this)
+        // 작업 복호화·토큰·파이썬 초기화는 모두 이 스레드에서 (메인 스레드가 버벅이지 않게)
         thread(name = "python-server", isDaemon = true) {
             try {
+                val token = AppToken.get(this)
+                val job = loadJobOrWarn()
                 if (!Python.isStarted()) Python.start(AndroidPlatform(applicationContext))
                 val module = Python.getInstance().getModule("android_main")
                 // 자동 재개는 서버가 준비되길 기다렸다가 따로 돈다 (start 는 돌아오지 않는다)
@@ -212,7 +235,13 @@ class ServerService : Service() {
         }
         healthFailures = 0
         val stalled = status.optInt("stalled_seconds", 0)
+        // 예약·결제 중이면 느려도 절대 죽이지 않는다 (결제 도중에 끊기면 좌석만 잡고 결제를 못 한다)
+        val phase = if (status.isNull("phase")) "" else status.optString("phase", "")
         if (status.optBoolean("macro_running") && stalled >= STALL_LIMIT_S) {
+            if (phase.isNotEmpty()) {
+                Log.w(TAG, "macro quiet for ${stalled}s but in '$phase' phase: not restarting")
+                return
+            }
             restartProcess("매크로가 ${stalled}초 동안 멈춤")
         }
     }
@@ -233,6 +262,11 @@ class ServerService : Service() {
             if (running) putBoolean(KEY_ACTIVE, true).putString(KEY_SUMMARY, summary) else clear()
         }.commit()  // 곧바로 죽을 수도 있으니 동기로 쓴다
         if (running) acquireLocks() else releaseLocks()
+        goForeground()
+    }
+
+    /** 알림 권한을 방금 받았다: 권한 없을 때 올려 보이지 않던 상단 알림을 다시 올린다. */
+    fun refreshNotification() {
         goForeground()
     }
 

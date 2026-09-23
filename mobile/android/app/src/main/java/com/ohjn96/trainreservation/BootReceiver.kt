@@ -15,7 +15,9 @@ class BootReceiver : BroadcastReceiver() {
         try {
             ServerService.start(context)
         } catch (e: Exception) {
+            // Android 12+ 는 백그라운드에서 포그라운드 서비스 시작을 막을 수 있다: 조용히 멈추지 말고 알린다
             Log.e("BootReceiver", "could not resume after boot", e)
+            Notifications.showRestartNeeded(context)
         }
     }
 }

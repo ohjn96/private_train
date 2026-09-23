@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
@@ -45,6 +44,7 @@ class MainActivity : Activity() {
     private companion object {
         /** 웹 화면의 바탕색 (app/templates/base.html 의 rail.ground) */
         const val GROUND = "#F6F4F0"
+        const val REQ_NOTIFICATIONS = 1
     }
 
     private lateinit var webView: WebView
@@ -93,10 +93,11 @@ class MainActivity : Activity() {
         val token = AppToken.get(this)
         CookieManager.getInstance().setAcceptCookie(true)
 
-        requestNotificationPermission()
+        val asking = requestNotificationPermission()
         ServerService.start(this)
         waitForServerThenLoad(token)
-        main.postDelayed({ askBatteryExemptionIfNeeded() }, 1500)
+        // 알림 권한 창과 겹치지 않게: 묻는 중이면 답을 받은 뒤(onRequestPermissionsResult)에 안내한다
+        if (!asking) main.postDelayed({ askBatteryExemptionIfNeeded() }, 1500)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -143,6 +144,10 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        Bridge.foreground = java.lang.ref.WeakReference(this)
+        // 서비스가 백그라운드 재시작을 거부당해 멈춰 있었다면("눌러서 다시 시작" 알림) 여기서
+        // 다시 띄운다. 저장된 작업이 있으면 ServerService 가 자동으로 이어서 돌린다.
+        if (ServerService.instance == null) ServerService.start(this)
         webView.onResume()
         warnIfNotificationsOff()
     }
@@ -150,6 +155,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         // 화면이 안 보일 때는 웹뷰를 쉬게 한다 (매크로는 서비스에서 계속 돈다).
         // 돌아오면 화면이 상태를 다시 받아 온다 (visibilitychange).
+        if (Bridge.foreground?.get() === this) Bridge.foreground = null
         webView.onPause()
         super.onPause()
     }
@@ -160,16 +166,13 @@ class MainActivity : Activity() {
     }
 
     private var notificationWarned = false
+    /** 알림 권한 창이 떠 있다 (답을 받기 전). 이 동안엔 "알림이 꺼져 있어요" 를 띄우지 않는다. */
+    private var permissionPending = false
 
     /** 알림이 꺼져 있으면 예약 성공을 놓치므로 한 번 안내한다 (앱을 열 때마다 최대 한 번). */
     private fun warnIfNotificationsOff() {
+        if (permissionPending) return  // 첫 onResume 은 권한 창의 답보다 먼저 온다
         if (notificationWarned || NotificationManagerCompat.from(this).areNotificationsEnabled()) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
-            !getSharedPreferences("app", MODE_PRIVATE).getBoolean("notif_asked", false)
-        ) {
-            return  // 아직 권한을 물어보는 중
-        }
         notificationWarned = true
         AlertDialog.Builder(this)
             .setTitle("알림이 꺼져 있어요")
@@ -191,8 +194,13 @@ class MainActivity : Activity() {
         webView.evaluateJavascript("(window.__appBack && window.__appBack()) === true") { handled ->
             if (handled == "true") return@evaluateJavascript
             val path = Uri.parse(webView.url ?: "").path ?: "/"
-            if (path != "/" && webView.canGoBack()) {
-                webView.goBack()  // 로그인 화면 등 다른 페이지에서 돌아올 때
+            val history = webView.copyBackForwardList()
+            val previous = if (history.currentIndex > 0) {
+                Uri.parse(history.getItemAtIndex(history.currentIndex - 1).url).path
+            } else null
+            // 로그인 화면으로는 되돌아가지 않는다 (로그인 실패 뒤 뒤로 가기가 앞의 로그인 화면을 다시 띄웠다)
+            if (path != "/" && path != "/login" && previous != "/login" && webView.canGoBack()) {
+                webView.goBack()  // 다른 페이지에서 돌아올 때
             } else {
                 // 끄지 않고 뒤로 보낸다. 매크로는 서비스에서 계속 돈다.
                 moveTaskToBack(true)
@@ -254,45 +262,51 @@ class MainActivity : Activity() {
         false
     }
 
-    private fun requestNotificationPermission() {
+    /** 알림 권한을 묻는다. 창을 띄웠으면 true (답은 onRequestPermissionsResult 로 온다). */
+    private fun requestNotificationPermission(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             getSharedPreferences("app", MODE_PRIVATE).edit().putBoolean("notif_asked", true).apply()
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            permissionPending = true
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
+            return true
         }
+        return false
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_NOTIFICATIONS) return
+        permissionPending = false
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            // 권한이 없을 때 띄운 상단 "실행 중" 알림은 보이지 않았다: 권한을 받았으니 다시 올린다
+            ServerService.instance?.refreshNotification() ?: ServerService.start(this)
+        }
+        main.postDelayed({ askBatteryExemptionIfNeeded() }, 500)
     }
 
     /**
-     * 배터리 최적화에서 빼 달라고 한 번 안내한다. 이게 켜져 있으면 제조사(특히 삼성·샤오미)가
+     * 배터리 최적화에서 빼 달라고 안내한다. 이게 켜져 있으면 제조사(특히 삼성·샤오미)가
      * 화면이 꺼진 뒤 몇 시간 안에 매크로를 죽일 수 있다.
+     * 설치·업데이트마다 한 번만 묻는다. 그 뒤로는 설정·진행 화면의 상태 줄에서 다시 요청한다.
      */
     private fun askBatteryExemptionIfNeeded() {
-        val pm = getSystemService(PowerManager::class.java)
-        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        if (isFinishing || PowerHelp.isExempt(this)) return
         val prefs = getSharedPreferences("app", MODE_PRIVATE)
-        if (prefs.getBoolean("battery_dont_ask", false)) return
+        if (prefs.getInt("battery_asked_version", 0) == BuildConfig.VERSION_CODE) return
+        prefs.edit().putInt("battery_asked_version", BuildConfig.VERSION_CODE).apply()
 
+        val tip = PowerHelp.makerTip()
         AlertDialog.Builder(this)
             .setTitle("백그라운드에서 계속 돌리려면")
             .setMessage(
-                "화면을 끄거나 앱을 닫아도 예약 매크로가 계속 돌도록 배터리 최적화에서 이 앱을 빼 주세요.\n\n" +
-                    "삼성폰은 추가로: 설정 → 배터리 → 백그라운드 사용 제한 → '절전 예외 앱'에 추가"
+                "화면을 끄거나 앱을 닫아도 예약 매크로가 계속 돌도록 배터리 최적화에서 이 앱을 빼 주세요." +
+                    (if (tip.isNotEmpty()) "\n\n추가로 $tip" else "") +
+                    "\n\n다시 묻지 않아요. 나중에 설정 탭에서 켤 수 있어요."
             )
-            .setPositiveButton("설정 열기") { _, _ ->
-                @SuppressLint("BatteryLife")
-                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                    .setData(Uri.parse("package:$packageName"))
-                try {
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                }
-            }
+            .setPositiveButton("설정 열기") { _, _ -> PowerHelp.request(this) }
             .setNegativeButton("나중에", null)
-            .setNeutralButton("다시 묻지 않기") { _, _ ->
-                prefs.edit().putBoolean("battery_dont_ask", true).apply()
-            }
             .show()
     }
 }

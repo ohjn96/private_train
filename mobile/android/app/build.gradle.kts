@@ -23,9 +23,35 @@ val appVersionCode: Int = run {
     major.toInt() * 1_000_000 + minor.toInt() * 10_000 + patch.toInt() * 100 + pre
 }
 
-// 릴리스 서명 키. CI 에선 시크릿으로, 로컬에선 환경변수로 넘긴다.
-// 없으면 디버그 키로 서명한다 (설치는 되지만, 키가 바뀌면 지우고 다시 깔아야 한다).
-val keystorePath: String? = System.getenv("ANDROID_KEYSTORE_PATH")
+// 릴리스 서명 키. CI 에선 시크릿(환경변수)으로 넘긴다. 로컬에선 환경변수가 없으면
+// signing.env (기본: ~/.local/share/private_train-android/signing/signing.env, 옆에 release.jks)
+// 를 읽는다. 둘 다 없으면 디버그 키로 서명한다 (설치는 되지만, 키가 바뀌면 지우고 다시 깔아야 한다).
+// ANDROID_REQUIRE_RELEASE_KEY=1 (CI 의 태그 빌드) 이면 키가 없을 때 빌드를 멈춘다.
+val localSigning: Map<String, String> = run {
+    val envFile = System.getenv("ANDROID_SIGNING_ENV")?.let(::File)
+        ?: File(System.getProperty("user.home"), ".local/share/private_train-android/signing/signing.env")
+    if (!envFile.isFile) return@run emptyMap()
+    val values = envFile.readLines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") && "=" in it }
+        .associate { line ->
+            val (k, v) = line.removePrefix("export ").split("=", limit = 2)
+            k.trim() to v.trim().removeSurrounding("\"").removeSurrounding("'")
+        }
+    val jks = values["ANDROID_KEYSTORE_PATH"]?.let(::File) ?: File(envFile.parentFile, "release.jks")
+    if (jks.isFile) values + ("ANDROID_KEYSTORE_PATH" to jks.path) else emptyMap()
+}
+fun signingValue(name: String): String? =
+    System.getenv(name)?.takeIf { it.isNotEmpty() }
+        ?: localSigning[name].takeIf { System.getenv("ANDROID_KEYSTORE_PATH").isNullOrEmpty() }
+val keystorePath: String? = signingValue("ANDROID_KEYSTORE_PATH")
+val requireReleaseKey: Boolean = System.getenv("ANDROID_REQUIRE_RELEASE_KEY") == "1"
+if (requireReleaseKey && keystorePath == null) {
+    throw GradleException(
+        "릴리스 서명 키가 없습니다 (ANDROID_KEYSTORE_PATH). 디버그 키로 서명한 APK 는 " +
+            "기존 설치본을 업데이트할 수 없어 릴리스로 내보내지 않습니다."
+    )
+}
 
 android {
     namespace = "com.ohjn96.trainreservation"
@@ -48,9 +74,9 @@ android {
         if (keystorePath != null) {
             create("release") {
                 storeFile = file(keystorePath)
-                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                storePassword = signingValue("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("ANDROID_KEY_ALIAS")
+                keyPassword = signingValue("ANDROID_KEY_PASSWORD")
             }
         }
     }

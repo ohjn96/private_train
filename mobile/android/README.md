@@ -52,8 +52,9 @@
 `.github/workflows/android.yml`. `v*` 태그를 푸시하면 APK 를 빌드해 Release 에 올리고,
 Actions 탭에서 수동 실행도 됩니다.
 
-**서명 키를 꼭 등록하세요.** 없으면 빌드마다 다른 디버그 키로 서명돼서, 업데이트할 때마다
-앱을 지우고 다시 깔아야 합니다 (로그인·설정도 날아감). 저장소 Settings → Secrets → Actions:
+**서명 키를 꼭 등록하세요.** 태그 빌드는 아래 네 개가 없으면 실패합니다 (디버그 키로 서명하면
+빌드마다 키가 달라서 기존 설치본을 업데이트할 수 없기 때문). 수동 실행은 없으면 디버그 키로 서명하고
+파일 이름에 `-debugsigned` 를 붙입니다 (시험용). 저장소 Settings → Secrets → Actions:
 
 | 시크릿 | 값 |
 |---|---|
@@ -78,6 +79,9 @@ cd mobile/android
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 export CHAQUOPY_BUILD_PYTHON=/path/to/python3.12   # PATH 에 python3.12 가 있으면 생략
 ./gradlew assembleDebug        # → app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease      # 릴리스 키: 환경변수(ANDROID_KEYSTORE_PATH 등)가 없으면
+                               # ~/.local/share/private_train-android/signing/signing.env 와
+                               # 옆의 release.jks 를 쓴다 (ANDROID_SIGNING_ENV 로 바꿀 수 있음)
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
