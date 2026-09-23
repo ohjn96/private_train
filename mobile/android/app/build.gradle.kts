@@ -4,8 +4,9 @@ plugins {
     id("com.chaquo.python")
 }
 
-// 저장소 루트. 파이썬 코드(webui/, core/, korail2/)와 VERSION 을 여기서 가져온다.
-val repoRoot: File = rootProject.projectDir.parentFile
+// 저장소 루트 (이 프로젝트는 mobile/android/). 파이썬 코드(webui/, core/, korail2/)와
+// VERSION, 폰 공통 런타임(mobile/shared/)을 여기서 가져온다.
+val repoRoot: File = rootProject.projectDir.parentFile.parentFile
 val appVersion: String = File(repoRoot, "VERSION").readText().trim()
 
 // 2.3.3 -> 20303. 업데이트 설치가 되려면 버전이 올라갈 때마다 커져야 한다.
@@ -69,6 +70,9 @@ val syncPythonSources by tasks.registering(Sync::class) {
     from(repoRoot) {
         include("webui/**", "core/**", "korail2/**")
         exclude("**/__pycache__/**", "**/*.pyc")
+    }
+    from(File(repoRoot, "mobile/shared")) {
+        include("*.py")
     }
     into(pythonSrc)
 }

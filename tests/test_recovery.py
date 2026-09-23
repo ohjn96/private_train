@@ -127,12 +127,10 @@ class AndroidSupervisorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        sys.path.insert(0, os.path.join(root, 'mobile', 'app', 'src', 'main', 'python'))
-        java = types.ModuleType('java')
-        java.jclass = lambda name: FakeBridge
-        sys.modules['java'] = java
-        import android_main
-        cls.android_main = android_main
+        sys.path.insert(0, os.path.join(root, 'mobile', 'shared'))
+        import mobile_runtime
+        mobile_runtime.set_bridge(FakeBridge)
+        cls.android_main = mobile_runtime
 
     def setUp(self):
         FakeBridge.calls = []

@@ -182,7 +182,7 @@ Restart=on-failure
 안드로이드폰이면 앱을 깔아서 **폰에서 직접** 돌릴 수 있습니다. 서버가 필요 없고, 코레일 호출도
 각자 폰의 IP 로 나갑니다. 앱을 내리거나 화면을 꺼도 매크로가 계속 돌고, 예약 성공은 폰 알림으로 옵니다.
 [Releases](https://github.com/ohjn96/private_train/releases) 에서 `TrainReservationApp-v<버전>.apk` 를 받아 설치하세요.
-설치·빌드·서명 방법은 [mobile/README.md](mobile/README.md). (iPhone 은 아래 서버 버전을 쓰세요)
+설치·빌드·서명 방법은 [mobile/android/README.md](mobile/android/README.md).
 
 ### Oracle Cloud 에 올리기 (무료, 폰에서 접속, 여러 명)
 

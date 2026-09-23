@@ -24,8 +24,7 @@ from datetime import datetime, timedelta
 from pprint import pprint
 from datetime import timezone
 
-from Crypto.Util.Padding import pad
-from Crypto.Cipher import AES
+from ._aes import BLOCK_SIZE, cbc_encrypt, pad
 
 try:
     # noinspection PyPackageRequirements
@@ -730,8 +729,8 @@ class Korail(object):
 
     def _generate_sid(self, ts):
         plaintext = (f"{self._device}{ts}").encode('utf-8')
-        cipher = AES.new(self._sid_key, AES.MODE_CBC, iv=self._sid_key)
-        return base64.b64encode(cipher.encrypt(pad(plaintext, 16))).decode('utf-8') + "\n"
+        encrypted = cbc_encrypt(self._sid_key, self._sid_key, pad(plaintext, 16))
+        return base64.b64encode(encrypted).decode('utf-8') + "\n"
 
     def _get_auth_headers_and_sid(self, url):
         headers = {}
@@ -759,11 +758,9 @@ class Korail(object):
 
             encrypt_key = key.encode(encoding='utf-8', errors='strict')
             iv = key[:16].encode(encoding='utf-8', errors='strict')
-            cipher = AES.new(encrypt_key, AES.MODE_CBC, iv)
-            
-            padded_data = pad(password.encode("utf-8"), AES.block_size)
+            padded_data = pad(password.encode("utf-8"), BLOCK_SIZE)
 
-            return base64.b64encode(base64.b64encode(cipher.encrypt(padded_data))).decode("utf-8")
+            return base64.b64encode(base64.b64encode(cbc_encrypt(encrypt_key, iv, padded_data))).decode("utf-8")
         else:
             return False
 

@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*-
-"""안드로이드 앱 안에서 도는 파이썬 진입점 (Chaquopy).
+"""폰 앱(안드로이드·iPhone) 안에서 도는 파이썬 공통 런타임.
 
-공통 웹 화면(webui/)을 폰 안의 127.0.0.1 에 띄우고, 화면은 WebView 가 보여준다.
+공통 웹 화면(webui/)을 폰 안의 127.0.0.1 에 띄우고, 화면은 각 플랫폼의 WebView 가 보여준다.
 코레일 호출은 이 폰에서, 이 폰의 IP 로 나간다.
 
-안드로이드 쪽과 주고받는 것:
-- ServerService 가 start() 를 백그라운드 스레드에서 부른다 (서버가 도는 동안 돌아오지 않음)
-- 매크로가 돌기 시작/멈추면 Bridge.onMacroState → 절전 방지 잠금, 상단 알림 문구
-- 예약 성공·결제·중단은 Bridge.notifyEvent → 안드로이드 알림
+플랫폼과는 bridge 하나로만 주고받는다 (set_bridge 로 꽂는다):
+- bridge.onMacroState(running, summary)   매크로가 돌기 시작/멈춤 → 절전 방지, 상단 표시
+- bridge.notifyEvent(kind, title, body)   예약 성공·결제·중단 → 폰 알림
+- bridge.saveJob(json) / bridge.clearJob() 되살릴 작업 저장/삭제 (플랫폼이 암호화해 둔다)
+안드로이드는 Kotlin Bridge(android_main.py), iPhone 은 파이썬 구현(ios app)을 꽂는다.
 
 자동 복구:
-- 매크로를 시작하면 작업 내용(열차·좌석·간격·로그인·카드)을 Bridge.saveJob 으로 넘긴다.
-  안드로이드가 Keystore 로 암호화해 저장한다.
-- 정상적으로 끝나면(예약 성공·사용자 중단·로그인 포기) Bridge.clearJob.
+- 매크로를 시작하면 작업 내용(열차·좌석·간격·로그인·카드)을 bridge.saveJob 으로 넘긴다.
+  플랫폼이 암호화해 저장한다 (안드로이드 Keystore, iPhone 데이터 보호).
+- 정상적으로 끝나면(예약 성공·사용자 중단·로그인 포기) bridge.clearJob.
 - 예기치 않은 오류로 끝나면 잠시 뒤 같은 작업으로 다시 시작한다 (횟수 제한).
-- 프로세스가 죽었다 살아나면 ServerService 가 저장된 작업으로 resume_job() 을 부른다.
-- /__health 로 서버가 살아 있는지, 매크로가 멈춰 있지 않은지 알려준다 (ServerService 가 30초마다 확인).
+- 프로세스가 죽었다 살아나면 플랫폼이 저장된 작업으로 resume_job() 을 부른다.
+- /__health 로 서버가 살아 있는지, 매크로가 멈춰 있지 않은지 알려준다 (안드로이드는 30초마다 확인).
 """
 import hmac
 import json
@@ -28,10 +29,18 @@ from datetime import date, datetime
 logger = logging.getLogger(__name__)
 
 #: WebView 가 쿠키로 들고 오는 토큰. 같은 폰의 다른 앱이 127.0.0.1 로 붙는 걸 막는다.
-TOKEN_COOKIE = 'android_token'
+#: (안드로이드는 쿠키를 미리 심고, iPhone 은 첫 주소 /__auth?t=… 로 받는다)
+TOKEN_COOKIE = 'app_token'
+
+#: 플랫폼 연결부 (set_bridge)
+_platform = {'bridge': None}
+
+
+def set_bridge(bridge) -> None:
+    _platform['bridge'] = bridge
 
 _started = threading.Event()
-#: _wire_android 가 끝났다 (자동 재개는 이걸 기다린 뒤 시작한다)
+#: _wire_platform 이 끝났다 (자동 재개는 이걸 기다린 뒤 시작한다)
 _ready = threading.Event()
 
 #: 예기치 않은 오류로 끝난 매크로를 다시 시작하는 한도: CRASH_WINDOW 초 안에 CRASH_LIMIT 번
@@ -59,14 +68,14 @@ def start(files_dir: str, port: int, token: str, version: str, debug: bool = Fal
 
     app = create_app(server_mode=False)
     _require_token(app, token)
-    _wire_android()
+    _wire_platform()
     _add_health_route(app)
     if debug:
         _add_debug_routes(app)
     _ready.set()
 
     server = make_server('127.0.0.1', int(port), app, threaded=True)
-    logger.info('android server on 127.0.0.1:%s', port)
+    logger.info('app server on 127.0.0.1:%s', port)
     server.serve_forever()
 
 
@@ -88,25 +97,35 @@ def stop_macro() -> None:
 
 
 def _require_token(app, token: str) -> None:
-    from flask import request
+    from flask import redirect, request
 
     @app.before_request
     def check_token():
+        if request.endpoint == 'app_auth':
+            return None
         given = request.cookies.get(TOKEN_COOKIE, '')
         if not hmac.compare_digest(given.encode(), token.encode()):
             return 'forbidden', 403
         return None
 
+    @app.route('/__auth', endpoint='app_auth')
+    def app_auth():
+        """첫 화면: 주소에 실린 토큰을 쿠키로 바꿔 준다 (쿠키를 미리 못 심는 WebView 용)."""
+        given = request.args.get('t', '')
+        if not hmac.compare_digest(given.encode(), token.encode()):
+            return 'forbidden', 403
+        resp = redirect('/')
+        resp.set_cookie(TOKEN_COOKIE, token, httponly=True, samesite='Strict', path='/')
+        return resp
 
-def _wire_android() -> None:
-    from java import jclass
 
+def _wire_platform() -> None:
     from webui.routes.reservation import add_macro_listener
     from webui.services.telegram_service import TelegramService
 
-    bridge = jclass('com.ohjn96.trainreservation.Bridge')
+    bridge = _bridge()
 
-    # 예약 성공·결제·중단 → 안드로이드 알림
+    # 예약 성공·결제·중단 → 폰 알림
     def notify(owner, kind, title, body):
         bridge.notifyEvent(kind, title, body)
 
@@ -211,8 +230,10 @@ def _add_debug_routes(app) -> None:
 # ──────────────────────────────────────────────── 자동 복구
 
 def _bridge():
-    from java import jclass
-    return jclass('com.ohjn96.trainreservation.Bridge')
+    bridge = _platform['bridge']
+    if bridge is None:
+        raise RuntimeError('mobile_runtime.set_bridge() 를 먼저 불러야 합니다')
+    return bridge
 
 
 def _job_from(service, selected_trains, seat_option, card, passenger_count, sequential,

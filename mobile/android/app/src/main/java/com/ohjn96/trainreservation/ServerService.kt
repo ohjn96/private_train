@@ -187,7 +187,7 @@ class ServerService : Service() {
             val conn = URL("http://127.0.0.1:$PORT/__health").openConnection() as HttpURLConnection
             conn.connectTimeout = 3000
             conn.readTimeout = 5000
-            conn.setRequestProperty("Cookie", "android_token=${AppToken.get(this)}")
+            conn.setRequestProperty("Cookie", "app_token=${AppToken.get(this)}")
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
             JSONObject(body)

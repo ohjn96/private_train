@@ -87,7 +87,7 @@ class MainActivity : Activity() {
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
             // HttpOnly: 화면의 스크립트가 토큰을 읽지 못하게
-            setCookie(baseUrl, "android_token=$token; Path=/; SameSite=Strict; HttpOnly")
+            setCookie(baseUrl, "app_token=$token; Path=/; SameSite=Strict; HttpOnly")
             flush()
         }
 
@@ -221,7 +221,7 @@ class MainActivity : Activity() {
         val conn = URL("$baseUrl/manifest.webmanifest").openConnection() as HttpURLConnection
         conn.connectTimeout = 1000
         conn.readTimeout = 2000
-        conn.setRequestProperty("Cookie", "android_token=$token")
+        conn.setRequestProperty("Cookie", "app_token=$token")
         val ok = conn.responseCode == 200
         conn.disconnect()
         ok
