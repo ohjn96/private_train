@@ -186,13 +186,17 @@ class MainActivity : Activity() {
 
     @Deprecated("Activity 기본 뒤로가기를 WebView 뒤로가기로 바꾼다")
     override fun onBackPressed() {
-        // 첫 화면(검색)에서는 같은 화면 기록을 거슬러 가지 않고 바로 앱을 뒤로 보낸다
-        val path = Uri.parse(webView.url ?: "").path ?: "/"
-        if (path != "/" && webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            // 끄지 않고 뒤로 보낸다. 매크로는 서비스에서 계속 돈다.
-            moveTaskToBack(true)
+        // 화면은 한 페이지 안에서 탭·단계(#/run, #/result …)를 오간다. 웹이 한 단계 되돌렸으면
+        // (window.__appBack() == true) 그걸로 끝, 첫 화면(조회)이면 앱을 뒤로 보낸다.
+        webView.evaluateJavascript("(window.__appBack && window.__appBack()) === true") { handled ->
+            if (handled == "true") return@evaluateJavascript
+            val path = Uri.parse(webView.url ?: "").path ?: "/"
+            if (path != "/" && webView.canGoBack()) {
+                webView.goBack()  // 로그인 화면 등 다른 페이지에서 돌아올 때
+            } else {
+                // 끄지 않고 뒤로 보낸다. 매크로는 서비스에서 계속 돈다.
+                moveTaskToBack(true)
+            }
         }
     }
 
