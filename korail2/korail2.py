@@ -806,6 +806,11 @@ When you want change ID using existing object,
         r = self._session.post(url, data=data, headers=headers, verify=False)
         j = json.loads(r.text)
 
+        # 차단 등 비정상 응답은 strResult 없이 {"code": ..., "message": ...} 형태로 온다
+        if 'strResult' not in j:
+            self.logined = False
+            raise KorailError(j.get('message') or '알 수 없는 로그인 응답', j.get('code'))
+
         if j['strResult'] == 'SUCC' and j.get('strMbCrdNo') is not None:
             self._key = j['Key']
             self.membership_number = j['strMbCrdNo']

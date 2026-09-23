@@ -31,16 +31,20 @@ class KorailService(BaseTrainService):
         self._client: Korail | None = None
         self._user_id: str | None = None
         self._password: str | None = None
+        self.last_error: str | None = None
 
     def login(self, user_id: str, password: str) -> bool:
         """Login to Korail."""
+        self.last_error = None
         try:
             korail_api.wait()
             self._client = Korail(user_id, password, auto_login=True, want_feedback=False)
             self._user_id = user_id
             self._password = password
             return self._client.logined
-        except KorailError:
+        except KorailError as e:
+            if e.msg:
+                self.last_error = f"코레일 로그인 실패: {e.msg}"
             return False
 
     def logout(self) -> None:
