@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Flask Application Factory"""
 import hmac
+import ipaddress
 import logging
 import os
 import secrets
@@ -60,6 +61,8 @@ def create_app(config_name: str = 'default', server_mode: bool | None = None) ->
         server_mode = os.environ.get('SERVER_MODE', '').lower() in ('1', 'true', 'yes')
     app.config['SERVER_MODE'] = server_mode
 
+    _install_host_check(app)
+
     app.secret_key = _load_secret_key()
     # 자바스크립트에서 세션 쿠키를 못 읽게, 다른 사이트에서 온 POST 에는 안 실리게
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
@@ -85,6 +88,67 @@ def create_app(config_name: str = 'default', server_mode: bool | None = None) ->
     app.register_blueprint(pwa.bp)
 
     return app
+
+
+#: 늘 받아 주는 Host (이 컴퓨터·폰 안에서 여는 주소)
+_LOCAL_HOSTS = {'localhost', '127.0.0.1', '::1'}
+
+
+def allowed_hosts() -> tuple[set, list, bool]:
+    """(정확히 맞출 이름들, '.example.com' 처럼 끝이 맞으면 되는 것들, 검사 끄기)."""
+    exact, suffixes, anything = set(_LOCAL_HOSTS), [], False
+    bind = os.environ.get('HOST', '').strip().lower()
+    if bind and bind not in ('0.0.0.0', '::'):
+        exact.add(bind.strip('[]'))
+    for item in os.environ.get('ALLOWED_HOSTS', '').split(','):
+        item = item.strip().lower()
+        if not item:
+            continue
+        if item == '*':
+            anything = True
+        elif item.startswith('.') or item.startswith('*.'):
+            suffixes.append('.' + item.lstrip('*.'))
+        else:
+            exact.add(item.strip('[]'))
+    return exact, suffixes, anything
+
+
+def host_is_allowed(host_header: str) -> bool:
+    """DNS 리바인딩 막기: 공격자 도메인(evil.example → 127.0.0.1)으로 온 요청은 거절한다.
+
+    - localhost / 127.0.0.1 / [::1], HOST 로 지정한 주소, ALLOWED_HOSTS(쉼표 구분,
+      '.ts.net' 처럼 앞에 점을 붙이면 하위 도메인 전부, '*' 는 검사 끔)
+    - IP 주소 그대로 온 요청은 받는다. 리바인딩은 반드시 도메인 이름을 거쳐 오므로
+      IP 로 여는 LAN 접속(HOST=0.0.0.0 → http://192.168.0.10:5050)은 안전하다.
+    """
+    exact, suffixes, anything = allowed_hosts()
+    if anything:
+        return True
+    host = (host_header or '').strip().lower()
+    if host.startswith('['):                      # [::1]:5050
+        host = host[1:].split(']', 1)[0]
+    elif host.count(':') == 1:                    # name:port
+        host = host.split(':', 1)[0]
+    host = host.rstrip('.')
+    if not host:
+        return False
+    if host in exact or any(host.endswith(s) for s in suffixes):
+        return True
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def _install_host_check(app: Flask) -> None:
+    @app.before_request
+    def check_host():
+        if not host_is_allowed(request.headers.get('Host', '')):
+            logger.warning('허용하지 않은 Host 로 온 요청을 거절: %r', request.headers.get('Host'))
+            return ('허용되지 않은 주소입니다. 다른 이름으로 접속하려면 ALLOWED_HOSTS 에 추가하세요.',
+                    400, {'Content-Type': 'text/plain; charset=utf-8'})
+        return None
 
 
 def _install_access_gate(app: Flask) -> None:

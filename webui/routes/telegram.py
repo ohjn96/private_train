@@ -17,12 +17,27 @@ bp = Blueprint('telegram', __name__, url_prefix='/api/telegram')
 _ADMIN_ONLY = {'telegram.configure', 'telegram.disconnect', 'telegram.test_message'}
 
 
+#: 로그인해야 부를 수 있는 엔드포인트. PC 앱이 LAN 에 열려 있어도 옆 사람이
+#: 봇을 바꿔 끼워 알림·원격 조종을 가로채지 못하게 한다.
+_LOGIN_REQUIRED = _ADMIN_ONLY | {'telegram.pairing'}
+
+
 @bp.before_request
 def block_bot_settings_in_server_mode():
     if current_app.config.get('SERVER_MODE') and request.endpoint in _ADMIN_ONLY:
         return jsonify({'success': False,
                         'message': '서버 모드에서는 텔레그램 대신 웹 푸시 알림을 씁니다.'}), 403
+    if request.endpoint in _LOGIN_REQUIRED and not is_logged_in():
+        return jsonify({'success': False, 'message': '로그인이 필요합니다.'}), 401
     return None
+
+
+def _pairing_payload(tg: TelegramService) -> dict | None:
+    """채팅이 아직 없으면 /start 에 붙일 일회용 코드를 알려준다 (없으면 새로 만든다)."""
+    if not tg.bot_token or tg.chat_id:
+        return None
+    info = tg.pairing_info() or tg.new_pairing_code()
+    return {**info, 'command': f"/start {info['code']}"}
 
 
 @bp.route('/configure', methods=['POST'])
@@ -63,7 +78,28 @@ def configure():
         # Start polling for commands
         tg.start_polling()
 
+        pairing = _pairing_payload(tg)
+        if pairing:
+            result['pairing'] = pairing
+
     return jsonify(result)
+
+
+@bp.route('/pairing', methods=['GET'])
+def pairing():
+    """채팅 등록용 일회용 코드. 봇에게 `/start <code>` 를 보내면 그 채팅이 등록된다.
+
+    응답: {success, paired, code?, expires_in?, command?}
+    - paired=True 면 이미 채팅이 등록돼 있어 코드가 없다.
+    - 코드는 10분 동안 한 번만 쓸 수 있다. 유효한 코드가 있으면 같은 걸 돌려준다.
+    """
+    tg = TelegramService.get_instance()
+    if not tg.bot_token:
+        return jsonify({'success': False, 'paired': False,
+                        'message': '먼저 봇 토큰으로 연결해주세요.'})
+    if tg.chat_id:
+        return jsonify({'success': True, 'paired': True})
+    return jsonify({'success': True, 'paired': False, **_pairing_payload(tg)})
 
 
 @bp.route('/disconnect', methods=['POST'])
@@ -85,6 +121,9 @@ def status():
         if saved['token'] == tg.bot_token and saved['chat_id'] != tg.chat_id:
             save_settings(tg.bot_token, tg.chat_id)
     status = tg.get_status()
+    # 로그인 안 한 사람(같은 LAN 의 다른 기기 등)에게 채팅 ID 는 알려주지 않는다
+    if not is_logged_in():
+        status.update(chat_id='', provider='')
 
     # 남의 매크로 상태와 로그는 가리고, 누가 쓰는 중인지만 알려준다
     from webui.routes.reservation import owns_macro

@@ -62,6 +62,9 @@ NO_BROWSER=1
 #VAPID_SUBJECT=mailto:you@example.com
 PORT=5050
 HOST=$BIND
+# localhost·IP 가 아닌 이름으로 접속할 때 그 이름 (쉼표 구분). 모르는 이름은 400 (DNS 리바인딩 방지)
+# --tailscale 설치면 아래에서 Tailscale 주소를 자동으로 넣는다.
+#ALLOWED_HOSTS=
 # HTTPS 뒤에서만 쓸 때 1 (세션 쿠키를 HTTPS 로만 보냄)
 COOKIE_SECURE=$SECURE
 
@@ -112,6 +115,13 @@ if [[ $TAILSCALE -eq 1 ]]; then
     echo "    HTTPS 주소 연결 (tailscale serve → 127.0.0.1:5050)"
     echo "    'Serve is not enabled' 가 나오면 안내된 링크에서 HTTPS 를 켜 주세요."
     sudo tailscale serve --bg 5050
+    # tailscale serve 로 들어온 요청의 Host(= 이 기기의 Tailscale 이름)를 허용 목록에
+    TS_HOST="$(tailscale status --json 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null || true)"
+    if [[ -n "$TS_HOST" ]] && ! sudo grep -q '^ALLOWED_HOSTS=' "$ENV_FILE"; then
+        echo "ALLOWED_HOSTS=$TS_HOST" | sudo tee -a "$ENV_FILE" >/dev/null
+        sudo systemctl restart train
+    fi
 else
     echo "==> 5/5 Tailscale 건너뜀 (--tailscale 로 설치)"
 fi

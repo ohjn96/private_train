@@ -43,6 +43,11 @@ Python 3.12+ 만 설치돼 있으면 됩니다. **명령어 하나로 가상환�
 
 실행 후 브라우저에서 **http://localhost:5050** 접속.
 
+> 🔒 기본으로는 **이 컴퓨터에서만** 열립니다 (`127.0.0.1`). 같은 와이파이의 폰·다른 PC 에서
+> 열려면 `HOST=0.0.0.0` 을 주고 `http://<이 PC 의 IP>:5050` 으로 접속하세요. IP 가 아니라
+> 이름(예: `mypc.local`)으로 열 거라면 `ALLOWED_HOSTS=mypc.local` 도 함께 줍니다.
+> 디버그 모드는 `FLASK_DEBUG=true` 를 줄 때만 켜집니다 (절대 LAN 에 연 채로 켜지 마세요).
+
 | 하고 싶은 것 | 명령 (Windows) | 명령 (Linux/macOS) |
 |---|---|---|
 | 그냥 실행 | `.\scripts\run.ps1` | `./scripts/run.sh` |
@@ -106,7 +111,8 @@ python main.py --headless --id 1234567890 --pw 비밀번호 --telegram-token <�
 ```
 
 봇 토큰은 텔레그램 [@BotFather](https://t.me/BotFather) 에서 받습니다. 채팅 ID 는
-따로 안 넣어도 되고, 봇에게 `/start` 를 한 번 보내면 자동으로 등록됩니다.
+따로 안 넣어도 되고, 실행하면 콘솔에 찍히는 `/start <코드>` 를 봇에게 보내면 등록됩니다.
+(아무나 먼저 `/start` 를 보내 봇을 가로채지 못하게, 코드가 맞는 채팅만 받습니다)
 
 > 💡 배포된 실행 파일도 같은 방식으로 됩니다:
 > `TrainReservationApp-v2.3.2.exe --headless --telegram-token <봇토큰> ...`
@@ -228,7 +234,8 @@ git clone https://github.com/ohjn96/private_train.git && cd private_train
 |---|---|
 | `APP_PASSWORD` | 설정하면 모든 페이지 앞에 접근 비밀번호를 묻습니다. 외부에 열 땐 필수 |
 | `FLASK_DEBUG` | 서버에선 반드시 `false`. 켜져 있으면 웹 디버거로 원격 코드 실행이 가능해집니다 |
-| `HOST` / `PORT` | 바인딩 주소/포트 (기본 `0.0.0.0` / `5050`) |
+| `HOST` / `PORT` | 바인딩 주소/포트 (기본 `127.0.0.1` / `5050`). LAN 에 열려면 `HOST=0.0.0.0` |
+| `ALLOWED_HOSTS` | `localhost`·IP 주소 말고 **이름**으로 접속할 때 그 이름 (쉼표 구분, `.ts.net` 처럼 앞에 점을 붙이면 하위 도메인 전부). DNS 리바인딩 공격을 막으려고 모르는 이름으로 온 요청은 400 으로 거절합니다. `--tailscale` 설치 시 Tailscale 주소가 자동으로 들어갑니다 |
 | `COOKIE_SECURE` | `1` 이면 세션 쿠키를 HTTPS 로만 보냅니다 (`--tailscale` 설치 시 자동) |
 | `FLASK_SECRET_KEY` | 세션 서명 키. 비우면 `~/.train_reservation/secret_key` 에 무작위로 만들어 둡니다 |
 
@@ -312,7 +319,8 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 1. 검색 페이지 하단의 **텔레그램 알림** 카드 클릭
 2. Bot Token 입력 후 **"연결"** 클릭
-3. 생성한 봇의 대화창에서 `/start` 전송 → **Chat ID 자동 등록**
+3. 화면에 나온 `/start <코드>` 를 봇 대화창에 전송 → **Chat ID 자동 등록**
+   (코드는 10분 동안 한 번만 쓸 수 있습니다. 코드 없는 `/start` 는 무시합니다)
 4. **"자동 연결"** 체크 시 다음 접속부터 자동 연결
 
 > 💡 Bot Token은 브라우저 localStorage에 저장되어 새로고침 후에도 유지됩니다.
@@ -324,13 +332,13 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 | 질문 | 답변 |
 |------|------|
-| 직접 입력해야 하나요? | **아니요.** 봇에게 `/start`만 보내면 자동 등록됩니다 |
+| 직접 입력해야 하나요? | **아니요.** 봇에게 `/start <코드>` 만 보내면 자동 등록됩니다 |
 | 어디서 확인하나요? | 봇에게 `/chatid` 명령어를 보내면 표시됩니다 |
 | 왜 필요한가요? | 봇이 예약 성공 알림을 보낼 대상을 지정하기 위함 |
 | 예시 | `123456789` (숫자) |
 
 ```
-사용자 → 봇: /start
+사용자 → 봇: /start ABCD2345   (앱이 보여준 일회용 코드)
 봇 → 사용자: ✅ 연결 완료! Chat ID가 자동 등록되었습니다.
 
 이후 예약 성공 시 → 봇이 이 Chat ID로 알림 전송
@@ -346,7 +354,7 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 | 명령어 | 설명 | 예시 |
 |--------|------|------|
-| `/start` | 봇 연결 및 Chat ID 자동 등록 | `/start` |
+| `/start` | 봇 연결 및 Chat ID 등록 (앱이 보여준 코드 필요) | `/start ABCD2345` |
 | `/reserve` | 열차 검색 후 예약 시작 | `/reserve 수서 부산 2026-03-01 06:00` |
 | `/trains` | 마지막 검색된 열차 목록 확인 | `/trains` |
 | `/stop` | 실행 중인 매크로 원격 중단 | `/stop` |

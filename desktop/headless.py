@@ -412,7 +412,9 @@ def run_standby(telegram: TelegramService, stop: threading.Event) -> int:
         return EXIT_CONFIG
 
     if not telegram.chat_id:
-        log("봇에게 /start 를 보내주세요. 채팅 ID 가 등록되면 조종할 수 있습니다.")
+        # 아무나 먼저 /start 를 보내 봇을 가로채지 못하게, 콘솔에만 보이는 코드로 등록한다
+        code = telegram.new_pairing_code(ttl=None)['code']
+        log(f"봇에게 /start {code} 를 보내주세요. 채팅 ID 가 등록되면 조종할 수 있습니다.")
 
     print("", flush=True)
     log("대기 중입니다. 텔레그램에서 시키세요:")

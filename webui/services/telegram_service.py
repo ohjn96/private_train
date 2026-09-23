@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """Telegram Bot Service for train reservation notifications and remote control."""
 import collections
+import hmac
 import json
 import logging
 import os
+import secrets
 import threading
 import time
 from datetime import datetime
@@ -43,6 +45,12 @@ def save_settings(token: str, chat_id: str) -> None:
             json.dump({'token': token, 'chat_id': chat_id or ''}, f)
     except OSError as e:
         logger.warning(f"텔레그램 설정 저장 실패: {e}")
+
+
+#: /start <코드> 페어링 코드. 헷갈리는 글자(0/O, 1/I/L)는 뺐다.
+PAIRING_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+PAIRING_LENGTH = 8
+PAIRING_TTL = 10 * 60
 
 
 def clear_saved_settings() -> None:
@@ -111,6 +119,12 @@ class TelegramService:
 
         # Pending /reserve flow state per chat
         self._pending_reserve: Optional[dict] = None
+
+        # 채팅 등록용 일회용 코드 {'code', 'expires'(monotonic, None=만료 없음)}.
+        # 예전엔 봇에게 처음 /start 를 보낸 사람이 주인이 됐다. 봇 이름만 알면 누구나
+        # 먼저 /start 를 보내 알림(예약 정보)과 원격 조종을 가로챌 수 있었다.
+        self._pairing: Optional[dict] = None
+        self._pairing_lock = threading.Lock()
 
     @classmethod
     def get_instance(cls) -> 'TelegramService':
@@ -195,12 +209,57 @@ class TelegramService:
         })
         return result is not None
 
+    # ─── Pairing ─────────────────────────────────────────────────
+
+    def new_pairing_code(self, ttl: Optional[float] = PAIRING_TTL) -> dict:
+        """채팅 등록용 일회용 코드를 새로 만든다 (이전 코드는 무효).
+
+        봇에게 `/start <코드>` 를 보낸 채팅만 등록된다. ttl=None 이면 만료 없이
+        한 번만 쓸 수 있다 (콘솔에만 찍는 헤드리스용).
+        """
+        code = ''.join(secrets.choice(PAIRING_ALPHABET) for _ in range(PAIRING_LENGTH))
+        expires = time.monotonic() + ttl if ttl else None
+        with self._pairing_lock:
+            self._pairing = {'code': code, 'expires': expires}
+        return {'code': code, 'expires_in': int(ttl) if ttl else None}
+
+    def pairing_info(self) -> Optional[dict]:
+        """아직 유효한 코드가 있으면 {'code', 'expires_in'}."""
+        with self._pairing_lock:
+            p = self._pairing
+            if not p:
+                return None
+            if p['expires'] is not None:
+                left = p['expires'] - time.monotonic()
+                if left <= 0:
+                    self._pairing = None
+                    return None
+                return {'code': p['code'], 'expires_in': int(left)}
+            return {'code': p['code'], 'expires_in': None}
+
+    def _consume_pairing_code(self, given: str) -> bool:
+        """맞는 코드면 True 를 돌려주고 바로 지운다 (한 번만 쓸 수 있다)."""
+        given = (given or '').strip().upper()
+        with self._pairing_lock:
+            p = self._pairing
+            if not p or not given:
+                return False
+            if p['expires'] is not None and time.monotonic() >= p['expires']:
+                self._pairing = None
+                return False
+            if not hmac.compare_digest(given.encode(), p['code'].encode()):
+                return False
+            self._pairing = None
+            return True
+
     def disconnect(self):
         """Disconnect and reset the bot."""
         self.stop_polling()
         self.bot_token = None
         self.chat_id = None
         self._connected = False
+        with self._pairing_lock:
+            self._pairing = None
 
     # ─── Message Sending ─────────────────────────────────────────
 
@@ -426,6 +485,18 @@ class TelegramService:
         self._stored_credentials = dict(credentials) if credentials else None
         logger.info(f"Web session stored for provider: {provider}")
 
+    def clear_web_session(self, user_id: Optional[str] = None):
+        """로그아웃하면 붙잡아 둔 로그인·카드 정보를 지운다.
+
+        user_id 를 주면 그 사람 것일 때만 지운다 (남의 로그아웃으로 내 것이 지워지지 않게).
+        """
+        stored = (self._stored_credentials or {}).get('user_id')
+        if user_id is not None and stored is not None and stored != user_id:
+            return
+        self._stored_provider = None
+        self._stored_credentials = None
+        self._stored_card_settings = None
+
     def store_card_settings(self, card_settings: Optional[dict]):
         """Store card auto-payment settings for use in background threads."""
         self._stored_card_settings = dict(card_settings) if card_settings else None
@@ -552,8 +623,18 @@ class TelegramService:
         if not text:
             return
 
-        # Auto-register chat_id on first /start
-        if text == '/start' and not self.chat_id:
+        # 채팅 등록: 서버가 만든 일회용 코드를 /start <코드> 로 보낸 채팅만 받는다
+        parts = text.split()
+        is_start = parts[0].lower().split('@')[0] == '/start'
+        if is_start and not self.chat_id:
+            if not self._consume_pairing_code(parts[1] if len(parts) > 1 else ''):
+                logger.info("페어링 코드 없이 온 /start 는 무시합니다")
+                self._api_call('sendMessage', {
+                    'chat_id': incoming_chat_id,
+                    'text': '🔒 연결하려면 앱의 텔레그램 설정에 나온 코드와 함께 보내주세요.\n'
+                            '예: /start ABCD2345',
+                })
+                return
             self.chat_id = incoming_chat_id
             self.send_message(
                 f"✅ <b>연결 완료!</b>\n"

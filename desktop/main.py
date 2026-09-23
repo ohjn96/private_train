@@ -137,11 +137,11 @@ def run_web() -> None:
     """웹 서버로 띄운다 (기본 동작)."""
     # 기본 포트를 5050으로 변경 (macOS AirPlay가 5000 사용)
     port = int(os.environ.get('PORT', 5050))
-    # 서버에선 127.0.0.1 이나 Tailscale 주소로 좁힐 수 있게. 기본은 예전처럼 전체.
-    host = os.environ.get('HOST', '0.0.0.0')
-    # exe 로 실행할 때는 reloader 가 프로세스를 두 번 띄우므로 debug 기본 off
-    debug_default = 'false' if getattr(sys, 'frozen', False) else 'true'
-    debug = os.environ.get('FLASK_DEBUG', debug_default).lower() == 'true'
+    # 기본은 이 컴퓨터에서만 (127.0.0.1). 같은 와이파이의 폰에서 열려면 HOST=0.0.0.0.
+    # (예전 기본 0.0.0.0 은 카페·회사 와이파이의 누구나 로그인 화면·텔레그램 설정에 닿았다)
+    host = os.environ.get('HOST', '127.0.0.1')
+    # 디버그 모드는 웹 디버거(원격 코드 실행)가 열리므로 FLASK_DEBUG=true 로 켤 때만
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 
     print(f"🚄 Train Reservation App v{__version__}")
     print(f"   http://localhost:{port}")
