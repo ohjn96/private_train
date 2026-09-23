@@ -175,15 +175,19 @@ class HostAllowlistTest(unittest.TestCase):
 class DesktopDefaultsTest(unittest.TestCase):
     def run_web(self, env):
         import desktop.main as desktop_main
+        # 실제 포트(5050)는 건드리지 않는다: 포트 고르기와 서버 실행은 가짜로
+        choice = desktop_main.PortChoice(5050, mock.Mock())
         with mock.patch.dict(os.environ, env, clear=False), \
-                mock.patch.object(desktop_main.app, 'run') as run, \
+                mock.patch.object(desktop_main, 'choose_port', return_value=choice), \
+                mock.patch.object(desktop_main, 'serve') as serve, \
                 mock.patch.object(desktop_main, 'cleanup_cache'), \
                 mock.patch.object(desktop_main, 'open_browser'):
-            for key in ('HOST', 'FLASK_DEBUG'):
+            for key in ('HOST', 'FLASK_DEBUG', 'WERKZEUG_RUN_MAIN'):
                 if key not in env:
                     os.environ.pop(key, None)
             desktop_main.run_web()
-        return run.call_args.kwargs
+        host, _port, debug, _sock = serve.call_args.args
+        return {'host': host, 'debug': debug}
 
     def test_defaults_are_local_and_no_debug(self):
         kwargs = self.run_web({})
