@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}열차 예약{% endblock %}</title>
+    <!-- 홈 화면에 추가(PWA): 주소창 없이 앱처럼 열린다 -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#EF4444">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="열차예약">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <!-- Tailwind CSS CDN (for development) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Flatpickr Date Picker -->
@@ -96,5 +105,12 @@
     </audio>
 
     {% block scripts %}{% endblock %}
+
+    <script>
+        // 서비스 워커는 HTTPS(또는 localhost)에서만 등록된다
+        if ('serviceWorker' in navigator && window.isSecureContext) {
+            navigator.serviceWorker.register('/sw.js').catch(function() {});
+        }
+    </script>
 </body>
 </html>

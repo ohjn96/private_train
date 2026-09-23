@@ -192,7 +192,17 @@ git clone https://github.com/ohjn96/private_train.git && cd private_train
 ```
 
 4. 폰(과 같이 쓸 가족·친구 폰)에 Tailscale 앱 설치 → 같은 tailnet 에 초대(Share) →
-   스크립트가 알려준 `http://100.x.x.x:5050` 접속 → **접근 비밀번호** 입력 → 코레일 로그인
+   스크립트가 알려준 `https://<서버이름>.ts.net` 접속 → **접근 비밀번호** 입력 → 코레일 로그인
+   (처음 한 번 Tailscale 관리 화면에서 HTTPS 를 켜라는 안내가 나오면 따라 하면 됩니다)
+
+#### 폰에서 앱처럼 쓰기
+
+- **iPhone**: Safari 로 접속 → 공유 버튼 → **홈 화면에 추가**. **Android**: Chrome 메뉴 → **앱 설치**
+- 홈 화면 아이콘으로 열면 주소창 없이 앱처럼 뜹니다. iPhone 은 홈 화면 앱과 Safari 가
+  로그인 정보를 따로 가지므로, 앱으로 처음 열 때 한 번 더 로그인하면 됩니다.
+- **예약 매크로는 서버에서 돕니다.** Safari·앱을 내리거나 닫아도, 폰을 잠가도 계속 시도합니다.
+  다시 열면 그동안의 로그를 이어서 보여줍니다.
+- 앱이 꺼져 있으면 알림음이 안 나므로, **예약 성공 알림은 텔레그램 연동**으로 받으세요.
 
 설정은 `/etc/train.env` 에 있고, 바꾼 뒤엔 `sudo systemctl restart train`. 업데이트는 `git pull` 후
 스크립트를 다시 돌리면 됩니다.
@@ -202,6 +212,7 @@ git clone https://github.com/ohjn96/private_train.git && cd private_train
 | `APP_PASSWORD` | 설정하면 모든 페이지 앞에 접근 비밀번호를 묻습니다. 외부에 열 땐 필수 |
 | `FLASK_DEBUG` | 서버에선 반드시 `false`. 켜져 있으면 웹 디버거로 원격 코드 실행이 가능해집니다 |
 | `HOST` / `PORT` | 바인딩 주소/포트 (기본 `0.0.0.0` / `5050`) |
+| `COOKIE_SECURE` | `1` 이면 세션 쿠키를 HTTPS 로만 보냅니다 (`--tailscale` 설치 시 자동) |
 | `FLASK_SECRET_KEY` | 세션 서명 키. 비우면 `~/.train_reservation/secret_key` 에 무작위로 만들어 둡니다 |
 
 > 🔒 코레일 비밀번호와 카드 정보는 브라우저 쿠키가 아니라 서버 메모리에만 둡니다.

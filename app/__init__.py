@@ -55,6 +55,9 @@ def create_app(config_name: str = 'default') -> Flask:
     app.secret_key = _load_secret_key()
     # 자바스크립트에서 세션 쿠키를 못 읽게, 다른 사이트에서 온 POST 에는 안 실리게
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
+    # HTTPS(tailscale serve 등) 뒤에서만 쓸 땐 쿠키가 평문 HTTP 로 새지 않게
+    if os.environ.get('COOKIE_SECURE', '').lower() in ('1', 'true', 'yes'):
+        app.config['SESSION_COOKIE_SECURE'] = True
 
     # 모든 템플릿에서 버전을 쓸 수 있게 (단일 출처는 루트 VERSION 파일)
     from app.version import get_version
@@ -66,11 +69,12 @@ def create_app(config_name: str = 'default') -> Flask:
     _install_access_gate(app)
 
     # Register blueprints
-    from app.routes import auth, search, reservation, telegram
+    from app.routes import auth, search, reservation, telegram, pwa
     app.register_blueprint(auth.bp)
     app.register_blueprint(search.bp)
     app.register_blueprint(reservation.bp)
     app.register_blueprint(telegram.bp)
+    app.register_blueprint(pwa.bp)
 
     return app
 
@@ -87,7 +91,9 @@ def _install_access_gate(app: Flask) -> None:
 
     @app.before_request
     def require_gate():
-        if request.endpoint in _GATE_EXEMPT or session.get('gate_ok'):
+        from app.routes.pwa import PUBLIC_ENDPOINTS
+        if (request.endpoint in _GATE_EXEMPT or request.endpoint in PUBLIC_ENDPOINTS
+                or session.get('gate_ok')):
             return None
         if request.path.startswith('/api/'):
             return {'success': False, 'message': '접근 비밀번호가 필요합니다.'}, 401
