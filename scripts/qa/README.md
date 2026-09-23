@@ -41,19 +41,20 @@ scripts/qa/android_e2e.sh --no-build --reboot
 
 ## 점검 항목
 
-**screenshots.py** — 로그인, 검색+결과(2개 선택), 도는 중, 마지막 결과 카드 6가지
-(자동결제 완료 / 자동결제 실패 / 자동결제 안 함 / 중단 / 로그인 포기 / 오류), 성공 배너 4가지
-(자동결제 중 / 완료 / 실패 / 결제 남음). 실패 조건: `scrollWidth > 화면 폭`, 콘솔 JS 오류
+**screenshots.py** — 해시 화면별로: 로그인, `#/search` 검색+결과(2개 선택), `#/run` 도는 중,
+`#/result`·`#/history` 마지막 결과 카드 6가지 (자동결제 완료 / 실패 / 안 함 / 중단 / 로그인 포기 / 오류),
+`#/run` 성공 배너 4가지 (자동결제 중 / 완료 / 실패 / 결제 남음), `#/settings`. 뒤로 가기용
+`window.__appBack()` 이 `#/run → #/search` 로 돌아가고 `#/search` 에선 false 인지도 본다. 실패 조건: `scrollWidth > 화면 폭`, 콘솔 JS 오류
 (외부 글꼴 로드 실패는 경고). `report.json` 에 참고 정보: 44px 미만 터치 대상(폰), 이모지,
 두 줄로 쪼개진 짧은 낱말(예: "미연/결"),
-팔레트(#F6F4F0 / #1A1714 / #C8102E 계열) 밖 색.
+팔레트(화면의 `tailwind.config` 색) 밖 색.
 
 **android_e2e.py** — 앱 실행·서버 기동 (무작위 포트는 `/proc/net/tcp` 에서 앱 uid 의 LISTEN 포트를 찾고
 `/__hello?nonce=` HMAC 으로 확인한 뒤 `adb forward`), `/__hello` 가 토큰을 흘리지 않음, WebView 화면, 토큰 없는 요청 403, 틀린 토큰 403,
 `/__auth?t=` 가 `app_token` 쿠키(HttpOnly) 심기, 가짜 매크로 시작, `shared_prefs/job.xml` 에
 평문 없음, `kill -9` → 새 pid + 매크로 재개 + "다시 시작했어요" 알림, `STOP_MACRO` 서비스 인텐트
 → 매크로 멈춤 + 작업 삭제, WebView 렌더러 kill → 앱 생존 + 다시 로드, 비행기 모드 실행 →
-Tailwind 스타일 유지. 선택: `--reboot` 재부팅 후 재개, `--stall` 조회 멈춤 → 워치독 재시작.
+Tailwind 스타일 유지, 뒤로 가기 버튼이 `window.__appBack()` 에 먼저 묻는지 (true → 앱 유지, false → 앱을 뒤로). 선택: `--reboot` 재부팅 후 재개, `--stall` 조회 멈춤 → 워치독 재시작.
 WebView 안의 값은 CDP(디버그 빌드 원격 디버깅)로 읽는다. 앱 화면은 FLAG_SECURE 라
 `screencap` 이 검게 나올 수 있다 (알림·홈 화면 증거용으로만 쓴다; 앱 화면 점검은 screenshots.py). 토큰은
 `adb shell run-as com.ohjn96.trainreservation cat shared_prefs/app.xml`.

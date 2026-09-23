@@ -25,9 +25,8 @@ VIEWPORTS = {
     'mobile': dict(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True),
     'desktop': dict(viewport={'width': 1280, 'height': 900}, device_scale_factor=1),
 }
-# 팔레트 (base.html tailwind.config) + 흰색·투명
-PALETTE = {'#f6f4f0', '#1a1714', '#c8102e', '#9e0c24', '#f4c7ce', '#6b645c', '#e6e1da', '#fbe9eb',
-           '#0b6b3a', '#e3f4ea', '#5a544d', '#efece7', '#ffffff', '#fff7f8', '#d6d0c8', '#000000'}
+# 팔레트: 화면의 tailwind.config 색 + 아래 기본색 (흰색·검정·선택 표시)
+PALETTE_BASE = {'#ffffff', '#000000'}
 
 AUDIT_JS = r'''() => {
   const vw = window.innerWidth;
@@ -42,6 +41,9 @@ AUDIT_JS = r'''() => {
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity !== 0;
   };
+  const palette = [];
+  const walk = o => { for (const v of Object.values(o || {})) typeof v === 'string' ? palette.push(v.toLowerCase()) : walk(v); };
+  try { walk(tailwind.config.theme.extend.colors); } catch (e) {}
   const small = [], colors = {}, emoji = [], overflow = [], brokenWords = [];
   const emojiRe = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{2705}\u{274C}]/u;
   for (const el of document.querySelectorAll('body *')) {
@@ -82,7 +84,7 @@ AUDIT_JS = r'''() => {
       if (n.nodeType === 3 && emojiRe.test(n.textContent)) emoji.push(`${name}: ${n.textContent.trim().slice(0, 40)}`);
     }
   }
-  return {scrollWidth: document.documentElement.scrollWidth, innerWidth: vw, small, colors, emoji, brokenWords, overflow: overflow.slice(0, 20)};
+  return {palette, scrollWidth: document.documentElement.scrollWidth, innerWidth: vw, small, colors, emoji, brokenWords, overflow: overflow.slice(0, 20)};
 }'''
 
 
@@ -109,7 +111,8 @@ def main():
                 path = os.path.join(args.out, f'{vp_name}_{name}.png')
                 page.screenshot(path=path, full_page=full)
                 audit = page.evaluate(AUDIT_JS)
-                off = {c: els for c, els in audit['colors'].items() if c not in PALETTE}
+                palette = PALETTE_BASE | set(audit['palette'])
+                off = {c: els for c, els in audit['colors'].items() if c not in palette}
                 real_errors = [e for e in errors if not re.search(r'fonts\.(googleapis|gstatic)|ERR_|Failed to load resource', e[1])]
                 warn_errors = [e for e in errors if e not in real_errors]
                 entry = {
@@ -132,7 +135,9 @@ def main():
             page.goto(base + '/login')
             shot('01_login')
 
+            # 조회 (#/search): 결과 8개, 2개 고름
             page.goto(base + '/demo')
+            page.goto(base + '/#/search')
             shot('02_search', settle=1500)
             cards = page.locator('.train-row:visible')
             if cards.count() >= 3:
@@ -142,27 +147,64 @@ def main():
             shot('03_results_selected')
             shot('03b_results_full', full=True)
 
+            # 진행 (#/run): 도는 중
             page.goto(base + '/demo_run')
+            page.goto(base + '/#/run')
             shot('04_running', settle=3500)
+            shot('04b_running_full', full=True)
             page.goto(base + '/demo_reset')
 
+            # 결과 (#/result) + 기록 (#/history): 마지막 결과 카드 6가지
             for state in ('success_paid', 'success_payfail', 'success_nopay', 'stopped', 'gave_up', 'crash'):
                 page.evaluate("try { localStorage.removeItem('dismissedResult') } catch (e) {}")
                 page.goto(base + '/demo_last/' + state)
-                page.wait_for_timeout(2500)  # 상태 폴링
-                visible = page.evaluate("!document.getElementById('lastResult')?.classList.contains('hidden')")
-                if not visible:
-                    failures.append(f'{vp_name}_last_{state} (카드 안 보임)')
-                    print(f'FAIL  {vp_name}_last_{state}  마지막 결과 카드가 보이지 않음')
-                page.evaluate("document.getElementById('lastResult')?.scrollIntoView({block:'start'}); window.scrollBy(0,-16)")
-                shot(f'05_last_{state}', settle=300)
+                for route in ('result', 'history'):
+                    page.goto(base + f'/#/{route}')
+                    page.wait_for_timeout(2500)  # 상태 폴링
+                    visible = page.evaluate("(() => { const c = document.getElementById('lastResult');"
+                                            " return !!c && !c.classList.contains('hidden') && c.getBoundingClientRect().height > 0 })()")
+                    here = page.evaluate("location.hash")
+                    if not visible:
+                        failures.append(f'{vp_name}_{route}_{state} (카드 안 보임, {here})')
+                        print(f'FAIL  {vp_name}_{route}_{state}  마지막 결과 카드가 보이지 않음 ({here})')
+                    shot(f'05_{route}_{state}', settle=300)
             page.goto(base + '/demo_reset')
 
-            # 예약 성공 배너: 도는 중 화면의 로그 스트림으로 실제 이벤트를 흘린다 (/demo_success)
+            # 뒤로 가기 (안드로이드 BACK 이 부르는 window.__appBack)
+            page.goto(base + '/demo_run')
+            page.goto(base + '/#/search')
+            page.wait_for_timeout(1500)
+            page.evaluate("location.hash = '#/run'")
+            page.wait_for_timeout(800)
+            r1 = page.evaluate("window.__appBack && window.__appBack()")
+            page.wait_for_timeout(800)
+            h1 = page.evaluate("location.hash")
+            r2 = page.evaluate("window.__appBack && window.__appBack()")
+            page.goto(base + '/#/run')  # #/run 으로 바로 들어온 경우 (알림 눌러 연 앱)
+            page.wait_for_timeout(1500)
+            r3 = page.evaluate("window.__appBack && window.__appBack()")
+            page.wait_for_timeout(800)
+            h3 = page.evaluate("location.hash")
+            ok = r1 is True and h1 == '#/search' and r2 is False and r3 is True and h3 == '#/search'
+            report[f'{vp_name}_appback'] = {'run_to_search': [r1, h1], 'at_search': r2, 'direct_run': [r3, h3]}
+            print(f"{'PASS' if ok else 'FAIL'}  {vp_name}_appback  #/run→{h1}({r1}) #/search→{r2} 바로#/run→{h3}({r3})")
+            if not ok:
+                failures.append(f'{vp_name}_appback')
+            page.goto(base + '/demo_reset')
+
+            # 설정 (#/settings)
+            page.goto(base + '/#/settings')
+            shot('07_settings', settle=1500)
+            shot('07b_settings_full', full=True)
+            page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+            shot('07c_settings_bottom', settle=500)
+
+            # 예약 성공 배너 (#/run): 도는 중 화면의 로그 스트림으로 실제 이벤트를 흘린다 (/demo_success)
             for name in ('pay_running', 'pay_done', 'pay_failed', 'pay_pending'):
                 page.goto(base + '/demo_reset')
                 page.evaluate("try { localStorage.removeItem('dismissedSuccess') } catch (e) {}")
                 page.goto(base + '/demo_run')
+                page.goto(base + '/#/run')
                 page.wait_for_timeout(2500)  # 상태 폴링 → 스트림 연결
                 page.evaluate(f"fetch('/demo_success/{name}')")
                 try:

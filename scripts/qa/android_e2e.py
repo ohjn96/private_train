@@ -346,6 +346,39 @@ def s_renderer_kill(tok):
            f'renderer={rpids} pid {before}->{after} logcat_renderer_gone={gone} health={bool(h)} title={title!r} {shot}')
 
 
+def resumed_activity() -> str:
+    out = sh('dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity"')
+    return out
+
+
+def s_back_button(tok):
+    """뒤로 가기 버튼이 웹의 window.__appBack() 에 먼저 묻는지 (Kotlin 연결부).
+
+    기기에선 코레일 로그인 없이 #/run 화면에 갈 수 없으므로, 로그인 화면에 __appBack 을 심어
+    (a) true 를 돌려주면 앱이 앞에 남고 (b) false 면 앱이 뒤로 가는지 본다.
+    웹 쪽 #/run → #/search 동작은 screenshots.py 의 __appBack 점검이 데모 서버에서 본다.
+    """
+    launch()
+    time.sleep(3)
+    wait_for(lambda: webview_eval('document.readyState') == 'complete', 30, 1)
+    webview_eval("window.__backCalls = 0; window.__appBack = () => { window.__backCalls++; return true; }; true")
+    sh('input keyevent KEYCODE_BACK')
+    time.sleep(2)
+    calls = webview_eval('window.__backCalls')
+    front = PKG in resumed_activity()
+    record('뒤로 가기 → window.__appBack() 이 true 면 앱이 앞에 남음', calls == 1 and front,
+           f'__appBack 호출 {calls}회, 앞 화면={front}')
+    webview_eval("window.__appBack = () => { window.__backCalls++; return false; }; true")
+    sh('input keyevent KEYCODE_BACK')
+    time.sleep(2)
+    front = PKG in resumed_activity()
+    alive = app_pid()
+    record('뒤로 가기 → __appBack() 이 false 면 앱을 끄지 않고 뒤로 보냄', not front and alive,
+           f'앞 화면={front} pid={alive} ({resumed_activity()[-60:]})')
+    launch()
+    time.sleep(2)
+
+
 def s_offline(tok):
     stop_app()
     sh('cmd connectivity airplane-mode enable')
@@ -437,6 +470,7 @@ def main():
         ('kill9', lambda: s_kill9(tok['t'])),
         ('stop_macro', lambda: s_stop_macro(tok['t'])),
         ('renderer', lambda: s_renderer_kill(tok['t'])),
+        ('back', lambda: s_back_button(tok['t'])),
         ('offline', lambda: s_offline(tok['t'])),
     ]
     if args.stall:

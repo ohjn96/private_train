@@ -112,7 +112,10 @@ def demo_last(state):
         pass
     tg.resumed_at = None
     tg._stored_provider = 'korail'
-    r = {'reason': state, 'ended_at': '2026-10-03T14:14:%02d' % (hash(state) % 60),
+    # 끝난 시각은 지금 (실행 시간 = 지금 - 시작 시각 이 말이 되게). 상태마다 초를 달리해 '닫기' 기억과 겹치지 않게
+    now = datetime.datetime.now().replace(microsecond=0)
+    tg._macro_start_time = now - datetime.timedelta(minutes=12)
+    r = {'reason': state, 'ended_at': (now - datetime.timedelta(seconds=len(state))).isoformat(),
          'reserved': None, 'paid': None, 'pay_message': None, 'detail': None,
          'pay_deadline': None, 'autopay': False}
     if state.startswith('success'):
