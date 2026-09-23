@@ -11,14 +11,10 @@ import requests
 import itertools
 import sys
 import base64
-import warnings
 import time
 import random
 import string
 from functools import reduce
-
-# Suppress urllib3 InsecureRequestWarning
-warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 from datetime import datetime, timedelta
 from pprint import pprint
@@ -749,7 +745,7 @@ class Korail(object):
             'code': "app.login.cphd"
         }
 
-        r = self._session.post(url, data=data, verify =False)
+        r = self._session.post(url, data=data)
         j = json.loads(r.text)
 
         if j['strResult'] == 'SUCC' and j.get('app.login.cphd') is not None:
@@ -826,7 +822,7 @@ When you want change ID using existing object,
         if sid:
             data['Sid'] = sid
 
-        r = self._session.post(url, data=data, headers=headers, verify=False)
+        r = self._session.post(url, data=data, headers=headers)
         j = json.loads(r.text)
 
         # 차단 등 비정상 응답은 strResult 없이 {"code": ..., "message": ...} 형태로 온다
@@ -848,7 +844,7 @@ When you want change ID using existing object,
     def logout(self):
         """Logout from Korail server"""
         url = KORAIL_LOGOUT
-        self._session.get(url, verify =False)
+        self._session.get(url)
         self.logined = False
 
     def _result_check(self, j):
@@ -1025,7 +1021,7 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
         }
 
 
-        r = self._session.post(url, params=data, headers=headers, verify=False)
+        r = self._session.post(url, params=data, headers=headers)
         j = json.loads(r.text)
 
         if self._result_check(j):
@@ -1175,7 +1171,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             data.update(psg.get_dict(index))
             index += 1
 
-        r = self._session.get(url, params=data, headers=headers, verify=False)
+        r = self._session.get(url, params=data, headers=headers)
         j = json.loads(r.text)
         if self._result_check(j):
             rsv_id = j['h_pnr_no']
@@ -1204,7 +1200,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'h_abrd_dt_to': '',
         }
 
-        r = self._session.get(url, params=data, verify =False)
+        r = self._session.get(url, params=data)
         j = json.loads(r.text)
         try:
             if self._result_check(j):
@@ -1224,7 +1220,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
                         'h_orgtk_sale_sqno': ticket.sale_info3,
                         'h_orgtk_ret_pwd': ticket.sale_info4,
                     }
-                    r = self._session.get(url, params=data, verify =False)
+                    r = self._session.get(url, params=data)
                     j = json.loads(r.text)
                     if self._result_check(j):
                         seat = j['ticket_infos']['ticket_info'][0]['tk_seat_info'][0]
@@ -1246,7 +1242,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'Key': self._key,
             'hidPnrNo': rsv_id,
         }
-        r = self._session.get(url, params=data, verify=False)
+        r = self._session.get(url, params=data)
         j = json.loads(r.text)
         try:
             if not self._result_check(j):
@@ -1269,7 +1265,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'Version': self._version,
             'Key': self._key,
         }
-        r = self._session.get(url, params=data, verify =False)
+        r = self._session.get(url, params=data)
         j = json.loads(r.text)
         try:
             if self._result_check(j):
@@ -1327,7 +1323,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'hidAthnVal1': birthday,
             'hiduserYn': 'Y',
         }
-        r = self._session.post(url, data=data, verify=False)
+        r = self._session.post(url, data=data)
         j = json.loads(r.text)
         if self._result_check(j):
             return True
@@ -1346,7 +1342,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'txtJrnyCnt': rsv.journey_cnt,
             'hidRsvChgNo': rsv.rsv_chg_no,
         }
-        r = self._session.get(url, data=data, verify =False)
+        r = self._session.get(url, data=data)
         j = json.loads(r.text)
         if self._result_check(j):
             return True
