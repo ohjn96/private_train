@@ -43,7 +43,7 @@ start=$SECONDS
 (cd "$ROOT" && PYTHONPATH="$QA/nonet" HOME="$UNIT_HOME" "$QA_PY" -m unittest discover -s tests -v) > "$QA_OUT/unit.log" 2>&1
 rc=$?
 rm -rf "$UNIT_HOME"
-summary="$(grep -E '^Ran [0-9]+ tests' "$QA_OUT/unit.log") $(tail -5 "$QA_OUT/unit.log" | grep -E '^(OK|FAILED)')"
+summary="$(grep -E '^Ran [0-9]+ tests' "$QA_OUT/unit.log") $(grep -E '^(OK|FAILED)' "$QA_OUT/unit.log" | tail -1)"
 blocked=$(grep -c '^\[QA-NONET\]' "$QA_OUT/unit.log" || true)
 NAMES+=("단위 테스트"); RESULTS+=("$([[ $rc -eq 0 ]] && echo PASS || echo FAIL)")
 NOTES+=("$summary, 외부 접속 시도 차단 ${blocked}건, $((SECONDS - start))s")

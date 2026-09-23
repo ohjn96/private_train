@@ -17,7 +17,6 @@ import urllib.error
 import urllib.request
 
 PKG = 'com.ohjn96.trainreservation'
-DEVICE_PORT = 17650
 HOST_PORT = 17660
 CDP_PORT = 9333
 TOOLS = os.path.expanduser('~/.local/share/private_train-android')
@@ -82,8 +81,53 @@ def health(tok):
         return None
 
 
-def forward():
-    adb('forward', f'tcp:{HOST_PORT}', f'tcp:{DEVICE_PORT}')
+def app_uid() -> int | None:
+    out = sh(f'stat -c %u /data/data/{PKG}')  # adb root
+    return int(out) if out.isdigit() else None
+
+
+def listening_ports() -> list[int]:
+    """앱(uid) 이 127.0.0.1 에 연 LISTEN 포트들 (/proc/net/tcp). 서버는 무작위 포트를 쓴다."""
+    uid = app_uid()
+    ports = []
+    for line in sh('cat /proc/net/tcp /proc/net/tcp6').splitlines()[1:]:
+        f = line.split()
+        if len(f) < 8 or f[3] != '0A' or not f[7].isdigit() or int(f[7]) != uid:
+            continue
+        addr, port_hex = f[1].rsplit(':', 1)
+        if addr in ('0100007F', '0000000000000000FFFF00000100007F'):
+            ports.append(int(port_hex, 16))
+    return ports
+
+
+def hello_ok(tok: str) -> bool:
+    """/__hello?nonce= 가 HMAC-SHA256(토큰, nonce) 를 돌려주는지 (앱이 토큰을 싣기 전에 하는 확인)."""
+    import hashlib
+    import hmac
+    nonce = os.urandom(16).hex()
+    st, _, body = http(f'/__hello?nonce={nonce}')
+    if st != 200:
+        return False
+    try:
+        mac = json.loads(body).get('mac', '')
+    except ValueError:
+        return False
+    return hmac.compare_digest(mac, hmac.new(tok.encode(), nonce.encode(), hashlib.sha256).hexdigest())
+
+
+state = {'device_port': None}
+
+
+def forward(tok: str | None = None, timeout=120) -> int | None:
+    """앱 서버의 무작위 포트를 찾아 HOST_PORT 로 넘긴다. tok 을 주면 /__hello 로 우리 서버인지 확인."""
+    def find():
+        for port in listening_ports():
+            adb('forward', f'tcp:{HOST_PORT}', f'tcp:{port}')
+            if tok is None or hello_ok(tok):
+                state['device_port'] = port
+                return port
+        return None
+    return wait_for(find, timeout, 2)
 
 
 def wait_for(cond, timeout, interval=1.0):
@@ -211,11 +255,12 @@ def s_launch(tok_holder):
     sh(f'dumpsys deviceidle whitelist +{PKG}')  # 배터리 최적화 안내 창이 화면을 가리지 않게
     adb('logcat', '-c')
     launch()
-    forward()
     tok = wait_for(token, 30)
     tok_holder['t'] = tok
+    port = forward(tok)
     ok = wait_for(lambda: health(tok), 120, 2)
-    record('앱 실행 + 파이썬 서버 기동', bool(ok) and app_pid(), f'pid={app_pid()} health={ok}')
+    record('앱 실행 + 파이썬 서버 기동 (무작위 포트, /__hello HMAC 확인)', bool(ok) and app_pid() and port,
+           f'pid={app_pid()} port={port} health={ok}')
     # WebView 가 화면(로그인)까지 띄웠는지
     title = wait_for(lambda: webview_eval('document.title'), 30, 2)
     shot = screencap('01_launch')
@@ -223,6 +268,11 @@ def s_launch(tok_holder):
 
 
 def s_token(tok):
+    st, _, body = http('/__hello?nonce=abc')
+    record('/__hello 는 토큰 없이 응답하되 토큰은 안 줌', st == 200 and tok not in body and 'mac' in body,
+           f'status={st} body={body.strip()[:40]}...')
+    st, _, _ = http('/__hello?nonce=' + 'x' * 500)
+    record('/__hello 긴 nonce 거절', st in (400, 413, 414), f'status={st}')
     st, _, body = http('/')
     record('토큰 없는 요청 → 403', st == 403, f'status={st}')
     st, _, _ = http('/', 'wrong-token')
@@ -255,7 +305,7 @@ def s_kill9(tok):
     old = app_pid()
     sh(f'kill -9 {old}')
     new = wait_for(lambda: (lambda p: p if p and p != old else None)(app_pid()), 120, 1)
-    forward()
+    forward(tok, 150)
     running = wait_for(lambda: (health(tok) or {}).get('macro_running'), 150, 2)
     note = wait_for(lambda: '다시 시작했어요' in notifications(), 30, 2)
     shot = screencap('02_after_kill9')
@@ -304,7 +354,7 @@ def s_offline(tok):
     time.sleep(3)
     try:
         launch()
-        forward()
+        forward(tok)
         ok = wait_for(lambda: health(tok), 120, 2)
         info = wait_for(lambda: webview_eval(
             "(() => { const b = getComputedStyle(document.body); const btn = document.querySelector('button[type=submit]');"
@@ -333,7 +383,7 @@ def s_reboot(tok):
     time.sleep(3)
     adb('wait-for-device', timeout=120)
     pid = wait_for(app_pid, 240, 3)
-    forward()
+    forward(tok, 240)
     running = wait_for(lambda: (health(tok) or {}).get('macro_running'), 240, 3)
     note = wait_for(lambda: '다시 시작했어요' in notifications(), 30, 2)
     record('재부팅 → 매크로 자동 재개 (--reboot)', has_job and pid and running and note,
@@ -350,7 +400,7 @@ def s_stall(tok):
     # 헬스체크: 첫 90초 + 30초 간격, 180초 동안 조회가 없으면 프로세스를 다시 띄운다 → 약 3.5~5분
     new = wait_for(lambda: (lambda p: p if p and p != old else None)(app_pid()), 420, 5)
     took = round(time.time() - started)
-    forward()
+    forward(tok, 150)
     running = wait_for(lambda: (health(tok) or {}).get('macro_running'), 150, 2)
     h = health(tok) or {}
     log = adb('logcat', '-d', '-s', 'ServerService:W', timeout=30)
