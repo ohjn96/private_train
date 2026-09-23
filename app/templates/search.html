@@ -1259,6 +1259,33 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check immediately on load
     checkMacroStatus();
 
+    // 모바일(특히 iOS Safari)은 앱을 내리면 스트림 연결을 말없이 끊고, 돌아와도
+    // onerror 가 안 올 때가 있다. 그러면 macroStreamSource 가 살아 있는 것처럼 남아
+    // 폴링이 재연결을 안 한다. 화면으로 돌아오면 스트림을 새로 맺고 로그를 다시 받는다
+    // (매크로는 서버에서 계속 돌았으니, 그사이 끝났다면 결과도 이때 보인다).
+    let hiddenAt = null;
+    function resyncMacroStream() {
+        if (macroStreamSource) {
+            macroStreamSource.close();
+            macroStreamSource = null;
+        }
+        historyReplayed = false;
+        checkMacroStatus();
+    }
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') {
+            hiddenAt = Date.now();
+        } else if (hiddenAt && Date.now() - hiddenAt > 5000) {
+            // 데스크톱에서 탭을 잠깐 오가는 정도로는 다시 맺지 않는다
+            hiddenAt = null;
+            resyncMacroStream();
+        }
+    });
+    // 뒤로가기 캐시(bfcache)에서 복원된 페이지는 스크립트 상태가 멈춘 그대로다
+    window.addEventListener('pageshow', function(e) {
+        if (e.persisted) resyncMacroStream();
+    });
+
     // Load telegram status on page load
     loadTelegramSettings();
     checkTelegramStatus();
