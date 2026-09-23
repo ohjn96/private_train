@@ -359,13 +359,28 @@ class MacroStartGuardTest(unittest.TestCase):
 
 # ---------------------------------------------------------------- 선택 인덱스
 
+def sign_in(client, user_id):
+    """로그인된 세션을 흉내 낸다. 자격증명은 쿠키가 아니라 서버 금고에 들어간다."""
+    from app.utils import session_helper
+    sid = f'test-{user_id}'
+    session_helper._vault[sid] = {
+        'credentials': {'korail': {'user_id': user_id, 'password': 'pw'}},
+        'cards': {},
+    }
+    with client.session_transaction() as sess:
+        sess['sid'] = sid
+        sess['auth'] = {'korail': {'logged_in': True, 'user_id': user_id}}
+        sess['current_provider'] = 'korail'
+        sess['search_state'] = {'korail': {
+            'trains': [], 'selected_indices': [],
+            'seat_option': 'GENERAL_FIRST', 'form_data': {}}}
+
+
 class SelectionTest(unittest.TestCase):
     def setUp(self):
         from app import create_app
         self.client = create_app().test_client()
-        with self.client.session_transaction() as sess:
-            sess['auth'] = {'korail': {'logged_in': True, 'user_id': 'tester'}}
-            sess['current_provider'] = 'korail'
+        sign_in(self.client, 'tester')
 
     def post(self, indices, **extra):
         from werkzeug.datastructures import MultiDict
@@ -425,13 +440,7 @@ class ServiceReuseTest(unittest.TestCase):
         self.ServiceManager._services.clear()
 
     def sign_in(self, user_id='tester'):
-        with self.client.session_transaction() as sess:
-            sess['auth'] = {'korail': {'logged_in': True, 'user_id': user_id}}
-            sess['credentials'] = {'korail': {'user_id': user_id, 'password': 'pw'}}
-            sess['current_provider'] = 'korail'
-            sess['search_state'] = {'korail': {
-                'trains': [], 'selected_indices': [],
-                'seat_option': 'GENERAL_FIRST', 'form_data': {}}}
+        sign_in(self.client, user_id)
 
     def test_login_happens_once_across_requests(self):
         self.sign_in()

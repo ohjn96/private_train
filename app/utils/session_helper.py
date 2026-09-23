@@ -1,22 +1,51 @@
 # -*- coding: utf-8 -*-
-"""Session management utilities (코레일 단일 서비스)."""
+"""Session management utilities (코레일 단일 서비스).
+
+Flask 기본 세션은 쿠키에 서명만 하고 암호화는 하지 않는다. 쿠키를 base64 로 풀면
+내용이 그대로 보이므로, 코레일 비밀번호와 카드 정보는 쿠키에 넣지 않고 서버 메모리
+(`_vault`)에 둔다. 쿠키에는 그 금고를 찾는 무작위 세션 ID 만 남는다.
+프로세스 메모리라 서버를 재시작하면 비워지고, 그때는 다시 로그인하면 된다.
+"""
+import secrets
+import threading
 from flask import session
 from typing import Optional, Dict, Any, List
 
 #: 유일한 서비스 제공자. SRT 열차도 코레일 API로 함께 조회된다.
 PROVIDER = 'korail'
 
+#: 세션 ID -> {'credentials': {...}, 'cards': {...}}. 쿠키에 두면 안 되는 값만 여기 둔다.
+_vault: Dict[str, Dict[str, Dict[str, Any]]] = {}
+_vault_lock = threading.Lock()
+
+
+def _vault_entry(create: bool = False) -> Optional[Dict[str, Dict[str, Any]]]:
+    """현재 세션의 금고 칸. create=False 면 없을 때 None."""
+    sid = session.get('sid')
+    if not sid:
+        if not create:
+            return None
+        sid = session['sid'] = secrets.token_urlsafe(32)
+        session.modified = True
+    with _vault_lock:
+        entry = _vault.get(sid)
+        if entry is None and create:
+            entry = _vault[sid] = {'credentials': {}, 'cards': {}}
+        return entry
+
+
+def _vault_drop(kind: str, provider: str) -> None:
+    entry = _vault_entry()
+    if entry:
+        entry[kind].pop(provider, None)
+
 
 def _init_session_structure() -> None:
     """Initialize session structure if not exists."""
     if 'auth' not in session:
         session['auth'] = {}
-    if 'credentials' not in session:
-        session['credentials'] = {}
     if 'search_state' not in session:
         session['search_state'] = {}
-    if 'cards' not in session:
-        session['cards'] = {}
 
 
 def get_current_provider() -> str:
@@ -53,12 +82,10 @@ def clear_auth_state(provider: str) -> None:
     _init_session_structure()
     if provider in session['auth']:
         session['auth'][provider] = {'logged_in': False}
-    if provider in session['credentials']:
-        del session['credentials'][provider]
     if provider in session['search_state']:
         del session['search_state'][provider]
-    if provider in session['cards']:
-        del session['cards'][provider]
+    _vault_drop('credentials', provider)
+    _vault_drop('cards', provider)
     session.modified = True
 
 
@@ -66,7 +93,9 @@ def is_logged_in(provider: str = None) -> bool:
     """Check if logged in to a specific provider or current provider."""
     if provider is None:
         provider = get_current_provider()
-    return get_auth_state(provider).get('logged_in', False)
+    # 쿠키의 로그인 표시만으론 부족하다. 서버 금고에 자격증명이 있어야 로그인 상태다
+    # (재시작으로 금고가 비었거나, 쿠키만 흉내 낸 요청을 걸러낸다).
+    return bool(get_auth_state(provider).get('logged_in') and get_credentials(provider))
 
 
 def get_logged_in_providers() -> List[str]:
@@ -120,24 +149,22 @@ def set_selected_indices(
 
 def get_credentials(provider: str) -> Optional[Dict[str, str]]:
     """Get stored credentials for a provider (for session restoration)."""
-    _init_session_structure()
-    return session['credentials'].get(provider)
+    entry = _vault_entry()
+    return entry['credentials'].get(provider) if entry else None
 
 
 def set_credentials(provider: str, user_id: str, password: str) -> None:
     """Store credentials for a provider (for session restoration)."""
-    _init_session_structure()
-    session['credentials'][provider] = {
+    _vault_entry(create=True)['credentials'][provider] = {
         'user_id': user_id,
         'password': password
     }
-    session.modified = True
 
 
 def get_card_settings(provider: str) -> Optional[Dict[str, Any]]:
     """Get stored card auto-payment settings for a provider."""
-    _init_session_structure()
-    return session['cards'].get(provider)
+    entry = _vault_entry()
+    return entry['cards'].get(provider) if entry else None
 
 
 def set_card_settings(
@@ -151,8 +178,7 @@ def set_card_settings(
     auto_pay: bool = True,
 ) -> None:
     """Store card auto-payment settings for a provider."""
-    _init_session_structure()
-    session['cards'][provider] = {
+    _vault_entry(create=True)['cards'][provider] = {
         'card_number': card_number,
         'card_password': card_password,
         'validation_number': validation_number,
@@ -161,17 +187,17 @@ def set_card_settings(
         'card_type': card_type,
         'auto_pay': auto_pay,
     }
-    session.modified = True
 
 
 def clear_card_settings(provider: str) -> None:
     """Remove stored card settings for a provider."""
-    _init_session_structure()
-    if provider in session['cards']:
-        del session['cards'][provider]
-        session.modified = True
+    _vault_drop('cards', provider)
 
 
 def clear_all_session() -> None:
     """Clear all session data."""
+    sid = session.get('sid')
+    if sid:
+        with _vault_lock:
+            _vault.pop(sid, None)
     session.clear()

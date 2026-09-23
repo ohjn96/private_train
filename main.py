@@ -136,6 +136,8 @@ def run_web() -> None:
     """웹 서버로 띄운다 (기본 동작)."""
     # 기본 포트를 5050으로 변경 (macOS AirPlay가 5000 사용)
     port = int(os.environ.get('PORT', 5050))
+    # 서버에선 127.0.0.1 이나 Tailscale 주소로 좁힐 수 있게. 기본은 예전처럼 전체.
+    host = os.environ.get('HOST', '0.0.0.0')
     # exe 로 실행할 때는 reloader 가 프로세스를 두 번 띄우므로 debug 기본 off
     debug_default = 'false' if getattr(sys, 'frozen', False) else 'true'
     debug = os.environ.get('FLASK_DEBUG', debug_default).lower() == 'true'
@@ -150,7 +152,7 @@ def run_web() -> None:
         open_browser(port)
 
     try:
-        app.run(host='0.0.0.0', port=port, debug=debug, threaded=True)
+        app.run(host=host, port=port, debug=debug, threaded=True)
     except KeyboardInterrupt:
         print("\n⏹️  Server stopped by user")
     finally:

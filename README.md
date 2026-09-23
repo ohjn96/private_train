@@ -176,6 +176,40 @@ Restart=on-failure
   실패합니다. 집에 있는 기기(라즈베리파이, 안 쓰는 노트북)가 이 점에서 안전합니다.
 - **계정 정보가 그 서버에 남습니다.** 환경변수 파일 권한(`chmod 600`)을 꼭 확인하세요.
 
+### Oracle Cloud 에 올리기 (무료, 폰에서 접속)
+
+PC 를 계속 켜 둘 수 없을 때. Oracle Cloud Always Free VM 에 올리고 폰에서 Tailscale 로 접속합니다.
+포트를 인터넷에 열지 않아도 됩니다.
+
+1. Oracle Cloud 가입. **홈 리전을 Seoul 또는 Chuncheon** 으로 (나중에 못 바꿈, 해외 IP 는 코레일이 막을 수 있음)
+2. 인스턴스 생성: 이미지 **Ubuntu 24.04**, Shape 는 Always Free 표시된 것
+3. SSH 로 접속해서:
+
+```bash
+git clone https://github.com/ohjn96/private_train.git && cd private_train
+./scripts/setup-server.sh --tailscale              # 웹 모드 (웹 UI + 텔레그램)
+./scripts/setup-server.sh --headless --tailscale   # 텔레그램으로만 쓸 때
+```
+
+4. 폰(과 같이 쓸 가족·친구 폰)에 Tailscale 앱 설치 → 같은 tailnet 에 초대(Share) →
+   스크립트가 알려준 `http://100.x.x.x:5050` 접속 → **접근 비밀번호** 입력 → 코레일 로그인
+
+설정은 `/etc/train.env` 에 있고, 바꾼 뒤엔 `sudo systemctl restart train`. 업데이트는 `git pull` 후
+스크립트를 다시 돌리면 됩니다.
+
+| 환경변수 | 설명 |
+|---|---|
+| `APP_PASSWORD` | 설정하면 모든 페이지 앞에 접근 비밀번호를 묻습니다. 외부에 열 땐 필수 |
+| `FLASK_DEBUG` | 서버에선 반드시 `false`. 켜져 있으면 웹 디버거로 원격 코드 실행이 가능해집니다 |
+| `HOST` / `PORT` | 바인딩 주소/포트 (기본 `0.0.0.0` / `5050`) |
+| `FLASK_SECRET_KEY` | 세션 서명 키. 비우면 `~/.train_reservation/secret_key` 에 무작위로 만들어 둡니다 |
+
+> 🔒 코레일 비밀번호와 카드 정보는 브라우저 쿠키가 아니라 서버 메모리에만 둡니다.
+> 그래서 서버를 재시작하면 웹에서 다시 로그인해야 합니다.
+
+> ⚠️ 지금 구조는 **한 번에 한 코레일 계정**만 제대로 동작합니다. 여러 명이 각자 계정으로
+> 동시에 쓰면 로그인·매크로 중단·텔레그램 봇을 서로 공유하게 되니 주의하세요.
+
 ---
 
 ## 요구사항

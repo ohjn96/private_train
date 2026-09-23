@@ -57,11 +57,9 @@ class ServiceManager:
         with cls._cache_lock:
             service = cls._services.get(provider)
 
-            if service is not None:
-                same_user = (
-                    credentials is None
-                    or getattr(service, "_user_id", None) == credentials["user_id"]
-                )
+            if service is not None and credentials is not None:
+                # 자격증명이 없는 세션에는 캐시된(남의) 로그인 인스턴스를 절대 넘기지 않는다
+                same_user = getattr(service, "_user_id", None) == credentials["user_id"]
                 if same_user and service.is_logged_in():
                     setattr(g, key, service)
                     return service

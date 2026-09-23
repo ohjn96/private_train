@@ -5,7 +5,8 @@ import os
 
 class Config:
     """Base configuration."""
-    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'train_reservation_secret_key_2024')
+    # 실제 키는 create_app 이 정한다 (환경변수 또는 무작위 생성 파일)
+    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY')
     DEBUG = False
     TESTING = False
 
