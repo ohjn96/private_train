@@ -637,6 +637,16 @@ class ExceptionForm(type):
         return item in cls.codes
 
 
+class ReservedOnly(object):
+    """예약은 됐지만 상세(결제에 필요한 정보)를 불러오지 못했을 때 돌려주는 최소 객체."""
+
+    def __init__(self, rsv_id):
+        self.rsv_id = rsv_id
+
+    def __repr__(self):
+        return f'ReservedOnly({self.rsv_id})'
+
+
 class KorailError(Exception, metaclass=ExceptionForm):
     """Korail Base Error Class"""
 
@@ -1156,9 +1166,16 @@ When the train allows waiting, enroll for the waiting list instead of failing in
         j = json.loads(r.text)
         if self._result_check(j):
             rsv_id = j['h_pnr_no']
-            rsvlist = list(filter(lambda x: x.rsv_id == rsv_id, self.reservations()))
+            # 여기까지 왔으면 좌석은 이미 잡혔다. 뒤따르는 목록 조회가 실패했다고 예외를
+            # 내면 호출하는 쪽이 "예약 실패"로 알고 다른 열차를 또 예약할 수 있으므로,
+            # 그때는 예약번호만 든 객체를 돌려준다.
+            try:
+                rsvlist = list(filter(lambda x: x.rsv_id == rsv_id, self.reservations()))
+            except Exception:
+                rsvlist = []
             if len(rsvlist) == 1:
                 return rsvlist[0]
+            return ReservedOnly(rsv_id)
 
     def tickets(self):
         """Get list of tickets"""

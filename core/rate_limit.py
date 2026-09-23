@@ -56,6 +56,7 @@ class RateLimiter:
         self._min_interval = min_interval
         self._lock = threading.Lock()
         self._next_allowed = 0.0
+        self._last_note = float('-inf')
 
     @property
     def min_interval(self) -> float:
@@ -86,7 +87,13 @@ class RateLimiter:
         다음 호출은 이 시점으로부터 다시 min_interval 만큼 벌어진다.
         """
         with self._lock:
-            self._next_allowed = time.monotonic() + self._min_interval
+            # 예약 호출끼리는 1초 규칙을 지킨다 (후보 열차 두 편이 연달아 예약될 때)
+            gap = self._last_note + HARD_MIN_INTERVAL - time.monotonic()
+            if gap > 0:
+                time.sleep(gap)
+            now = time.monotonic()
+            self._last_note = now
+            self._next_allowed = now + self._min_interval
 
     def call(self, fn, *args, **kwargs):
         """간격을 지킨 뒤 fn 을 호출한다."""

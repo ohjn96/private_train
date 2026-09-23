@@ -104,7 +104,7 @@ def attempt_payment(service, card: dict, result) -> tuple[bool, str]:
     try:
         reservation_obj = result.details.get("reservation")
         if reservation_obj is None:
-            return False, "예약 정보를 찾을 수 없어 결제를 시도할 수 없습니다."
+            return False, "예약은 잡혔지만 결제 정보를 불러오지 못했어요. 코레일 앱에서 결제하세요."
 
         pay_result = service.pay_with_card(
             reservation_obj,
@@ -118,6 +118,13 @@ def attempt_payment(service, card: dict, result) -> tuple[bool, str]:
         return pay_result.success, pay_result.message
     except Exception as e:
         return False, f"결제 중 오류: {str(e)}"
+
+
+def _sleep_unless_stopped(seconds: float, should_stop: Callable[[], bool]) -> None:
+    """seconds 동안 쉬되 중단 요청이 오면 바로 돌아온다."""
+    deadline = time.monotonic() + seconds
+    while not should_stop() and time.monotonic() < deadline:
+        time.sleep(min(0.5, max(0.0, deadline - time.monotonic())))
 
 
 def run_reservation(
@@ -207,7 +214,6 @@ def _run(
     tg.push_log("log", f"예약 매크로를 시작합니다{mode_note}{interval_note}. 대상: {trains_summary}")
 
     attempt = 0
-    consecutive_errors = 0
     recovery_attempts = 0
 
     while not should_stop():
@@ -231,8 +237,6 @@ def _run(
                 include_no_seats=True,
                 until_time=search_until,
             )
-            consecutive_errors = 0
-
             candidates = [locked_train] if locked_train else selected_trains
 
             for candidate_idx, train_info in enumerate(candidates):
@@ -321,8 +325,9 @@ def _run(
                             # the retry loop now (a bug further down must never cause a
                             # duplicate attempt).
                             if passenger_count > 1:
-                                tg.push_log("success", f"총 {passenger_count}석 모두 확보 완료!")
-                            tg.set_macro_state(False)
+                                tg.push_log("log", f"총 {passenger_count}석 모두 확보 완료!")
+                            # 실행 슬롯은 여기서 풀지 않는다. 부르는 쪽이 정리를 다 마친 뒤
+                            # 맨 마지막에 푼다 (먼저 풀면 그 틈에 다음 매크로가 뜬다).
                             return
                         else:
                             # Sequential mode, still need more seats - keep the loop going.
@@ -336,10 +341,10 @@ def _run(
                         tg.push_log("log", f"[{timestamp}] {train_name} ({dep_time}): {result.message}")
 
                 except Exception as reserve_error:
+                    if is_login_error(reserve_error, provider):
+                        raise  # 세션 만료: 아래 복구 로직으로
                     error_msg = str(reserve_error)
                     tg.push_log("log", f"[{timestamp}] {train_name} ({dep_time}): 예약 오류 - {error_msg}")
-                    if is_login_error(reserve_error, provider):
-                        consecutive_errors += 1
 
             if attempt % 1000 == 0:
                 tg.send_message(f"🔄 시도 #{attempt} 진행 중...")
@@ -351,26 +356,26 @@ def _run(
             tg.push_log("error", msg)
 
             if is_login_error(e, provider):
-                consecutive_errors += 1
+                recovery_attempts += 1
+                tg.push_log(
+                    "warning",
+                    f"[{timestamp}] 코레일 로그인이 끊겼습니다 - 다시 로그인하는 중... ({recovery_attempts}/{MAX_RECOVERY_ATTEMPTS})",
+                )
+                success, recovery_msg = recover()
 
-                if recovery_attempts < MAX_RECOVERY_ATTEMPTS:
-                    recovery_attempts += 1
-                    tg.push_log(
-                        "warning",
-                        f"[{timestamp}] 로그인 오류 감지 - 자동 복구 시도 중... ({recovery_attempts}/{MAX_RECOVERY_ATTEMPTS})",
-                    )
-                    success, recovery_msg = recover()
+                if success:
+                    # "success" 로 남기면 화면이 예약 성공으로 착각한다
+                    tg.push_log("log", f"[{timestamp}] {recovery_msg} - 예약을 계속합니다")
+                    recovery_attempts = 0  # 며칠 도는 동안 여러 번 만료돼도 매번 복구하도록
+                    time.sleep(1)
+                    continue
 
-                    if success:
-                        tg.push_log("success", f"[{timestamp}] {recovery_msg} - 예약 재시작")
-                        consecutive_errors = 0
-                        time.sleep(1)
-                        continue
-                    else:
-                        tg.push_log("error", f"[{timestamp}] {recovery_msg}")
-                        if recovery_attempts >= MAX_RECOVERY_ATTEMPTS:
-                            tg.push_log("error", f"[{timestamp}] 최대 복구 시도 횟수 초과. 예약을 중단합니다.")
-                            break
+                tg.push_log("error", f"[{timestamp}] {recovery_msg}")
+                if recovery_attempts >= MAX_RECOVERY_ATTEMPTS:
+                    tg.push_log("error", f"[{timestamp}] 다시 로그인하지 못해 예약을 멈춥니다. 앱에서 다시 로그인해 주세요.")
+                    break
+                # 네트워크가 잠깐 끊긴 것일 수 있으니 점점 길게 쉬었다가 (중단은 바로 반영)
+                _sleep_unless_stopped(min(5 * recovery_attempts, 30), should_stop)
             else:
                 tg.push_log("warning", f"[{timestamp}] 일시적 오류 - 재시도 중...")
                 if attempt % 1000 == 0:
@@ -382,7 +387,6 @@ def _run(
         # 않게 약간만 흔든다.
         time.sleep(random.uniform(0, 0.3))
 
-    tg.set_macro_state(False)
     tg.send_macro_stopped()
     if seats_secured and seats_secured < passenger_count:
         tg.push_log(

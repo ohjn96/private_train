@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Reservation routes with SSE support."""
 import json
+import logging
 import threading
 from datetime import datetime
 from functools import wraps
@@ -30,6 +31,7 @@ from core.reservation import (  # noqa: F401  (attempt_payment 는 예전 경로
 )
 
 bp = Blueprint("reservation", __name__)
+logger = logging.getLogger(__name__)
 
 # Global stop flag for macro
 STOP_MACRO = False
@@ -176,6 +178,8 @@ def _setup_telegram_callbacks():
                     "success": False,
                     "message": "현재 매크로가 실행 중입니다. /stop 후 다시 시도해주세요.",
                 }
+            global STOP_MACRO
+            STOP_MACRO = False  # 스레드를 띄우기 전에 (루프 안에서 하면 먼저 온 중단이 지워진다)
 
             macro_thread = threading.Thread(
                 target=run_reservation_loop,
@@ -274,14 +278,17 @@ def _recovery_credentials(provider: str, service) -> dict | None:
     return getattr(service, "credentials", None)
 
 
-def attempt_recovery(provider: str, service) -> tuple[bool, str]:
+def attempt_recovery(provider: str, service, credentials: dict | None = None) -> tuple[bool, str]:
     """Attempt to recover from connection/login errors.
+
+    :param credentials: 매크로를 시작할 때 복사해 둔 자격증명. 아래 logout() 이 서비스가
+        쥔 자격증명을 지우므로, 이걸 넘기지 않으면 한 번 실패한 뒤로는 복구할 수 없다.
 
     Returns:
         tuple: (success: bool, message: str)
     """
     try:
-        credentials = _recovery_credentials(provider, service)
+        credentials = credentials or _recovery_credentials(provider, service)
         if not credentials:
             return False, "저장된 로그인 정보가 없습니다."
 
@@ -321,7 +328,9 @@ def run_reservation_loop(
     """
     global STOP_MACRO
     tg = TelegramService.get_instance()
-    STOP_MACRO = False
+    # STOP_MACRO 는 여기서 초기화하지 않는다. 시작하는 쪽이 스레드를 띄우기 전에 한다.
+    # (여기서 하면 스레드가 뜨기 전에 눌린 "중단" 이 지워진다)
+    credentials = _recovery_credentials(provider, service)
 
     reporter = tg
     if owner and _macro_listeners:
@@ -335,12 +344,20 @@ def run_reservation_loop(
             service, selected_trains, seat_option, card,
             reporter=reporter,
             should_stop=lambda: STOP_MACRO,
-            recover=lambda: attempt_recovery(provider, service),
+            recover=lambda: attempt_recovery(provider, service, credentials),
             provider=provider,
             passenger_count=passenger_count,
             sequential=sequential,
             call_interval=call_interval,
         )
+    except Exception as e:  # noqa: BLE001 - 스레드가 조용히 죽지 않게
+        logger.exception("reservation loop crashed")
+        try:
+            tg.push_log("error", f"예약 매크로가 예기치 않게 멈췄습니다: {e}")
+            reporter.send_macro_stopped()
+            tg.push_log("stopped", "예약이 중단되었습니다.")
+        except Exception:  # noqa: BLE001
+            pass
     finally:
         # 성공·복구 포기로 끝났을 때도 /status 가 '대기 중' 을 보이도록
         STOP_MACRO = True

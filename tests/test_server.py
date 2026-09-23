@@ -255,6 +255,7 @@ class PushTest(ServerTestCase):
         trains = [FakeTrain(0, has_seat=True)]
         service = make_service(trains)
         self.tg.try_start_macro(owner='me')
+        reservation.STOP_MACRO = False  # 시작하는 쪽의 몫 (앞 테스트가 켜 둔 채일 수 있다)
         with FastRateLimit():
             reservation.run_reservation_loop(
                 service, 'korail', [as_selected(trains[0], 0)], SeatOption.GENERAL_FIRST, None,

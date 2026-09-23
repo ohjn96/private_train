@@ -125,6 +125,7 @@ class FastRateLimit:
         self.original = korail_api._min_interval
         korail_api._min_interval = self.interval
         korail_api._next_allowed = 0.0
+        korail_api._last_note = float('-inf')  # 앞 테스트의 예약 기록이 남지 않게
         return self
 
     def __exit__(self, *exc):
@@ -175,8 +176,10 @@ class SearchPagingTest(unittest.TestCase):
             got = svc.search(dep='서울', arr='부산', date='20260923', time='060000',
                              until_time=self.trains[20].dep_time)
         self.assertEqual(len(svc._client.kinds('search')), 3)
-        self.assertEqual(len(got), 30)
-        self.assertIn(self.trains[20].train_no, [t.train_number for t in got])
+        # 다음 장은 마지막 열차 시각부터 부르므로 한 편씩 겹치고, 겹친 건 걸러낸다
+        numbers = [t.train_number for t in got]
+        self.assertEqual(len(numbers), len(set(numbers)), '같은 열차가 두 번 들어갔다')
+        self.assertIn(self.trains[20].train_no, numbers)
 
     def test_max_pages_is_capped(self):
         svc = make_service(self.trains)

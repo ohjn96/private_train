@@ -31,6 +31,11 @@ class ServerService : Service() {
         const val ACTION_STOP = "com.ohjn96.trainreservation.STOP"
         private const val TAG = "ServerService"
 
+        /** 매크로가 도는 중이라는 표시. 프로세스가 죽었다 살아났을 때 알리려고 디스크에 남긴다. */
+        private const val PREFS = "macro"
+        private const val KEY_ACTIVE = "active"
+        private const val KEY_SUMMARY = "summary"
+
         @Volatile
         var instance: ServerService? = null
             private set
@@ -60,7 +65,25 @@ class ServerService : Service() {
         Bridge.appContext = applicationContext
         Notifications.createChannels(this)
         goForeground()
+        warnIfMacroWasLost()
         startPythonServer()
+    }
+
+    /**
+     * 메모리가 부족하면 안드로이드가 앱 프로세스를 죽였다가 서비스만 다시 띄운다(START_STICKY).
+     * 그때 매크로와 로그인은 메모리와 함께 사라지므로, 돌던 중이었다면 멈췄다고 꼭 알린다.
+     * (알리지 않으면 사용자는 계속 찾고 있다고 믿게 된다)
+     */
+    private fun warnIfMacroWasLost() {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_ACTIVE, false)) return
+        val summary = prefs.getString(KEY_SUMMARY, "").orEmpty()
+        prefs.edit().clear().apply()
+        Notifications.showEvent(
+            this, "lost", "⚠️ 예약 매크로가 멈췄어요",
+            "휴대폰이 메모리를 정리하면서 앱이 다시 시작됐어요. 앱을 열어 다시 로그인하고 매크로를 시작해 주세요." +
+                if (summary.isNotEmpty()) "\n대상: $summary" else ""
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -100,6 +123,9 @@ class ServerService : Service() {
     fun onMacroState(running: Boolean, summary: String) {
         macroRunning = running
         macroSummary = summary
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().apply {
+            if (running) putBoolean(KEY_ACTIVE, true).putString(KEY_SUMMARY, summary) else clear()
+        }.commit()  // 곧바로 죽을 수도 있으니 동기로 쓴다
         if (running) acquireLocks() else releaseLocks()
         goForeground()
     }
@@ -159,6 +185,8 @@ class ServerService : Service() {
     }
 
     private fun shutdown() {
+        // 사용자가 직접 끈 것이므로 "멈췄어요" 알림을 띄우지 않게
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().commit()
         releaseLocks()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()

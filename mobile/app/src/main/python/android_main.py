@@ -120,6 +120,18 @@ def _add_debug_routes(app) -> None:
             tg.set_macro_state(False)
         return {'running': tg._macro_running}
 
+    @app.route('/__debug/net')
+    def debug_net():
+        """폰 안의 파이썬이 지금 바깥(코레일)에 닿는지. 절전(Doze) 시험용, 요청 1번."""
+        import time as _time
+        import requests
+        started = _time.monotonic()
+        try:
+            status = requests.get('https://www.letskorail.com/', timeout=8).status_code
+        except Exception as e:  # noqa: BLE001
+            status = f'error: {type(e).__name__}'
+        return {'status': status, 'seconds': round(_time.monotonic() - started, 2)}
+
     @app.route('/__debug/notify')
     def debug_notify():
         for listener in list(_macro_listeners):

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from korail2 import Korail, KorailError, NeedToLoginError, SoldOutError, NoResultsError, ReserveOption, AdultPassenger
+from korail2.korail2 import ReservedOnly
 
 from core.base_service import (
     BaseTrainService,
@@ -105,6 +106,7 @@ class KorailService(BaseTrainService):
             raise NeedToLoginError()
 
         all_trains = []
+        seen: set[tuple[str, str]] = set()
         current_time = time
         pages = max(1, min(max_pages, MAX_SEARCH_PAGES))
 
@@ -121,12 +123,21 @@ class KorailService(BaseTrainService):
             except NoResultsError:
                 break
             except Exception:
+                # 첫 장부터 실패하면 "열차 없음"으로 숨기지 않고 알린다 (예약 루프는
+                # 일시 오류로 보고 다시 시도한다). 뒷장 실패는 받은 데까지만 쓴다.
+                if not all_trains:
+                    raise
                 break
 
             if not trains:
                 break
 
-            all_trains.extend(trains)
+            # 다음 장은 마지막 열차 시각 그대로 부르므로 겹치는 열차를 걸러낸다
+            fresh = [t for t in trains if (t.train_no, t.dep_time) not in seen]
+            if not fresh:
+                break
+            seen.update((t.train_no, t.dep_time) for t in fresh)
+            all_trains.extend(fresh)
 
             last_train = trains[-1]
 
@@ -134,12 +145,11 @@ class KorailService(BaseTrainService):
             if until_time is None or last_train.dep_time >= until_time:
                 break
 
-            # 다음 페이지는 마지막 열차 1분 뒤부터
-            last_dt = datetime.strptime(f"{last_train.dep_date}{last_train.dep_time}", "%Y%m%d%H%M%S")
-            next_dt = last_dt + timedelta(minutes=1)
-            if next_dt.strftime("%Y%m%d") != date:
+            # 다음 페이지는 마지막 열차와 같은 시각부터. 1분 뒤부터 부르면 같은 분에
+            # 출발하는데 다음 장으로 밀린 열차를 영영 못 본다. (겹치는 건 위에서 거른다)
+            if last_train.dep_date != date:
                 break
-            current_time = next_dt.strftime("%H%M%S")
+            current_time = last_train.dep_time
 
         return [self._to_train_info(t) for t in all_trains]
 
@@ -174,17 +184,23 @@ class KorailService(BaseTrainService):
             self._limiter.note_call()
             reservation = self._client.reserve(original_train, passengers=passengers, option=korail_option)
 
+            # 상세를 못 불러온 예약(ReservedOnly)은 결제할 수 없으므로 결제 정보는 비운다
+            full = reservation if reservation is not None and not isinstance(reservation, ReservedOnly) else None
             return ReservationResult(
                 success=True,
                 message="예약 성공!",
                 reservation_id=reservation.rsv_id if reservation else None,
-                details={'reservation': reservation}
+                details={'reservation': full}
             )
         except SoldOutError:
             return ReservationResult(
                 success=False,
                 message="매진되었습니다."
             )
+        except NeedToLoginError:
+            # 세션 만료(P058). 실패로 삼키면 재로그인 없이 "좌석 있음 → 예약 실패"를
+            # 끝없이 반복하므로, 예약 루프의 복구 로직이 받도록 그대로 올린다.
+            raise
         except KorailError as e:
             return ReservationResult(
                 success=False,

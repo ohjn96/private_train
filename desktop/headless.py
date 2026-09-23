@@ -391,6 +391,7 @@ def run_oneshot(
         note = ' (1인씩 순차)' if plan.sequential else ' (2인 동시)'
     log(f"예약 매크로 시작{note}. 중단하려면 Ctrl+C 또는 텔레그램 /stop")
 
+    reservation.STOP_MACRO = False
     reservation.run_reservation_loop(
         service,
         PROVIDER,
