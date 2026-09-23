@@ -262,3 +262,41 @@ class ConfigTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PrereleaseVersionTest(unittest.TestCase):
+    """3.0.0-beta.0 같은 미리보기 버전: Briefcase 는 PEP 440, Info.plist 는 숫자만."""
+
+    def test_to_pep440(self):
+        import importlib.util
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parent.parent
+        spec = importlib.util.spec_from_file_location('sync_sources_v', root / 'mobile/ios/sync_sources.py')
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertEqual(mod.to_pep440('3.0.0'), '3.0.0')
+        self.assertEqual(mod.to_pep440('3.0.0-beta.0'), '3.0.0b0')
+        self.assertEqual(mod.to_pep440('3.1.2-rc.4'), '3.1.2rc4')
+        self.assertEqual(mod.to_pep440('3.0.0-alpha.1'), '3.0.0a1')
+        with self.assertRaises(ValueError):
+            mod.to_pep440('3.0-beta')
+
+    def test_plist_versions_are_numeric(self):
+        import importlib.util
+        import pathlib
+        import plistlib
+        import tempfile
+        root = pathlib.Path(__file__).resolve().parent.parent
+        spec = importlib.util.spec_from_file_location('prep_v', root / 'mobile/ios/tools/prepare_xcode_project.py')
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with tempfile.TemporaryDirectory() as d:
+            app = pathlib.Path(d) / 'App'
+            app.mkdir()
+            plist = app / 'App-Info.plist'
+            plist.write_bytes(plistlib.dumps({'CFBundleShortVersionString': '3.0.0b0',
+                                              'CFBundleVersion': '3.0.0b0'}))
+            mod.set_display_name(pathlib.Path(d))
+            info = plistlib.loads(plist.read_bytes())
+        self.assertEqual(info['CFBundleShortVersionString'], '3.0.0')
+        self.assertEqual(info['CFBundleVersion'], '3.0.0')

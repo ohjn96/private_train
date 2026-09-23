@@ -28,11 +28,22 @@ _IGNORE = shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo', '.DS_Store')
 _VERSION_LINE = re.compile(r'^(version\s*=\s*)"[^"]*"', re.MULTILINE)
 
 
+_SEMVER = re.compile(r'(\d+\.\d+\.\d+)(?:-(alpha|beta|rc)\.(\d+))?')
+_PEP440_STAGE = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}
+
+
+def to_pep440(version: str) -> str:
+    """VERSION(3.0.0-beta.0) → Briefcase 가 받는 PEP 440 (3.0.0b0)."""
+    m = _SEMVER.fullmatch(version)
+    if not m:
+        raise ValueError(f'VERSION 파일 형식이 이상합니다: {version!r} (예: 3.0.0, 3.0.0-beta.0)')
+    base, stage, n = m.groups()
+    return base if not stage else f'{base}{_PEP440_STAGE[stage]}{n}'
+
+
 def read_version(repo_root: Path) -> str:
-    version = (repo_root / 'VERSION').read_text(encoding='utf-8').strip()
-    if not re.fullmatch(r'\d+(\.\d+)*', version):
-        raise ValueError(f'VERSION 파일 형식이 이상합니다: {version!r}')
-    return version
+    """VERSION 파일을 읽어 PEP 440 으로 돌려준다 (pyproject.toml 에 그대로 쓴다)."""
+    return to_pep440((repo_root / 'VERSION').read_text(encoding='utf-8').strip())
 
 
 def write_version(pyproject: Path, version: str) -> bool:

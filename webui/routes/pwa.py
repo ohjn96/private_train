@@ -54,7 +54,7 @@ def manifest():
         'scope': '/',
         'display': 'standalone',
         'background_color': '#F9FAFB',
-        'theme_color': '#EF4444',
+        'theme_color': '#F6F4F0',
         'lang': 'ko',
         'icons': [
             {'src': icon('icon-192.png'), 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},

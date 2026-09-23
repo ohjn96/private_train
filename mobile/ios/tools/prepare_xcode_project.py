@@ -14,6 +14,7 @@
     python mobile/ios/tools/prepare_xcode_project.py
 """
 import plistlib
+import re
 import sys
 from pathlib import Path
 
@@ -33,6 +34,12 @@ def set_display_name(bundle: Path, name: str = DISPLAY_NAME) -> Path:
     with path.open('rb') as f:
         info = plistlib.load(f)
     info['CFBundleDisplayName'] = name
+    # App Store 규칙: 두 버전 값은 숫자와 점만 (3.0.0b0 같은 미리보기 표기는 앞 숫자만 남긴다)
+    for key in ('CFBundleShortVersionString', 'CFBundleVersion'):
+        value = str(info.get(key, ''))
+        if value and not re.fullmatch(r'\d+(\.\d+){0,2}', value):
+            m = re.match(r'\d+(\.\d+){0,2}', value)
+            info[key] = m.group(0) if m else '1.0.0'
     with path.open('wb') as f:
         plistlib.dump(info, f)
     return path

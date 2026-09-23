@@ -79,8 +79,8 @@
         display: inline-flex; align-items: center; justify-content: center; gap: 6px;
         transition: background-color .15s;
     }
-    .btn-primary { padding: 0 18px; background: #C8102E; color: #FFFFFF; font-size: 16px; }
-    .btn-primary:hover { background: #9E0C24; }
+    .btn-primary { padding: 0 18px; background: #1E4FD8; color: #FFFFFF; font-size: 16px; }
+    .btn-primary:hover { background: #1740B0; }
     .btn-primary[disabled], .btn-primary[aria-disabled="true"] { background: #ECE8E2; color: #8A8279; cursor: not-allowed; }
     .btn-secondary { padding: 0 16px; border: 1.5px solid #D6D0C8; background: #FFFFFF; color: #1A1714; font-size: 15px; flex-shrink: 0; }
     .btn-secondary:hover { border-color: #6B645C; }
@@ -100,8 +100,8 @@
             border-radius: 18px; box-shadow: 0 10px 30px rgba(26, 23, 20, .10); padding: 12px 12px 12px 24px;
         }
     }
-    nav[data-testid="tabs-mobile"] .tab-link[aria-current="page"] { color: #C8102E; font-weight: 700; }
-    nav[data-testid="tabs-desktop"] .tab-link[aria-current="page"] { color: #1A1714; font-weight: 700; box-shadow: inset 0 -2px 0 #C8102E; }
+    nav[data-testid="tabs-mobile"] .tab-link[aria-current="page"] { color: #1E4FD8; font-weight: 700; }
+    nav[data-testid="tabs-desktop"] .tab-link[aria-current="page"] { color: #1A1714; font-weight: 700; box-shadow: inset 0 -2px 0 #1E4FD8; }
     .interval-opt[aria-checked="true"] { background: #FFFFFF; color: #1A1714; font-weight: 700; box-shadow: 0 1px 2px rgba(26, 23, 20, .12); }
 </style>
 {% set current_auth = session.get('auth', {}).get(provider, {}) %}
@@ -200,8 +200,8 @@
 
     <!-- Error Message -->
     {% if error_message %}
-    <div role="alert" class="p-4 bg-rail-accentSoft border border-ktx-primary/40 rounded-2xl">
-        <p class="text-sm text-ktx-secondary">{{ error_message }}</p>
+    <div role="alert" class="p-4 bg-rail-dangerSoft border border-rail-danger/40 rounded-2xl">
+        <p class="text-sm text-rail-dangerDark">{{ error_message }}</p>
     </div>
     {% endif %}
 
@@ -418,11 +418,11 @@
                 <p class="text-[13px] text-[#245B3D]">등록한 카드로 결제했어요. 따로 할 일은 없어요.</p>
             </div>
         </div>
-        <div id="payFailed" role="alert" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-accentSoft border border-ktx-primary">
+        <div id="payFailed" role="alert" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-dangerSoft border border-rail-danger">
             <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#C8102E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17.5h.01"/></svg>
             <div>
-                <p class="text-[15px] font-bold text-ktx-secondary">자동결제에 실패했어요</p>
-                <p id="payFailedReason" class="text-[13px] text-ktx-secondary"></p>
+                <p class="text-[15px] font-bold text-rail-dangerDark">자동결제에 실패했어요</p>
+                <p id="payFailedReason" class="text-[13px] text-rail-dangerDark"></p>
                 <p class="pay-guide text-[13px] leading-relaxed text-rail-ink mt-1 font-semibold [word-break:keep-all]"></p>
             </div>
         </div>
@@ -846,7 +846,7 @@
 
                 <div class="flex flex-wrap items-center gap-2">
                     <label class="inline-flex items-center gap-2 mr-2 min-h-[44px]">
-                        <input type="checkbox" id="cardAutoPay" checked class="w-4 h-4 rounded accent-[#C8102E]">
+                        <input type="checkbox" id="cardAutoPay" checked class="w-4 h-4 rounded accent-[#1E4FD8]">
                         <span class="text-sm text-rail-ink">예매 성공 시 자동으로 결제</span>
                     </label>
                     <button type="button" id="cardSaveBtn" onclick="saveCardSettings()"
@@ -886,11 +886,11 @@
                 <div class="py-2 border-t border-[#EFEBE5] flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <span class="text-[15px] font-medium mr-auto">성공하면 알림음</span>
                     <label class="inline-flex items-center gap-1.5 min-h-[44px]">
-                        <input type="radio" name="sound_option" value="once" checked data-testid="sound-option-once" class="accent-[#C8102E]">
+                        <input type="radio" name="sound_option" value="once" checked data-testid="sound-option-once" class="accent-[#1E4FD8]">
                         <span>1번</span>
                     </label>
                     <label class="inline-flex items-center gap-1.5 min-h-[44px]">
-                        <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat" class="accent-[#C8102E]">
+                        <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat" class="accent-[#1E4FD8]">
                         <span>10초 반복</span>
                     </label>
                 </div>
@@ -906,7 +906,7 @@
                     <form action="{{ url_for('auth.logout') }}" method="POST">
                         <input type="hidden" name="logout_all" value="true">
                         <button type="submit" data-testid="logout-button"
-                                class="h-10 px-3.5 rounded-[10px] border border-[#F1C4BF] bg-white text-sm font-semibold text-ktx-secondary">로그아웃</button>
+                                class="h-10 px-3.5 rounded-[10px] border border-rail-dangerLine bg-white text-sm font-semibold text-rail-dangerDark">로그아웃</button>
                     </form>
                 </div>
             </section>
@@ -2059,8 +2059,8 @@ document.addEventListener('DOMContentLoaded', function() {
         paid: body => ({ body, title: '자동결제까지 끝났어요', box: 'bg-rail-okSoft',
             titleClass: 'text-rail-ok', bodyClass: 'text-[#245B3D]',
             icon: noteSvg('#0B6B3A', '<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/>') }),
-        failed: body => ({ body, title: '자동결제에 실패했어요', box: 'bg-rail-accentSoft border border-ktx-primary', alert: true,
-            titleClass: 'text-ktx-secondary', bodyClass: 'text-rail-ink font-semibold',
+        failed: body => ({ body, title: '자동결제에 실패했어요', box: 'bg-rail-dangerSoft border border-rail-danger', alert: true,
+            titleClass: 'text-rail-dangerDark', bodyClass: 'text-rail-ink font-semibold',
             icon: noteSvg('#C8102E', '<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17.5h.01"/>') }),
         pending: body => ({ body, title: '결제가 남았어요', box: 'bg-[#FDF1DD]',
             titleClass: 'text-[#7A4200]', bodyClass: 'text-[#6B4A1E]',

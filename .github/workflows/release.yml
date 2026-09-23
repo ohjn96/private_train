@@ -87,6 +87,7 @@ jobs:
         with:
           files: TrainReservationApp-v${{ env.VERSION }}.exe
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
   build-macos:
     # Apple Silicon 전용. 2020년 M1 이후 Mac 은 전부 arm64 이고, Intel 러너
@@ -205,3 +206,4 @@ jobs:
         with:
           files: ${{ env.ASSET }}
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

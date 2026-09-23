@@ -9,9 +9,19 @@ plugins {
 val repoRoot: File = rootProject.projectDir.parentFile.parentFile
 val appVersion: String = File(repoRoot, "VERSION").readText().trim()
 
-// 2.3.3 -> 20303. 업데이트 설치가 되려면 버전이 올라갈 때마다 커져야 한다.
-val appVersionCode: Int = appVersion.split(".").map { it.toInt() }
-    .let { (major, minor, patch) -> major * 10000 + minor * 100 + patch }
+// 업데이트 설치가 되려면 버전이 올라갈 때마다 커져야 한다. 미리보기 버전도 순서가 맞게:
+//   3.0.0-alpha.N -> 3000000+N, -beta.N -> 3000030+N, -rc.N -> 3000060+N, 3.0.0 -> 3000099
+//   (예전 2.3.3 = 20303 보다 항상 크다)
+val appVersionCode: Int = run {
+    val m = Regex("""(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?""").matchEntire(appVersion)
+        ?: error("VERSION 형식이 이상합니다: $appVersion (예: 3.0.0 또는 3.0.0-beta.0)")
+    val (major, minor, patch, stage, n) = m.destructured
+    val pre = when (stage) {
+        "" -> 99
+        else -> mapOf("alpha" to 0, "beta" to 30, "rc" to 60).getValue(stage) + minOf(n.toInt(), 29)
+    }
+    major.toInt() * 1_000_000 + minor.toInt() * 10_000 + patch.toInt() * 100 + pre
+}
 
 // 릴리스 서명 키. CI 에선 시크릿으로, 로컬에선 환경변수로 넘긴다.
 // 없으면 디버그 키로 서명한다 (설치는 되지만, 키가 바뀌면 지우고 다시 깔아야 한다).

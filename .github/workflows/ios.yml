@@ -202,6 +202,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # 데스크톱·안드로이드 빌드가 Release 를 먼저 만들었을 수도, 아닐 수도 있다
+          # 데스크톱·안드로이드·iOS 빌드가 같은 Release 를 동시에 만들 수 있어, 만들기 실패는 무시하고
+          # (이미 있음) 올리기만 한다. 버전에 '-' 가 있으면(3.0.0-beta.0) 미리보기(pre-release)로.
+          PRE=""; case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes ""
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "" $PRE \
+            || sleep 5
           gh release upload "$GITHUB_REF_NAME" dist/*.ipa --clobber

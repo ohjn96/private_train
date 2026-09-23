@@ -31,11 +31,11 @@
                         mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
                     },
                     colors: {
-                        // 강조색 (예전 이름 그대로 두어 기존 화면이 새 색을 따르게)
+                        // 강조색: 앱 아이콘과 같은 파랑 (예전 이름 그대로 두어 기존 화면이 새 색을 따르게)
                         ktx: {
-                            primary: '#C8102E',
-                            secondary: '#9E0C24',
-                            light: '#F4C7CE'
+                            primary: '#1E4FD8',
+                            secondary: '#1740B0',
+                            light: '#BFD0F7'
                         },
                         // "레일 티켓" 팔레트: 따뜻한 미색 바탕 + 먹색 글자 + 레드 하나
                         rail: {
@@ -43,7 +43,12 @@
                             ink: '#1A1714',
                             muted: '#6B645C',
                             line: '#E6E1DA',
-                            accentSoft: '#FBE9EB',
+                            accentSoft: '#E8EEFC',
+                            // 위험·실패 알림은 강조색이 파랑이어도 빨강으로 둔다 (자동결제 실패, 오류)
+                            danger: '#C8102E',
+                            dangerDark: '#9E0C24',
+                            dangerSoft: '#FBE9EB',
+                            dangerLine: '#F1C4BF',
                             ok: '#0B6B3A',
                             okSoft: '#E3F4EA',
                             off: '#5A544D',
@@ -60,13 +65,13 @@
         body { word-break: keep-all; overflow-wrap: anywhere; }
         .tabular { font-variant-numeric: tabular-nums; }
         /* 고른 열차: 레드 테두리 + 옅은 레드 바탕 (표의 행과 폰의 카드 모두) */
-        .train-row.selected { background-color: #FFF7F8; }
+        .train-row.selected { background-color: #F3F6FE; }
         /* 표의 행은 tr 에 그림자가 안 그려져서 칸(td)에 칠한다 */
-        tr.train-row.selected td { background-color: #FBE9EB; }
-        tr.train-row.selected td:first-child { box-shadow: inset 4px 0 0 #C8102E; }
-        .train-card.selected { box-shadow: 0 0 0 2px #C8102E; border-color: transparent; }
+        tr.train-row.selected td { background-color: #E8EEFC; }
+        tr.train-row.selected td:first-child { box-shadow: inset 4px 0 0 #1E4FD8; }
+        .train-card.selected { box-shadow: 0 0 0 2px #1E4FD8; border-color: transparent; }
         .train-card .select-mark { border: 2px solid #D6D0C8; }
-        .train-card.selected .select-mark { background: #C8102E; border-color: #C8102E; }
+        .train-card.selected .select-mark { background: #1E4FD8; border-color: #1E4FD8; }
         .train-card.selected .select-mark svg { opacity: 1; }
         .log-container { font-family: "IBM Plex Mono", ui-monospace, monospace; }
         /* 폰: 탭할 때 회색 번쩍임 없애기 */
