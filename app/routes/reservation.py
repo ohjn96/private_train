@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Reservation routes with SSE support."""
 import json
-import random
 import threading
 import time
 from datetime import datetime
@@ -527,9 +526,9 @@ def _run_reservation_loop(
                     tg.send_message(f"⚠️ {msg}")
                 time.sleep(1)
 
-        # 시도 사이의 간격. API 호출 간 최소 간격 자체는 korail_api 게이트가
-        # 따로 보장하므로, 여기 sleep 은 재시도 주기를 조절하는 용도다.
-        time.sleep(random.uniform(1, 1.5))
+        # 재시도 주기는 korail_api 게이트가 정한다. 게이트는 "지난 호출을 보낸 시각"부터
+        # 재므로 응답이 늦게 온 만큼 덜 기다린다 (응답 1.5초 이상이면 곧바로 다음 조회).
+        # 여기서 따로 쉬면 응답 시간 위에 지연이 그대로 덧붙어 좌석을 놓친다.
 
     tg.set_macro_state(False)
     tg.send_macro_stopped()
