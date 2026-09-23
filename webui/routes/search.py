@@ -31,6 +31,15 @@ def korean_date_label(iso_date: str) -> str:
     return f"{d.month}월 {d.day}일 ({'월화수목금토일'[d.weekday()]})"
 
 
+def _macro_running_for(provider: str) -> bool:
+    """이 사람의 매크로가 이 제공자로 돌고 있나 (첫 화면을 '진행' 으로 열지 정할 때)."""
+    from webui.services.telegram_service import TelegramService
+    from webui.routes.reservation import owns_macro
+    tg = TelegramService.get_instance()
+    status = tg.get_status()
+    return bool(status['macro_running'] and status['provider'] == provider and owns_macro(tg))
+
+
 def login_required(f):
     """Decorator to require login."""
     @wraps(f)
@@ -301,6 +310,7 @@ def index():
 
     return render_template('search.html',
                            provider=provider,
+                           initial_running=_macro_running_for(provider),
                            stations=stations,
                            form_data=form_data,
                            date_label=korean_date_label(form_data.get('date', '')),

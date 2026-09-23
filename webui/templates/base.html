@@ -2,7 +2,7 @@
 <html lang="ko" class="h-full">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{% block title %}열차 예약{% endblock %}</title>
     <!-- 홈 화면에 추가(PWA): 주소창 없이 앱처럼 열린다 -->
     <link rel="manifest" href="/manifest.webmanifest">
@@ -81,6 +81,7 @@
 <body class="h-full bg-rail-ground text-rail-ink font-sans antialiased provider-{{ provider }}">
     <div class="min-h-full">
         <!-- Navigation -->
+        {% block topnav %}
         <nav class="bg-rail-ground">
             <div class="mx-auto max-w-5xl px-4 sm:px-6">
                 <div class="flex h-14 sm:h-16 justify-between items-center gap-2">
@@ -107,17 +108,20 @@
                 </div>
             </div>
         </nav>
+        {% endblock %}
 
         <!-- Main Content -->
-        <main class="mx-auto max-w-5xl px-4 sm:px-6 pt-2 lg:pt-4 pb-6 sm:pb-10">
+        <main class="{% block main_class %}mx-auto max-w-5xl px-4 sm:px-6 pt-2 lg:pt-4 pb-6 sm:pb-10{% endblock %}">
             {% block content %}{% endblock %}
         </main>
 
         <!-- Footer -->
+        {% block footer %}
         <footer class="mx-auto max-w-5xl px-4 sm:px-6 pb-6 text-center">
             <p class="text-xs text-rail-muted">열차예약 v{{ app_version }} · 개인 학습용</p>
             <p class="mt-1 text-xs font-semibold text-ktx-primary">상업용 사용 · 배포 금지</p>
         </footer>
+        {% endblock %}
     </div>
 
     <!-- Audio for success notification -->
