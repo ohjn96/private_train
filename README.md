@@ -177,6 +177,13 @@ Restart=on-failure
   실패합니다. 집에 있는 기기(라즈베리파이, 안 쓰는 노트북)가 이 점에서 안전합니다.
 - **계정 정보가 그 서버에 남습니다.** 환경변수 파일 권한(`chmod 600`)을 꼭 확인하세요.
 
+### 안드로이드 앱 (APK)
+
+안드로이드폰이면 앱을 깔아서 **폰에서 직접** 돌릴 수 있습니다. 서버가 필요 없고, 코레일 호출도
+각자 폰의 IP 로 나갑니다. 앱을 내리거나 화면을 꺼도 매크로가 계속 돌고, 예약 성공은 폰 알림으로 옵니다.
+[Releases](https://github.com/ohjn96/private_train/releases) 에서 `TrainReservationApp-v<버전>.apk` 를 받아 설치하세요.
+설치·빌드·서명 방법은 [android/README.md](android/README.md). (iPhone 은 아래 서버 버전을 쓰세요)
+
 ### Oracle Cloud 에 올리기 (무료, 폰에서 접속, 여러 명)
 
 PC 를 계속 켜 둘 수 없을 때. Oracle Cloud Always Free VM 에 **서버 버전**(`python -m server`)을

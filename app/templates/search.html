@@ -5,7 +5,7 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Search Form Card -->
-    <div class="bg-white rounded-xl shadow-md p-6">
+    <div class="bg-white rounded-xl shadow-md p-4 sm:p-6">
         <h2 class="text-lg font-semibold text-gray-800 mb-4">열차 검색</h2>
 
         <form method="POST">
@@ -127,44 +127,52 @@
     <!-- Results -->
     {% if trains %}
     <div class="bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="p-6 border-b">
-            <div class="flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-gray-800">검색 결과 ({{ trains|length }}건)</h2>
+        <div class="p-4 sm:p-6 border-b">
+            <!-- 폰: 제목 아래에 옵션 2열 / 넓은 화면: 한 줄 -->
+            <div class="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3">
+                <h2 class="text-lg font-semibold text-gray-800 whitespace-nowrap">검색 결과 ({{ trains|length }}건)</h2>
 
-                <!-- Passenger Count / Seat Option -->
-                <div class="flex items-center space-x-4">
-                    <label class="text-sm text-gray-600">인원:</label>
-                    <select id="passengerCount" data-testid="passenger-count"
-                            class="px-3 py-1 border border-gray-300 rounded-lg text-sm"
-                            onchange="updatePassengerModeVisibility()">
-                        <option value="1" selected>1명</option>
-                        <option value="2">2명</option>
-                    </select>
+                <!-- Passenger Count / Seat Option / Call Interval -->
+                <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+                    <label class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600">
+                        <span class="whitespace-nowrap">인원</span>
+                        <select id="passengerCount" data-testid="passenger-count"
+                                class="w-full sm:w-auto px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
+                                onchange="updatePassengerModeVisibility()">
+                            <option value="1" selected>1명</option>
+                            <option value="2">2명</option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600">
+                        <span class="whitespace-nowrap">좌석</span>
+                        <select id="seatOption" data-testid="seat-option"
+                                class="w-full sm:w-auto px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white">
+                            <option value="GENERAL_FIRST">일반실 우선</option>
+                            <option value="GENERAL_ONLY">일반실만</option>
+                            <option value="SPECIAL_FIRST">특실 우선</option>
+                            <option value="SPECIAL_ONLY">특실만</option>
+                        </select>
+                    </label>
 
                     <select id="passengerMode" data-testid="passenger-mode"
-                            class="hidden px-3 py-1 border border-gray-300 rounded-lg text-sm">
+                            class="hidden col-span-2 w-full sm:w-auto px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white">
                         <option value="together" selected>2명 함께 예약</option>
                         <option value="sequential">1명씩 순차 예약 (취소표 노림)</option>
                     </select>
 
-                    <label class="text-sm text-gray-600">좌석 옵션:</label>
-                    <select id="seatOption" data-testid="seat-option" class="px-3 py-1 border border-gray-300 rounded-lg text-sm">
-                        <option value="GENERAL_FIRST">일반실 우선</option>
-                        <option value="GENERAL_ONLY">일반실만</option>
-                        <option value="SPECIAL_FIRST">특실 우선</option>
-                        <option value="SPECIAL_ONLY">특실만</option>
-                    </select>
-
-                    <label for="callInterval" class="text-sm text-gray-600">호출 간격:</label>
-                    <select id="callInterval" data-testid="call-interval"
-                            title="코레일에 조회를 보내는 간격. 짧을수록 빨리 잡지만 차단 위험이 커집니다."
-                            class="px-3 py-1 border border-gray-300 rounded-lg text-sm">
-                        <option value="1">1초 (빠름)</option>
-                        <option value="1.5">1.5초</option>
-                        <option value="2" selected>2초 (기본)</option>
-                        <option value="2.5">2.5초</option>
-                        <option value="3">3초 (안전)</option>
-                    </select>
+                    <label class="col-span-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600"
+                           title="코레일에 조회를 보내는 간격. 짧을수록 빨리 잡지만 차단 위험이 커집니다.">
+                        <span class="whitespace-nowrap">호출 간격</span>
+                        <select id="callInterval" data-testid="call-interval"
+                                class="w-full sm:w-auto px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white">
+                            <option value="1">1초 (빠름)</option>
+                            <option value="1.5">1.5초</option>
+                            <option value="2" selected>2초 (기본)</option>
+                            <option value="2.5">2.5초</option>
+                            <option value="3">3초 (안전)</option>
+                        </select>
+                    </label>
                 </div>
             </div>
         </div>
@@ -647,9 +655,22 @@
             <span id="macroElapsed" class="hidden text-xs text-gray-400 ml-2"></span>
             <span id="currentAttempt" class="hidden text-xs text-yellow-300 ml-2 truncate max-w-[240px]" title=""></span>
         </div>
-        <svg id="drawerIcon" class="w-5 h-5 transform rotate-180 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
-        </svg>
+        <div class="flex items-center gap-2 flex-shrink-0">
+            <!-- 폰: 긴 열차 목록 맨 아래까지 내려가지 않아도 되게 여기서 시작/중단 -->
+            <button type="button" id="barStartBtn" data-testid="bar-start"
+                    class="hidden lg:!hidden px-3 py-1 rounded-lg bg-ktx-primary text-white text-sm font-semibold"
+                    onclick="event.stopPropagation(); document.getElementById('startBtn')?.click();">
+                예약 시작
+            </button>
+            <button type="button" id="barStopBtn" data-testid="bar-stop"
+                    class="hidden lg:!hidden px-3 py-1 rounded-lg bg-red-600 text-white text-sm font-semibold"
+                    onclick="event.stopPropagation(); document.getElementById('stopBtn')?.click();">
+                중단
+            </button>
+            <svg id="drawerIcon" class="w-5 h-5 transform rotate-180 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+            </svg>
+        </div>
     </div>
 
     <!-- Drawer Content -->
@@ -701,7 +722,32 @@ function updateSelectedCount() {
     if (countEl) {
         countEl.textContent = selected.length > 0 ? `${selected.length}개 선택됨` : '';
     }
+    syncBarButtons();
 }
+
+// 아래 로그 바의 시작/중단 버튼(폰용)을 본래 버튼 상태에 맞춘다
+function syncBarButtons() {
+    const start = document.getElementById('startBtn');
+    const stop = document.getElementById('stopBtn');
+    const barStart = document.getElementById('barStartBtn');
+    const barStop = document.getElementById('barStopBtn');
+    if (!barStart || !barStop) return;
+    const running = !!stop && !stop.classList.contains('hidden');
+    const canStart = !!start && !start.classList.contains('hidden') &&
+        document.querySelectorAll('.train-row.selected').length > 0;
+    barStop.classList.toggle('hidden', !running);
+    barStart.classList.toggle('hidden', running || !canStart);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 본래 버튼은 여러 곳(매크로 시작·종료, 상태 폴링)에서 보였다 숨었다 하므로 변화를 지켜본다
+    const observer = new MutationObserver(syncBarButtons);
+    ['startBtn', 'stopBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) observer.observe(el, {attributes: true, attributeFilter: ['class']});
+    });
+    syncBarButtons();
+});
 
 // Get selected train indices
 function getSelectedTrainIndices() {
