@@ -56,6 +56,8 @@
     </script>
     <style>
         body { font-feature-settings: "tnum" 0; }
+        /* 한국어는 단어 중간에서 끊지 않는다 ("멈췄 / 어요" 방지). 아주 긴 단어만 끊는다 */
+        body { word-break: keep-all; overflow-wrap: anywhere; }
         .tabular { font-variant-numeric: tabular-nums; }
         /* 고른 열차: 레드 테두리 + 옅은 레드 바탕 (표의 행과 폰의 카드 모두) */
         .train-row.selected { background-color: #FFF7F8; }

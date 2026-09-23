@@ -267,7 +267,8 @@ class TelegramService:
 
     def send_reservation_success(self, train_name: str, dep_time: str,
                                   dep_station: str = '', arr_station: str = '',
-                                  reservation_id: str = '') -> bool:
+                                  reservation_id: str = '', pay_deadline: Optional[str] = None,
+                                  autopay: bool = False) -> bool:
         """
         Send a formatted reservation success notification.
         
@@ -290,6 +291,11 @@ class TelegramService:
             message += f"📍 <b>구간:</b> {dep_station} → {arr_station}\n"
         if reservation_id:
             message += f"🔖 <b>예약번호:</b> {reservation_id}\n"
+        if autopay:
+            message += "💳 등록한 카드로 자동결제를 진행합니다\n"
+        else:
+            when = f"{pay_deadline}까지" if pay_deadline else "결제 기한 안에"
+            message += f"⏳ <b>{when} 코레일 앱·웹에서 직접 결제하세요</b> (안 하면 자동 취소)\n"
         message += (
             "━━━━━━━━━━━━━━━━━━━\n"
             f"⏰ {timestamp}"

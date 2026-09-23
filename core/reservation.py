@@ -60,6 +60,9 @@ class NotifyingReporter:
         self._inner = inner
         self._notify = notify
         self._last_problem: str | None = None
+        # 마지막으로 잡은 예약의 결제 기한 / 자동결제 여부 (결과 카드에도 쓴다)
+        self.pay_deadline: str | None = None
+        self.autopay = False
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
@@ -77,21 +80,49 @@ class NotifyingReporter:
 
     def send_reservation_success(self, **info) -> None:
         self._inner.send_reservation_success(**info)
+        self.pay_deadline = info.get("pay_deadline")
+        self.autopay = bool(info.get("autopay"))
         route = f"{info.get('dep_station', '')}→{info.get('arr_station', '')}".strip("→")
         body = " ".join(p for p in (info.get("train_name", ""), info.get("dep_time", ""), route) if p)
-        self._safe_notify("reserved", "🎉 예약 성공", body + "\n결제 기한 안에 결제를 확인하세요.")
+        if self.autopay:
+            guide = "등록한 카드로 자동결제를 진행하고 있어요."
+        else:
+            guide = pay_guide(self.pay_deadline)
+        self._safe_notify("reserved", "🎉 예약 성공", body + "\n" + guide)
 
     def send_payment_result(self, success: bool, message: str) -> bool:
         sent = self._inner.send_payment_result(success, message)
         if success:
-            self._safe_notify("paid", "💳 결제 완료", message)
+            self._safe_notify("paid", "💳 자동결제 완료", "자동결제까지 끝났어요. " + message)
         else:
-            self._safe_notify("pay_failed", "⚠️ 결제 실패", message + "\n코레일 앱에서 직접 결제하세요.")
+            self._safe_notify("pay_failed", "⚠️ 자동결제 실패",
+                              message + "\n" + pay_guide(self.pay_deadline))
         return sent
 
     def send_macro_stopped(self, *args, **kwargs) -> None:
         self._inner.send_macro_stopped(*args, **kwargs)
         self._safe_notify("stopped", "⏹️ 예약 매크로 중단", self._last_problem or "매크로가 멈췄습니다.")
+
+
+def payment_deadline(reservation) -> str | None:
+    """코레일이 알려준 결제 기한을 사람이 읽는 말로. 모르면 None.
+
+    오늘이면 "14:25", 다른 날이면 "10월 3일 14:25".
+    """
+    day = getattr(reservation, "buy_limit_date", None)
+    hms = getattr(reservation, "buy_limit_time", None)
+    if not day or not hms or len(day) != 8 or len(hms) < 4:
+        return None
+    clock = f"{hms[:2]}:{hms[2:4]}"
+    if day == datetime.now().strftime("%Y%m%d"):
+        return clock
+    return f"{int(day[4:6])}월 {int(day[6:8])}일 {clock}"
+
+
+def pay_guide(deadline: str | None) -> str:
+    """자동결제를 안 했거나 실패했을 때의 안내 문구."""
+    when = f"{deadline}까지" if deadline else "결제 기한 안에"
+    return f"{when} 코레일 앱이나 웹에서 직접 결제하세요. 안 하면 예약이 자동으로 취소돼요."
 
 
 def is_login_error(error: Exception, provider: str = "korail") -> bool:
@@ -307,13 +338,20 @@ def _run(
                             if passenger_count > 1 else ""
                         )
                         msg = f"예약 성공! {train_name} ({dep_time}){progress_note}"
-                        tg.push_log("success", msg, reservation_id=result.reservation_id or "")
+                        autopay = bool(card and card.get("auto_pay", True))
+                        deadline = payment_deadline((result.details or {}).get("reservation"))
+                        tg.push_log("success", msg, reservation_id=result.reservation_id or "",
+                                    pay_deadline=deadline or "", autopay=autopay)
+                        if not autopay:
+                            tg.push_log("warning", pay_guide(deadline))
                         tg.send_reservation_success(
                             train_name=train_name,
                             dep_time=dep_time,
                             dep_station=train_info.get("dep_station", ""),
                             arr_station=train_info.get("arr_station", ""),
                             reservation_id=result.reservation_id or "",
+                            pay_deadline=deadline,
+                            autopay=autopay,
                         )
 
                         # Pay for this reservation right away rather than waiting for the

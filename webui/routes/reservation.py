@@ -380,6 +380,8 @@ def run_reservation_loop(
             pass
     finally:
         result["reason"] = reason
+        result["pay_deadline"] = reporter.pay_deadline
+        result["autopay"] = reporter.autopay
         result["ended_at"] = datetime.now().isoformat(timespec="seconds")
         tg.last_result = result
         # 성공·복구 포기로 끝났을 때도 /status 가 '대기 중' 을 보이도록

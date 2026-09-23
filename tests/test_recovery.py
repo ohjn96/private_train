@@ -182,3 +182,70 @@ class AndroidSupervisorTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
+
+
+class PaymentGuideTest(unittest.TestCase):
+    """예약 성공 뒤 결제 안내: 자동결제 완료 / 실패(직접 결제) / 안 함(직접 결제)."""
+
+    def test_deadline_format(self):
+        from datetime import datetime, timedelta
+        from core.reservation import payment_deadline
+        today = datetime.now().strftime('%Y%m%d')
+        other = (datetime.now() + timedelta(days=3))
+        r = types.SimpleNamespace(buy_limit_date=today, buy_limit_time='142500')
+        self.assertEqual(payment_deadline(r), '14:25')
+        r = types.SimpleNamespace(buy_limit_date=other.strftime('%Y%m%d'), buy_limit_time='090000')
+        self.assertEqual(payment_deadline(r), f'{other.month}월 {other.day}일 09:00')
+        self.assertIsNone(payment_deadline(None))
+        self.assertIsNone(payment_deadline(types.SimpleNamespace(buy_limit_date='', buy_limit_time='')))
+
+    def notified(self, card, pay_result):
+        from core.reservation import NotifyingReporter
+        sent = []
+        trains = [FakeTrain(0, has_seat=True)]
+        service = make_service(trains)
+        reporter = NotifyingReporter(RecordingReporter(), lambda k, t, b: sent.append((k, t, b)))
+        with FastRateLimit():
+            run_reservation(service, [as_selected(trains[0], 0)], SeatOption.GENERAL_FIRST, card,
+                            reporter=reporter, should_stop=lambda: False, recover=never_recover,
+                            pay=lambda *a: pay_result)
+        return sent, reporter
+
+    CARD = {'card_number': 'x', 'card_password': 'x', 'validation_number': 'x', 'card_expire': 'x'}
+
+    def test_no_autopay_tells_to_pay_manually(self):
+        sent, reporter = self.notified(None, None)
+        self.assertEqual([k for k, _, _ in sent], ['reserved'])
+        self.assertIn('직접 결제', sent[0][2])
+        self.assertFalse(reporter.autopay)
+
+    def test_autopay_success(self):
+        sent, _ = self.notified(self.CARD, (True, 'ok'))
+        self.assertEqual([k for k, _, _ in sent], ['reserved', 'paid'])
+        self.assertIn('자동결제', sent[0][2])
+        self.assertIn('끝났어요', sent[1][2])
+
+    def test_autopay_failure_is_an_exception_telling_to_pay_manually(self):
+        sent, _ = self.notified(self.CARD, (False, '카드 한도 초과'))
+        kinds = [k for k, _, _ in sent]
+        self.assertEqual(kinds, ['reserved', 'pay_failed'])
+        title, body = sent[1][1], sent[1][2]
+        self.assertIn('실패', title)
+        self.assertIn('카드 한도 초과', body)
+        self.assertIn('직접 결제', body)
+
+    def test_last_result_carries_payment_outcome(self):
+        tg = TelegramService.get_instance()
+        tg.set_macro_state(False)
+        trains = [FakeTrain(0, has_seat=True)]
+        service = make_service(trains)
+        tg.try_start_macro(owner='me')
+        reservation.STOP_MACRO = False
+        with FastRateLimit(), mock.patch.object(reservation, 'attempt_payment',
+                                                return_value=(False, '카드 한도 초과')), \
+                mock.patch('core.reservation.attempt_payment', return_value=(False, '카드 한도 초과')):
+            reservation.run_reservation_loop(service, 'korail', [as_selected(trains[0], 0)],
+                                             SeatOption.GENERAL_FIRST, self.CARD, owner='me')
+        result = tg.last_result
+        self.assertTrue(result['autopay'])
+        self.assertIs(result['paid'], False)

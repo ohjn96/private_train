@@ -19,18 +19,34 @@
                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
             </button>
         </div>
-        <div id="payPending" class="mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-[#FDF1DD]">
-            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#8A4B00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <!-- 결제 결과: 자동결제 진행 중 / 완료 / 실패(직접 결제) / 자동결제 안 함(직접 결제) -->
+        <div id="payRunning" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-ground">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="#6B645C" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>
             <div>
-                <p class="text-[15px] font-bold text-[#7A4200]">결제가 남았어요</p>
-                <p class="text-[13px] leading-relaxed text-[#6B4A1E]">결제 기한 안에 코레일 앱에서 결제하지 않으면 예약이 취소돼요.</p>
+                <p class="text-[15px] font-bold">자동결제 진행 중</p>
+                <p class="text-[13px] text-rail-muted">등록한 카드로 결제하고 있어요.</p>
             </div>
         </div>
         <div id="payDone" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-okSoft">
             <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#0B6B3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
             <div>
-                <p class="text-[15px] font-bold text-rail-ok">자동결제 완료</p>
-                <p class="text-[13px] text-[#245B3D]">등록한 카드로 결제했어요.</p>
+                <p class="text-[15px] font-bold text-rail-ok">자동결제까지 끝났어요</p>
+                <p class="text-[13px] text-[#245B3D]">등록한 카드로 결제했어요. 따로 할 일은 없어요.</p>
+            </div>
+        </div>
+        <div id="payFailed" role="alert" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-accentSoft border border-ktx-primary">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#C8102E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17.5h.01"/></svg>
+            <div>
+                <p class="text-[15px] font-bold text-ktx-secondary">자동결제에 실패했어요</p>
+                <p id="payFailedReason" class="text-[13px] text-ktx-secondary"></p>
+                <p class="pay-guide text-[13px] leading-relaxed text-rail-ink mt-1 font-semibold [word-break:keep-all]"></p>
+            </div>
+        </div>
+        <div id="payPending" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-[#FDF1DD]">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#8A4B00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div>
+                <p class="text-[15px] font-bold text-[#7A4200]">결제가 남았어요</p>
+                <p class="pay-guide text-[13px] leading-relaxed text-[#6B4A1E] [word-break:keep-all]"></p>
             </div>
         </div>
     </section>
@@ -1303,12 +1319,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     // 백그라운드에서 성공하고 끝난 뒤 앱을 열면 기록 재생(isLive=false)으로 온다.
                     // 그때도 무엇이 예약됐고 결제가 남았는지는 보여줘야 한다. 소리만 뺀다.
                     if (isLive) {
-                        showSuccess(data.message);
+                        showSuccess(data);
                         playSound();
                     }
                     break;
                 case 'error':
                     log(data.message, 'error');
+                    if (isLive && data.message.startsWith('결제 실패')) showPayFailed(data.message);
                     break;
                 case 'warning':
                     log(data.message, 'warning');
@@ -1465,11 +1482,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (result.reason === 'success') {
             body = result.reserved || '';
             if (result.paid === true) {
-                note = '💳 자동결제 완료';
+                note = '자동결제까지 끝났어요. 따로 할 일은 없어요.';
                 noteClass = 'bg-rail-okSoft text-rail-ok font-semibold';
+            } else if (result.autopay) {
+                // 자동결제를 걸었는데 실패: 직접 결제해야 한다는 걸 가장 눈에 띄게
+                note = `자동결제에 실패했어요${result.pay_message ? ' (' + result.pay_message + ')' : ''}. ` +
+                    payGuide(result.pay_deadline);
+                noteClass = 'bg-rail-accentSoft border border-ktx-primary text-ktx-secondary font-semibold';
             } else {
-                note = (result.pay_message ? result.pay_message + ' — ' : '') +
-                    '결제 기한 안에 코레일 앱에서 결제하지 않으면 예약이 취소돼요.';
+                note = '결제가 남았어요. ' + payGuide(result.pay_deadline);
                 noteClass = 'bg-[#FDF1DD] text-[#6B4A1E]';
             }
         } else if (result.reason === 'gave_up') {
@@ -1482,7 +1503,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('lastResultBody').textContent = body;
         const noteEl = document.getElementById('lastResultNote');
         noteEl.textContent = note;
-        noteEl.className = `mt-4 p-3.5 rounded-2xl text-[13px] leading-relaxed ${noteClass}`;
+        noteEl.className = `mt-4 p-3.5 rounded-2xl text-[13px] leading-relaxed [word-break:keep-all] ${noteClass}`;
         noteEl.classList.toggle('hidden', !note);
         card.classList.remove('hidden');
     }
@@ -1505,26 +1526,45 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    function showSuccess(message, fromHistory = false) {
+    // ─── 예약 성공 배너 ─────────────────────────────────────
+    // 결제 안내 문구 (서버의 core.reservation.pay_guide 와 같은 말)
+    function payGuide(deadline) {
+        const when = deadline ? `${deadline}까지` : '결제 기한 안에';
+        return `${when} 코레일 앱이나 웹에서 직접 결제하세요. 안 하면 예약이 자동으로 취소돼요.`;
+    }
+
+    function showPayState(state) {
+        ['payRunning', 'payDone', 'payFailed', 'payPending'].forEach(id =>
+            document.getElementById(id)?.classList.toggle('hidden', id !== state));
+    }
+
+    function showSuccess(event) {
         const banner = document.getElementById('successBanner');
         if (!banner) return;
+        const message = event.message || '';
         // 예약과 결제 말고 다른 success 로그에는 반응하지 않는다
-        const isReserved = message.startsWith('예약 성공');
-        const isPaid = message.startsWith('결제 완료');
-        if (!isReserved && !isPaid) return;
-        // 사용자가 이미 닫은 결과는 다시 띄우지 않는다
-        try {
-            if (fromHistory && isReserved && localStorage.getItem('dismissedSuccess') === message) return;
-        } catch (e) {}
-        banner.dataset.message = isReserved ? message : (banner.dataset.message || '');
-        if (isPaid) {
-            document.getElementById('payPending').classList.add('hidden');
-            document.getElementById('payDone').classList.remove('hidden');
-        } else {
+        if (message.startsWith('결제 완료')) {
+            showPayState('payDone');
+        } else if (message.startsWith('예약 성공')) {
+            banner.dataset.message = message;
+            banner.dataset.deadline = event.pay_deadline || '';
             document.getElementById('successDetail').textContent = message.replace(/^예약 성공!\s*/, '');
-            document.getElementById('payPending').classList.remove('hidden');
-            document.getElementById('payDone').classList.add('hidden');
+            banner.querySelectorAll('.pay-guide').forEach(el => { el.textContent = payGuide(event.pay_deadline); });
+            showPayState(event.autopay ? 'payRunning' : 'payPending');
+        } else {
+            return;
         }
+        banner.classList.remove('hidden');
+        banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // 자동결제가 실패하면 놓치지 않게 빨간 경고로 바꾼다 (직접 결제해야 한다)
+    function showPayFailed(message) {
+        const banner = document.getElementById('successBanner');
+        if (!banner) return;
+        document.getElementById('payFailedReason').textContent = message.replace(/^결제 실패:\s*/, '');
+        banner.querySelectorAll('.pay-guide').forEach(el => { el.textContent = payGuide(banner.dataset.deadline); });
+        showPayState('payFailed');
         banner.classList.remove('hidden');
         banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
