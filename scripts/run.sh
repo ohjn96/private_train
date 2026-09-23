@@ -30,12 +30,14 @@ if [[ ! -x "$PY" ]]; then
 fi
 echo "==> $("$PY" --version) ($PY)"
 
-# 2) 의존성 설치 (최초 1회 또는 requirements.txt 변경 시)
-if [[ $REINSTALL -eq 1 || ! -f "$STAMP" || requirements.txt -nt "$STAMP" ]]; then
+# 2) 의존성 설치 (최초 1회 또는 requirements.txt 내용 변경 시)
+#    수정 시각이 아니라 내용 해시로 비교한다. git checkout 만 해도 시각은 바뀌기 때문.
+REQ_HASH="$(cksum < requirements.txt)"
+if [[ $REINSTALL -eq 1 || ! -f "$STAMP" || "$(cat "$STAMP")" != "$REQ_HASH" ]]; then
     echo "==> 의존성 설치 중... (requirements.txt)"
     "$PY" -m pip install --upgrade pip -q
     "$PY" -m pip install -r requirements.txt
-    touch "$STAMP"
+    echo "$REQ_HASH" > "$STAMP"
     echo "==> 의존성 설치 완료"
 fi
 
