@@ -82,39 +82,6 @@
 {% block footer %}{% endblock %}
 
 {% block content %}
-<style>
-    /* 해시 주소에 맞는 화면 하나만 보인다 */
-    .view.is-active { display: flex; }
-    .btn-primary, .btn-secondary {
-        height: 52px; border-radius: 14px; font-weight: 700; white-space: nowrap;
-        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-        transition: background-color .15s;
-    }
-    .btn-primary { padding: 0 18px; background: #1E4FD8; color: #FFFFFF; font-size: 16px; }
-    .btn-primary:hover { background: #1740B0; }
-    .btn-primary[disabled], .btn-primary[aria-disabled="true"] { background: #ECE8E2; color: #8A8279; cursor: not-allowed; }
-    .btn-secondary { padding: 0 16px; border: 1.5px solid #D6D0C8; background: #FFFFFF; color: #1A1714; font-size: 15px; flex-shrink: 0; }
-    .btn-secondary:hover { border-color: #6B645C; }
-    .btn-primary.hidden, .btn-secondary.hidden { display: none; }
-    /* 폰: 아래 탭 바 바로 위에 붙는 다음 단계 버튼 */
-    .action-bar {
-        position: fixed; left: 0; right: 0; z-index: 30;
-        bottom: calc(68px + env(safe-area-inset-bottom));
-        background: #FFFFFF; border-top: 1px solid #E6E1DA;
-        box-shadow: 0 -8px 20px rgba(26, 23, 20, .06); padding: 10px 16px;
-    }
-    @media (min-width: 1024px) {
-        .action-bar { position: static; background: transparent; border: 0; box-shadow: none; padding: 0; }
-        .action-bar-float {
-            position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px;
-            width: min(1000px, calc(100% - 48px)); background: #FFFFFF; border: 1px solid #E6E1DA;
-            border-radius: 18px; box-shadow: 0 10px 30px rgba(26, 23, 20, .10); padding: 12px 12px 12px 24px;
-        }
-    }
-    nav[data-testid="tabs-mobile"] .tab-link[aria-current="page"] { color: #1E4FD8; font-weight: 700; }
-    nav[data-testid="tabs-desktop"] .tab-link[aria-current="page"] { color: #1A1714; font-weight: 700; box-shadow: inset 0 -2px 0 #1E4FD8; }
-    .interval-opt[aria-checked="true"] { background: #FFFFFF; color: #1A1714; font-weight: 700; box-shadow: 0 1px 2px rgba(26, 23, 20, .12); }
-</style>
 {% set current_auth = session.get('auth', {}).get(provider, {}) %}
 <!-- ① 조회 -->
 <section data-view="search" class="view hidden flex-col gap-3 lg:gap-4">

@@ -254,6 +254,9 @@ class BuildConfigTest(unittest.TestCase):
         self.assertTrue(data)
         self.assertFalse(any('input.css' in d for d in data))
         self.assertTrue(any(d.endswith('webui/static/vendor') for d in data))
+        # 미리 만든 CSS 와 글꼴도 같이 싣는다
+        self.assertTrue(any('webui/static/css/app.css' in d for d in data))
+        self.assertTrue(any(d.endswith('webui/static/fonts') for d in data))
 
     def test_dead_ktx_target_is_gone(self):
         self.assertEqual(list(self.build.BUILD_CONFIG), ['unified'])

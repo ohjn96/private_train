@@ -264,14 +264,15 @@ class _FailureThrottle:
             self._failures.pop(key, None)
 
 
-#: 화면이 쓰는 것만 허용하는 CSP. 템플릿에 인라인 <script>·onclick 과 style 이 많고,
-#: Tailwind(vendor/tailwindcss.js)가 실행 중에 <style> 을 만들어 'unsafe-inline' 은 필요하다.
+#: 화면이 쓰는 것만 허용하는 CSP. 템플릿에 인라인 <script>·onclick 과 style 속성이 있어
+#: 'unsafe-inline' 은 필요하다. CSS(static/css/app.css)와 글꼴(static/fonts)은 앱에 같이 실어
+#: 바깥 스타일·글꼴 주소는 허용하지 않는다.
 #: 그래도 바깥 스크립트 로드, 바깥으로의 fetch/폼 전송, 다른 사이트의 iframe 삽입은 막는다.
 CONTENT_SECURITY_POLICY = '; '.join([
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com data:",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
     "img-src 'self' data:",
     "connect-src 'self'",
     "object-src 'none'",
