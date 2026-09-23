@@ -51,6 +51,9 @@ requires = [
 ]
 
 [tool.briefcase.app.trainreservation.iOS]
+# 앱 아이콘: icons/trainreservation-<크기>.png (20~1024 은 AppIcon, 640·1280·1920 은 시작 화면).
+# 원본은 mobile/shared/icon/app-icon.svg (README.md 참고)
+icon = "icons/trainreservation"
 requires = [
     "toga-iOS==0.5.6",
     "std-nslog~=1.0.3",

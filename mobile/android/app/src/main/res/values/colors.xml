@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ground">#F6F4F0</color>
+    <!-- 앱 아이콘 배경 (mobile/shared/icon/README.md) -->
+    <color name="ic_launcher_background">#1E4FD8</color>
 </resources>
