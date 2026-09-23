@@ -311,14 +311,22 @@ def attempt_recovery(provider: str, service, credentials: dict | None = None) ->
         except requests.RequestException as e:
             # 인터넷 문제는 비밀번호 오류와 다르다: 포기하지 말고 계속 시도하라고 알린다
             return None, f"인터넷 연결 문제로 다시 로그인하지 못했습니다 ({type(e).__name__})"
+        except (ValueError, KeyError) as e:
+            # 점검·차단 안내 HTML 같은 이상한 응답: 비밀번호 문제가 아니니 한참 쉬었다가 다시
+            if hasattr(service, "last_login_blocked"):
+                service.last_login_blocked = True
+            return None, f"코레일이 이상한 응답을 보내 다시 로그인하지 못했어요 ({type(e).__name__})"
         if success:
             try:
                 set_auth_state(provider, credentials["user_id"])
             except RuntimeError:
                 pass  # 헤드리스에는 갱신할 세션이 없다
             return True, "재로그인 성공"
-        else:
-            return False, "재로그인 실패"
+        if getattr(service, "last_login_blocked", False) is True:
+            # 코레일이 잠시 막은 것: 비밀번호 문제가 아니니 포기 횟수에 넣지 않는다
+            return None, "코레일이 잠시 요청을 막고 있어 다시 로그인하지 못했어요"
+        last_error = getattr(service, "last_error", None)
+        return False, last_error if isinstance(last_error, str) and last_error else "재로그인 실패"
 
     except Exception as e:
         return False, f"리커버리 중 오류: {str(e)}"
@@ -375,13 +383,13 @@ def run_reservation_loop(
         )
     except Exception as e:  # noqa: BLE001 - 스레드가 조용히 죽지 않게
         logger.exception("reservation loop crashed")
-        result["detail"] = str(e)
         try:
             tg.push_log("error", f"예약 매크로가 예기치 않게 멈췄습니다: {e}")
             reporter.send_macro_stopped()
             tg.push_log("stopped", "예약이 중단되었습니다.")
         except Exception:  # noqa: BLE001
             pass
+        result["detail"] = str(e)  # send_macro_stopped 의 'stopped' 알림이 덮어쓰지 않게 뒤에서
     finally:
         result["reason"] = reason
         result["pay_deadline"] = reporter.pay_deadline

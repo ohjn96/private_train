@@ -24,7 +24,7 @@ from server.push import SubscriptionStore, WebPusher, load_or_create_vapid
 from test_reservation_flow import FakeTrain, FastRateLimit, as_selected, make_service
 
 TRAIN = {
-    'index': 0, 'train_name': 'KTX', 'train_number': '101', 'dep_date': '20261003',
+    'index': 0, 'train_name': 'KTX', 'train_number': '101', 'dep_date': '20991003',
     'dep_time': '080000', 'arr_time': '104000', 'dep_station': '서울', 'arr_station': '부산',
     'dep_time_formatted': '08:00', 'arr_time_formatted': '10:40',
 }

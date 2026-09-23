@@ -661,6 +661,16 @@ class NeedToLoginError(KorailError):
         KorailError.__init__(self, "Need to Login", code)
 
 
+class KorailBlockedError(KorailError):
+    """코레일이 요청을 막거나 속도를 제한한 것 같은 응답 (HTTP 429/403, HTML 페이지,
+    JSON 이 아닌 응답, strResult 가 없는 응답). 평소 오류처럼 곧바로 다시 부르지 말고
+    한참 쉬었다가 불러야 한다."""
+
+    def __init__(self, msg=None, code=None, status=None):
+        KorailError.__init__(self, msg or "Blocked or rate limited", code)
+        self.status = status
+
+
 class NoResultsError(KorailError):
     """Korail NoResults Error Class"""
     codes = {'P100',
@@ -720,6 +730,9 @@ class Korail(object):
         self.korail_pw = korail_pw
         self.want_feedback = want_feedback
         self.logined = False
+        #: 요청 전에 부르는 호출 간격 게이트 (없으면 기다리지 않는다). 예약 호출 자체는
+        #: 부르는 쪽이 따로 기록하고, 그 뒤에 따라붙는 조회·결제 요청만 이걸 거친다.
+        self.throttle = None
         if auto_login:
             self.login(korail_id, korail_pw)
 
@@ -746,9 +759,9 @@ class Korail(object):
         }
 
         r = self._session.post(url, data=data)
-        j = json.loads(r.text)
+        j = self._json(r)
 
-        if j['strResult'] == 'SUCC' and j.get('app.login.cphd') is not None:
+        if j.get('strResult') == 'SUCC' and j.get('app.login.cphd') is not None:
             self._idx = j['app.login.cphd']['idx']
             key = j['app.login.cphd']['key']
 
@@ -823,7 +836,7 @@ When you want change ID using existing object,
             data['Sid'] = sid
 
         r = self._session.post(url, data=data, headers=headers)
-        j = json.loads(r.text)
+        j = self._json(r)
 
         # 차단 등 비정상 응답은 strResult 없이 {"code": ..., "message": ...} 형태로 온다
         if 'strResult' not in j:
@@ -847,10 +860,32 @@ When you want change ID using existing object,
         self._session.get(url)
         self.logined = False
 
+    def _wait_turn(self):
+        if self.throttle is not None:
+            self.throttle()
+
+    def _json(self, r):
+        """응답을 JSON 으로 읽는다. 막힌 것 같은 응답은 KorailBlockedError 로 올린다."""
+        status = getattr(r, 'status_code', 200)
+        if status in (403, 429):
+            raise KorailBlockedError("HTTP %s" % status, str(status), status=status)
+        try:
+            j = json.loads(r.text)
+        except ValueError:
+            # 점검·차단 안내 HTML 등
+            raise KorailBlockedError("JSON 이 아닌 응답 (HTTP %s)" % status, 'NOT_JSON', status=status)
+        if not isinstance(j, dict):
+            raise KorailBlockedError("알 수 없는 응답 형식", 'BAD_FORMAT', status=status)
+        return j
+
     def _result_check(self, j):
         """Result data check"""
         if self.want_feedback:
-            print(j['h_msg_txt'])
+            print(j.get('h_msg_txt'))
+
+        # 차단 등 비정상 응답은 strResult 없이 {"code": ..., "message": ...} 형태로 온다
+        if 'strResult' not in j:
+            raise KorailBlockedError(j.get('message') or '알 수 없는 응답', j.get('code'))
 
         if j['strResult'] == 'FAIL':
             h_msg_cd = _get_utf8(j, 'h_msg_cd')
@@ -1022,7 +1057,7 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
 
 
         r = self._session.post(url, params=data, headers=headers)
-        j = json.loads(r.text)
+        j = self._json(r)
 
         if self._result_check(j):
             train_infos = j['trn_infos']['trn_info']
@@ -1172,7 +1207,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             index += 1
 
         r = self._session.get(url, params=data, headers=headers)
-        j = json.loads(r.text)
+        j = self._json(r)
         if self._result_check(j):
             rsv_id = j['h_pnr_no']
             # 여기까지 왔으면 좌석은 이미 잡혔다. 뒤따르는 목록 조회가 실패했다고 예외를
@@ -1189,6 +1224,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
     def tickets(self):
         """Get list of tickets"""
         url = KORAIL_MYTICKETLIST
+        self._wait_turn()
         data = {
             'Device': self._device,
             'Version': self._version,
@@ -1201,7 +1237,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
         }
 
         r = self._session.get(url, params=data)
-        j = json.loads(r.text)
+        j = self._json(r)
         try:
             if self._result_check(j):
                 ticket_infos = j['reservation_list']
@@ -1220,8 +1256,9 @@ When the train allows waiting, enroll for the waiting list instead of failing in
                         'h_orgtk_sale_sqno': ticket.sale_info3,
                         'h_orgtk_ret_pwd': ticket.sale_info4,
                     }
+                    self._wait_turn()
                     r = self._session.get(url, params=data)
-                    j = json.loads(r.text)
+                    j = self._json(r)
                     if self._result_check(j):
                         seat = j['ticket_infos']['ticket_info'][0]['tk_seat_info'][0]
                         ticket.seat_no = _get_utf8(seat, 'h_seat_no')
@@ -1236,6 +1273,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
     def ticket_info(self, rsv_id=None):
         """ 예약 건의 wct_no(결제 요청 번호)와 좌석 정보를 조회. 결제(pay_with_card) 전 필수 """
         url = KORAIL_TICKET_INFO
+        self._wait_turn()
         data = {
             'Device': self._device,
             'Version': self._version,
@@ -1243,7 +1281,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'hidPnrNo': rsv_id,
         }
         r = self._session.get(url, params=data)
-        j = json.loads(r.text)
+        j = self._json(r)
         try:
             if not self._result_check(j):
                 return [], None
@@ -1260,13 +1298,14 @@ When the train allows waiting, enroll for the waiting list instead of failing in
     def reservations(self):
         """ Get My Reservations """
         url = KORAIL_MYRESERVATIONLIST
+        self._wait_turn()
         data = {
             'Device': self._device,
             'Version': self._version,
             'Key': self._key,
         }
         r = self._session.get(url, params=data)
-        j = json.loads(r.text)
+        j = self._json(r)
         try:
             if self._result_check(j):
                 rsv_infos = j['jrny_infos']['jrny_info']
@@ -1301,6 +1340,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             rsv.tickets, rsv.wct_no = self.ticket_info(rsv.rsv_id)
 
         url = KORAIL_PAY
+        self._wait_turn()
         data = {
             'Device': self._device,
             'Version': self._version,
@@ -1324,7 +1364,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'hiduserYn': 'Y',
         }
         r = self._session.post(url, data=data)
-        j = json.loads(r.text)
+        j = self._json(r)
         if self._result_check(j):
             return True
         return False
@@ -1343,6 +1383,6 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'hidRsvChgNo': rsv.rsv_chg_no,
         }
         r = self._session.get(url, data=data)
-        j = json.loads(r.text)
+        j = self._json(r)
         if self._result_check(j):
             return True

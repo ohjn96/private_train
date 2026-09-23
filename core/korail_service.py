@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 # Add parent directory to path for korail2 module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from korail2 import Korail, KorailError, NeedToLoginError, SoldOutError, NoResultsError, ReserveOption, AdultPassenger
+from korail2 import Korail, KorailError, KorailBlockedError, NeedToLoginError, SoldOutError, NoResultsError, ReserveOption, AdultPassenger
 from korail2.korail2 import ReservedOnly
 
 from core.base_service import (
@@ -36,6 +36,10 @@ class KorailService(BaseTrainService):
         self._user_id: str | None = None
         self._password: str | None = None
         self.last_error: str | None = None
+        #: 마지막 로그인이 코레일의 차단·속도 제한 응답으로 실패했나 (재로그인이 '일시적 실패' 로 본다)
+        self.last_login_blocked = False
+        #: 예약 루프가 도는 동안 쥐여 주는 중단 확인. 여러 쪽 조회 사이 대기 중에도 바로 멈춘다.
+        self.should_stop = None
 
     @property
     def call_interval(self) -> float:
@@ -48,13 +52,17 @@ class KorailService(BaseTrainService):
     def login(self, user_id: str, password: str) -> bool:
         """Login to Korail."""
         self.last_error = None
+        self.last_login_blocked = False
         try:
             self._limiter.wait()
             self._client = Korail(user_id, password, auto_login=True, want_feedback=False)
+            # 예약·결제 뒤에 따라붙는 조회(예약 목록·좌석 정보)도 호출 간격을 지키게 한다
+            self._client.throttle = self._limiter.wait
             self._user_id = user_id
             self._password = password
             return self._client.logined
         except KorailError as e:
+            self.last_login_blocked = isinstance(e, KorailBlockedError)
             if e.msg:
                 self.last_error = f"코레일 로그인 실패: {e.msg}"
             return False
@@ -111,8 +119,9 @@ class KorailService(BaseTrainService):
         pages = max(1, min(max_pages, MAX_SEARCH_PAGES))
 
         for _ in range(pages):
+            if self._limiter.wait(should_stop=self.should_stop) < 0:
+                break  # 기다리는 사이 중단됐다
             try:
-                self._limiter.wait()
                 trains = self._client.search_train(
                     dep=dep,
                     arr=arr,
@@ -122,6 +131,8 @@ class KorailService(BaseTrainService):
                 )
             except NoResultsError:
                 break
+            except KorailBlockedError:
+                raise  # 막혔으면 몇 쪽째든 예약 루프가 쉬도록 알린다
             except Exception:
                 # 첫 장부터 실패하면 "열차 없음"으로 숨기지 않고 알린다 (예약 루프는
                 # 일시 오류로 보고 다시 시도한다). 뒷장 실패는 받은 데까지만 쓴다.
@@ -197,15 +208,40 @@ class KorailService(BaseTrainService):
                 success=False,
                 message="매진되었습니다."
             )
-        except NeedToLoginError:
+        except (NeedToLoginError, KorailBlockedError):
             # 세션 만료(P058). 실패로 삼키면 재로그인 없이 "좌석 있음 → 예약 실패"를
             # 끝없이 반복하므로, 예약 루프의 복구 로직이 받도록 그대로 올린다.
+            # 차단·속도 제한 응답도 예약 루프가 한참 쉬도록 그대로 올린다.
             raise
         except KorailError as e:
             return ReservationResult(
                 success=False,
                 message=str(e)
             )
+
+    def find_reservation(self, train: TrainInfo) -> ReservationResult | None:
+        """내 예약 목록에 이 열차 예약이 있으면 성공 결과로, 없으면 None.
+
+        예약 요청이 응답 없이 끊겼을 때(타임아웃·연결 끊김) 실제로는 잡혔는지 확인하는 데
+        쓴다. 확인 자체가 실패하면 예외를 그대로 올린다 (모르는 채로 또 예약하면 안 된다).
+        """
+        if not self._client:
+            return None
+        if getattr(self._client, 'throttle', None) is None:
+            self._limiter.wait()  # 진짜 클라이언트는 reservations() 안에서 기다린다
+        for rsv in self._client.reservations() or []:
+            if (
+                getattr(rsv, 'train_no', None) == train.train_number
+                and getattr(rsv, 'dep_time', None) == train.dep_time
+                and getattr(rsv, 'dep_date', None) in (train.dep_date, None, '')
+            ):
+                return ReservationResult(
+                    success=True,
+                    message="예약 성공!",
+                    reservation_id=getattr(rsv, 'rsv_id', None),
+                    details={'reservation': rsv},
+                )
+        return None
 
     def get_stations(self) -> list[str]:
         """Get the full station list (코레일 + SRT 노선)."""
@@ -226,7 +262,8 @@ class KorailService(BaseTrainService):
             return ReservationResult(success=False, message="로그인이 필요합니다.")
 
         try:
-            self._limiter.wait()
+            if getattr(self._client, 'throttle', None) is None:
+                self._limiter.wait()  # 진짜 클라이언트는 요청마다 안에서 기다린다
             success = self._client.pay_with_card(
                 reservation,
                 card_number,

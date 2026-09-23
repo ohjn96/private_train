@@ -9,7 +9,7 @@
     :license: BSD, see LICENSE for more details.
 """
 from .korail2 import Korail, Passenger, AdultPassenger, ChildPassenger, ToddlerPassenger, SeniorPassenger, TrainType, ReserveOption
-from .korail2 import KorailError, NeedToLoginError, SoldOutError, NoResultsError
+from .korail2 import KorailError, KorailBlockedError, NeedToLoginError, SoldOutError, NoResultsError
 
 __all__ = ['Korail', 'Passenger', 'AdultPassenger', 'ChildPassenger', 'ToddlerPassenger', 'SeniorPassenger', 'TrainType', 'ReserveOption',
-           'KorailError', 'NeedToLoginError', 'SoldOutError', 'NoResultsError']
+           'KorailError', 'KorailBlockedError', 'NeedToLoginError', 'SoldOutError', 'NoResultsError']

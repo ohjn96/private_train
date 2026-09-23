@@ -67,13 +67,28 @@ class RateLimiter:
         with self._lock:
             self._min_interval = max(HARD_MIN_INTERVAL, float(seconds))
 
-    def wait(self) -> float:
-        """호출이 허용될 때까지 대기하고, 실제로 기다린 시간(초)을 돌려준다."""
+    def wait(self, should_stop=None) -> float:
+        """호출이 허용될 때까지 대기하고, 실제로 기다린 시간(초)을 돌려준다.
+
+        should_stop 을 주면 기다리는 동안 틈틈이 확인해서, 중단되면 호출 기록을 남기지 않고
+        곧바로 -1 을 돌려준다 (부르는 쪽은 호출하지 말아야 한다).
+        """
         with self._lock:
+            if should_stop is not None and should_stop():
+                return -1.0
             now = time.monotonic()
             waited = self._next_allowed - now
             if waited > 0:
-                time.sleep(waited)
+                if should_stop is None:
+                    time.sleep(waited)
+                else:
+                    while True:
+                        if should_stop():
+                            return -1.0
+                        left = self._next_allowed - time.monotonic()
+                        if left <= 0:
+                            break
+                        time.sleep(min(0.2, left))
                 now = self._next_allowed
             else:
                 waited = 0.0
