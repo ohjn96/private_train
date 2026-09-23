@@ -1,0 +1,2838 @@
+{% extends "base.html" %}
+
+{% block title %}열차 검색 - KTX/SRT 예약{% endblock %}
+
+{# 한 페이지 안에서 해시 주소로 화면을 바꾼다: #/search · #/run · #/result · #/history · #/settings
+   (EventSource·상태 폴링 같은 JS 상태를 한곳에 두기 위해 서버 라우트를 나누지 않는다) #}
+{% macro ic_search() %}<svg class="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>{% endmacro %}
+{% macro ic_run() %}<svg class="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>{% endmacro %}
+{% macro ic_history() %}<svg class="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4.5V9H8"/><path d="M12 7.5V12l3 2"/></svg>{% endmacro %}
+{% macro ic_settings() %}<svg class="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>{% endmacro %}
+{% macro ic_back() %}<svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>{% endmacro %}
+{% macro ic_left() %}<svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>{% endmacro %}
+{% macro ic_right() %}<svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>{% endmacro %}
+{% macro ic_chev() %}<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>{% endmacro %}
+
+{% macro runbar(extra='') -%}
+<a href="#/run" data-runbar aria-label="실행 중인 매크로 보기" class="hidden {{ extra }} min-h-[48px] pl-3.5 pr-2 rounded-[14px] bg-rail-ink text-white items-center gap-2.5">
+    <span class="w-2 h-2 rounded-full bg-[#4ADE80] shadow-[0_0_0_3px_rgba(74,222,128,0.25)] flex-shrink-0"></span>
+    <span class="text-sm font-bold whitespace-nowrap">실행 중</span>
+    <span data-runbar-text class="flex-1 min-w-0 truncate text-[13px] text-[#C9C2B8] tabular"></span>
+    <span class="flex items-center gap-0.5 text-[13px] font-semibold whitespace-nowrap">보기{{ ic_chev() }}</span>
+</a>
+{%- endmacro %}
+
+{% macro view_header(title, back=None, sub_id=None) -%}
+<header class="lg:hidden h-14 -mx-1 flex items-center gap-0.5">
+    {% if back %}<a href="{{ back }}" data-back aria-label="이전 단계" class="w-11 h-11 rounded-full flex items-center justify-center text-rail-ink flex-shrink-0">{{ ic_back() }}</a>{% else %}<span class="w-1"></span>{% endif %}
+    <h1 class="text-2xl font-bold tracking-tight">{{ title }}</h1>
+    {% if sub_id %}<span id="{{ sub_id }}" class="ml-auto pr-1 text-[13px] text-rail-muted truncate tabular"></span>{% endif %}
+</header>
+{%- endmacro %}
+
+{% macro step_row(back=None, hint_id=None, hint='') -%}
+<div class="flex items-center gap-2 lg:gap-3 bg-white border border-rail-line rounded-xl lg:rounded-2xl px-1 lg:px-3 h-10 lg:h-14">
+    {% if back %}<a href="{{ back }}" data-back aria-label="이전 단계" class="hidden lg:flex w-11 h-11 -ml-1 rounded-full items-center justify-center text-rail-ink flex-shrink-0">{{ ic_back() }}</a><span aria-hidden="true" class="hidden lg:block w-px h-6 bg-rail-line flex-shrink-0"></span>{% endif %}
+    <nav aria-label="예약 단계" data-stepbar class="flex-1 lg:flex-none lg:w-[360px] min-w-0"></nav>
+    <span {% if hint_id %}id="{{ hint_id }}"{% endif %} class="hidden lg:block ml-auto text-[13px] text-rail-muted truncate tabular">{{ hint }}</span>
+</div>
+{%- endmacro %}
+
+{% block topnav %}
+<!-- PC: 로고 옆 탭 (폰은 아래 탭 바) -->
+<header class="hidden lg:block border-b border-rail-line bg-rail-ground">
+    <div class="mx-auto max-w-5xl px-6 h-16 flex items-center gap-7">
+        <a href="#/search" class="flex items-center gap-2.5" aria-label="열차예약 홈">
+            <span class="w-8 h-8 rounded-[9px] bg-ktx-primary flex items-center justify-center flex-shrink-0">
+                <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14"/><path d="M9 21l-2-4"/><path d="M15 21l2-4"/></svg>
+            </span>
+            <span class="text-lg font-bold tracking-tight whitespace-nowrap">열차예약</span>
+        </a>
+        <nav aria-label="주 메뉴" class="flex items-center gap-1 h-16" data-testid="tabs-desktop">
+            {% for key, label, icon in [('search', '조회', ic_search), ('run', '진행', ic_run), ('history', '기록', ic_history), ('settings', '설정', ic_settings)] %}
+            <a href="#/{{ key }}" data-tab="{{ key }}" class="tab-link h-16 px-3.5 flex items-center gap-2 text-[15px] text-rail-muted font-medium">
+                <span class="w-[18px] h-[18px]">{{ icon() }}</span><span>{{ label }}</span>
+                {% if key == 'run' %}<span data-tab-dot class="hidden w-2 h-2 rounded-full"></span>{% endif %}
+            </a>
+            {% endfor %}
+        </nav>
+        <span class="flex-1"></span>
+        <a href="#/run" data-runpill aria-label="실행 중인 매크로 보기" class="hidden h-10 pl-3.5 pr-2.5 rounded-full bg-rail-ink text-white items-center gap-2.5 text-[13px]">
+            <span class="w-2 h-2 rounded-full bg-[#4ADE80] shadow-[0_0_0_3px_rgba(74,222,128,0.25)] flex-shrink-0"></span>
+            <span class="font-bold">실행 중</span>
+            <span data-runbar-text class="text-[#C9C2B8] tabular whitespace-nowrap"></span>
+            <span class="flex items-center gap-0.5 font-semibold">보기{{ ic_chev() }}</span>
+        </a>
+    </div>
+</header>
+{% endblock %}
+
+{% block main_class %}mx-auto max-w-5xl px-4 sm:px-6 pt-1 lg:pt-5{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block content %}
+<style>
+    /* 해시 주소에 맞는 화면 하나만 보인다 */
+    .view.is-active { display: flex; }
+    .btn-primary, .btn-secondary {
+        height: 52px; border-radius: 14px; font-weight: 700; white-space: nowrap;
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        transition: background-color .15s;
+    }
+    .btn-primary { padding: 0 18px; background: #1E4FD8; color: #FFFFFF; font-size: 16px; }
+    .btn-primary:hover { background: #1740B0; }
+    .btn-primary[disabled], .btn-primary[aria-disabled="true"] { background: #ECE8E2; color: #8A8279; cursor: not-allowed; }
+    .btn-secondary { padding: 0 16px; border: 1.5px solid #D6D0C8; background: #FFFFFF; color: #1A1714; font-size: 15px; flex-shrink: 0; }
+    .btn-secondary:hover { border-color: #6B645C; }
+    .btn-primary.hidden, .btn-secondary.hidden { display: none; }
+    /* 폰: 아래 탭 바 바로 위에 붙는 다음 단계 버튼 */
+    .action-bar {
+        position: fixed; left: 0; right: 0; z-index: 30;
+        bottom: calc(68px + env(safe-area-inset-bottom));
+        background: #FFFFFF; border-top: 1px solid #E6E1DA;
+        box-shadow: 0 -8px 20px rgba(26, 23, 20, .06); padding: 10px 16px;
+    }
+    @media (min-width: 1024px) {
+        .action-bar { position: static; background: transparent; border: 0; box-shadow: none; padding: 0; }
+        .action-bar-float {
+            position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px;
+            width: min(1000px, calc(100% - 48px)); background: #FFFFFF; border: 1px solid #E6E1DA;
+            border-radius: 18px; box-shadow: 0 10px 30px rgba(26, 23, 20, .10); padding: 12px 12px 12px 24px;
+        }
+    }
+    nav[data-testid="tabs-mobile"] .tab-link[aria-current="page"] { color: #1E4FD8; font-weight: 700; }
+    nav[data-testid="tabs-desktop"] .tab-link[aria-current="page"] { color: #1A1714; font-weight: 700; box-shadow: inset 0 -2px 0 #1E4FD8; }
+    .interval-opt[aria-checked="true"] { background: #FFFFFF; color: #1A1714; font-weight: 700; box-shadow: 0 1px 2px rgba(26, 23, 20, .12); }
+</style>
+{% set current_auth = session.get('auth', {}).get(provider, {}) %}
+<!-- ① 조회 -->
+<section data-view="search" class="view hidden flex-col gap-3 lg:gap-4">
+    {{ view_header('열차 조회') }}
+    {{ step_row(hint='1단계 · 열차를 고르고 예약을 시작하세요') }}
+    {{ runbar('lg:!hidden') }}
+
+    <!-- Search Form Card -->
+    <section class="bg-white border border-rail-line rounded-[20px] px-4 sm:px-6 pt-5 pb-4 sm:pb-6">
+        <h1 class="text-[22px] sm:text-2xl font-bold tracking-tight mb-3">열차 검색</h1>
+
+        <form method="POST">
+            <input type="hidden" name="search" value="1">
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 lg:gap-6 lg:items-end">
+                <!-- 출발 ⇄ 도착 -->
+                <div class="lg:col-span-5 flex items-center gap-2">
+                    <div class="flex-1 min-w-0 relative">
+                        <label for="depStation" class="block text-xs font-medium text-rail-muted mb-1">출발</label>
+                        <input type="text" name="dep" id="depStation" data-testid="search-from"
+                               autocomplete="off" placeholder="출발역"
+                               value="{{ form_data.dep }}"
+                               class="w-full py-1 bg-transparent border-0 border-b-2 border-transparent focus:border-ktx-primary focus:outline-none text-2xl font-bold tracking-tight text-rail-ink placeholder:text-rail-line">
+                        <ul id="depStationList" data-for="depStation"
+                            class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-rail-line rounded-2xl shadow-lg py-1">
+                            {% for station in stations %}
+                            <li data-value="{{ station }}" class="station-option px-4 py-3 text-base font-medium text-rail-ink cursor-pointer hover:bg-rail-ground">{{ station }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <button type="button" id="swapBtn" data-testid="swap-stations" aria-label="출발·도착 바꾸기"
+                            class="mt-5 w-11 h-11 flex-shrink-0 rounded-full border border-rail-line bg-rail-ground text-rail-ink flex items-center justify-center hover:border-rail-muted transition-colors">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h11"/><path d="M15 4l3 3-3 3"/><path d="M17 17H6"/><path d="M9 14l-3 3 3 3"/></svg>
+                    </button>
+
+                    <div class="flex-1 min-w-0 relative text-right">
+                        <label for="arrStation" class="block text-xs font-medium text-rail-muted mb-1">도착</label>
+                        <input type="text" name="arr" id="arrStation" data-testid="search-to"
+                               autocomplete="off" placeholder="도착역"
+                               value="{{ form_data.arr }}"
+                               class="w-full py-1 bg-transparent border-0 border-b-2 border-transparent focus:border-ktx-primary focus:outline-none text-2xl font-bold tracking-tight text-rail-ink text-right placeholder:text-rail-line">
+                        <ul id="arrStationList" data-for="arrStation"
+                            class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-rail-line rounded-2xl shadow-lg py-1 text-left">
+                            {% for station in stations %}
+                            <li data-value="{{ station }}" class="station-option px-4 py-3 text-base font-medium text-rail-ink cursor-pointer hover:bg-rail-ground">{{ station }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="my-3 h-px bg-rail-line/70 lg:hidden"></div>
+
+                <!-- 날짜 · 시간 -->
+                <div class="lg:col-span-5 flex flex-col gap-2">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-rail-muted flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>
+                        <label for="dateInput" class="sr-only">날짜</label>
+                        <input type="text" name="date" id="dateInput" data-testid="date-picker" value="{{ form_data.date }}"
+                               placeholder="날짜 선택" readonly
+                               class="flex-1 min-w-0 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink cursor-pointer">
+                        <div class="flex gap-1.5" role="group" aria-label="빠른 날짜">
+                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="0">오늘</button>
+                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="1">내일</button>
+                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="2">모레</button>
+                        </div>
+                    </div>
+                    <div class="h-px bg-rail-line/70"></div>
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-rail-muted flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                        <label for="timeSelect" class="sr-only">출발 시간</label>
+                        <select name="time" id="timeSelect" data-testid="time-picker"
+                                class="flex-1 min-w-0 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink appearance-none cursor-pointer">
+                            {% for h in range(24) %}
+                            {% set hh = "%02d:00"|format(h) %}
+                            <option value="{{ hh }}" {% if form_data.time == hh %}selected{% endif %}>{{ "%02d시 이후 출발"|format(h) }}</option>
+                            {% endfor %}
+                        </select>
+                        <svg class="w-4 h-4 text-rail-muted pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                    </div>
+                </div>
+
+                <!-- 조회 -->
+                <div class="lg:col-span-2 mt-4 lg:mt-0">
+                    <button type="submit" data-testid="search-submit"
+                            class="w-full h-14 rounded-2xl bg-ktx-primary hover:bg-ktx-secondary text-white text-[17px] font-bold flex items-center justify-center gap-2 active:scale-[0.99] transition">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                        열차 조회
+                    </button>
+                </div>
+            </div>
+        </form>
+    </section>
+
+    <!-- Error Message -->
+    {% if error_message %}
+    <div role="alert" class="p-4 bg-rail-dangerSoft border border-rail-danger/40 rounded-2xl">
+        <p class="text-sm text-rail-dangerDark">{{ error_message }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Results -->
+    {% if trains %}
+    <section class="space-y-3">
+        <div class="px-1 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-bold tracking-tight">{{ form_data.dep }} → {{ form_data.arr }}</h2>
+                <p class="text-[13px] text-rail-muted tabular">{{ date_label or form_data.date }} · {{ form_data.time[:2] }}시 이후 · {{ trains|length }}편</p>
+            </div>
+
+            <!-- 인원 / 좌석 / 호출 간격: 작은 알약 모양 선택 (390px 폰에서도 한 줄) -->
+            <div class="flex flex-wrap gap-1.5 sm:gap-2">
+                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0">
+                    <span class="text-rail-muted whitespace-nowrap">인원</span>
+                    <select id="passengerCount" data-testid="passenger-count"
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer"
+                            onchange="updatePassengerModeVisibility()">
+                        <option value="1" selected>1명</option>
+                        <option value="2">2명</option>
+                    </select>
+                </label>
+                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0">
+                    <span class="text-rail-muted whitespace-nowrap">좌석</span>
+                    <select id="seatOption" data-testid="seat-option"
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer">
+                        <option value="GENERAL_FIRST">일반 우선</option>
+                        <option value="GENERAL_ONLY">일반만</option>
+                        <option value="SPECIAL_FIRST">특실 우선</option>
+                        <option value="SPECIAL_ONLY">특실만</option>
+                    </select>
+                </label>
+                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0"
+                       title="코레일에 조회를 보내는 간격. 짧을수록(1초) 빨리 잡지만 차단 위험이 커지고, 길수록(3초) 안전합니다.">
+                    <span class="text-rail-muted whitespace-nowrap">간격</span>
+                    <select id="callInterval" data-testid="call-interval"
+                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer">
+                        <option value="1">1초</option>
+                        <option value="1.5">1.5초</option>
+                        <option value="2" selected>2초</option>
+                        <option value="2.5">2.5초</option>
+                        <option value="3">3초</option>
+                    </select>
+                </label>
+                <select id="passengerMode" data-testid="passenger-mode"
+                        class="hidden h-10 px-3 rounded-[10px] border border-rail-line bg-white font-semibold text-rail-ink text-sm">
+                    <option value="together" selected>2명 함께 예약</option>
+                    <option value="sequential">1명씩 순차 예약 (취소표 노림)</option>
+                </select>
+            </div>
+        </div>
+
+    <!-- 넓은 화면: 표 -->
+    <div class="hidden lg:block bg-white rounded-[20px] border border-rail-line overflow-hidden">
+        <!-- Train Table (Desktop) -->
+        <div class="hidden lg:block overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table class="min-w-full">
+                <thead class="bg-[#FAF8F5] sticky top-0 z-10 border-b border-[#EFEBE5]">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-[13px] font-semibold text-rail-muted">열차</th>
+                        <th class="px-6 py-3 text-left text-[13px] font-semibold text-rail-muted">시간</th>
+                        <th class="px-6 py-3 text-center text-[13px] font-semibold text-rail-muted">특실</th>
+                        <th class="px-6 py-3 text-center text-[13px] font-semibold text-rail-muted">일반실</th>
+                    </tr>
+                </thead>
+                <tbody id="trainTableBody" class="bg-white divide-y divide-[#EFEBE5]">
+                    {% for train in trains %}
+                    <tr class="train-row cursor-pointer transition-colors duration-150 hover:bg-[#FAF8F5]"
+                        data-index="{{ train.index }}"
+                        data-time="{{ train.dep_time }}"
+                        data-testid="train-row-{{ train.index }}"
+                        onclick="toggleTrainSelection(this)">
+                        <!-- 열차 이름 (KTX-산천 처럼 이름에 종류가 들어 있어 따로 뱃지는 달지 않는다) -->
+                        <td class="px-6 py-4">
+                            <div class="text-[15px] font-semibold text-rail-ink">{{ train.train_name }}</div>
+                            <div class="text-xs text-rail-muted tabular">#{{ train.train_number }}</div>
+                        </td>
+                        <!-- 출발 ─ 소요 ─ 도착 -->
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-5 tabular">
+                                <div class="text-center">
+                                    <div class="text-xl font-bold tracking-tight text-rail-ink">{{ train.dep_time_formatted }}</div>
+                                    <div class="text-xs text-rail-muted">{{ train.dep_station }}</div>
+                                </div>
+                                <div class="w-20 flex flex-col items-center gap-0.5">
+                                    <span class="text-xs text-rail-muted whitespace-nowrap">{{ train.duration_formatted }}</span>
+                                    <span class="w-full h-px bg-[#D6D0C8]"></span>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-xl font-bold tracking-tight text-rail-ink">{{ train.arr_time_formatted }}</div>
+                                    <div class="text-xs text-rail-muted">{{ train.arr_station }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {% if train.special_seat_available %}
+                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-semibold bg-rail-okSoft text-rail-ok">있음</span>
+                            {% else %}
+                            <span data-testid="seat-badge-special-{{ train.index }}" class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-medium bg-rail-offSoft text-rail-off">매진</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {% if train.general_seat_available %}
+                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-semibold bg-rail-okSoft text-rail-ok">있음</span>
+                            {% else %}
+                            <span data-testid="seat-badge-general-{{ train.index }}" class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-medium bg-rail-offSoft text-rail-off">매진</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- 폰: 카드 (눌러서 고르기) -->
+    <div id="trainCardContainer" class="lg:hidden flex flex-col gap-2.5">
+        {% for train in trains %}
+        <div class="train-row train-card bg-white border border-rail-line rounded-2xl px-4 py-3.5 flex items-center gap-3 cursor-pointer select-none transition"
+             data-index="{{ train.index }}" data-time="{{ train.dep_time }}" data-testid="train-row-{{ train.index }}"
+             role="button" tabindex="0" aria-pressed="false"
+             onclick="toggleTrainSelection(this)"
+             onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleTrainSelection(this); }">
+            <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+                <div class="flex items-baseline gap-2 tabular">
+                    <span class="text-[22px] font-bold tracking-tight">{{ train.dep_time_formatted }}</span>
+                    <span class="text-sm text-rail-muted">→</span>
+                    <span class="text-[22px] font-bold tracking-tight">{{ train.arr_time_formatted }}</span>
+                    <span class="text-xs text-rail-muted">{{ train.duration_formatted }}</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[13px] font-semibold">{{ train.train_name }}</span>
+                    <span class="text-xs text-rail-muted">{{ train.train_number }}</span>
+                </div>
+                <div class="flex gap-1.5">
+                    {% if train.general_seat_available %}<span class="px-2 py-0.5 rounded-lg bg-rail-okSoft text-rail-ok text-xs font-semibold">일반 있음</span>{% else %}<span class="px-2 py-0.5 rounded-lg bg-rail-offSoft text-rail-off text-xs font-medium">일반 매진</span>{% endif %}
+                    {% if train.special_seat_available %}<span class="px-2 py-0.5 rounded-lg bg-rail-okSoft text-rail-ok text-xs font-semibold">특실 있음</span>{% else %}<span class="px-2 py-0.5 rounded-lg bg-rail-offSoft text-rail-off text-xs font-medium">특실 매진</span>{% endif %}
+                </div>
+            </div>
+            <span class="select-mark w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                <svg class="w-4 h-4 opacity-0" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="flex justify-center pt-1">
+        <button type="button" id="loadMoreBtn"
+                class="h-11 px-6 rounded-xl border border-rail-line bg-white text-sm font-semibold text-rail-ink flex items-center gap-2 hover:border-rail-muted transition-colors">
+            <span>다음 열차 더 보기</span>
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+    </div>
+    <!-- 다른 사람이 매크로를 쓰는 중일 때 (서버는 한 번에 한 명만) -->
+    <p id="busyNotice" data-testid="busy-notice"
+       class="hidden w-full text-sm text-[#7A4200] bg-[#FDF1DD] rounded-xl px-3 py-2"></p>
+
+    <!-- 아래 고정: "N편 선택 · 예약 시작 →" (실행 중이면 "바꿔서 시작 →") -->
+    <div class="action-bar action-bar-float" id="searchActions" data-testid="search-actions">
+        <div class="flex flex-col lg:flex-row lg:items-center gap-1.5 lg:gap-4">
+            <div class="min-w-0 lg:flex-1 flex flex-col gap-0.5 px-0.5">
+                <span id="selectedCount" class="hidden lg:block text-base font-bold tabular">0편 선택</span>
+                <span id="startHint" class="text-xs lg:text-[13px] text-rail-muted truncate"></span>
+            </div>
+            <button type="button" id="startBtn" data-testid="reserve-start" disabled aria-disabled="true"
+                    class="btn-primary w-full lg:w-auto lg:px-6">
+                <span class="flex flex-col items-center leading-tight">
+                    <span class="flex items-center gap-1.5"><span id="startLabel">예약 시작</span>
+                        <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
+                    <span id="startSub" class="text-[11px] font-medium">열차를 1편 이상 골라 주세요</span>
+                </span>
+            </button>
+        </div>
+    </div>
+    </section>
+    {% endif %}
+    <div class="h-44 lg:h-28" aria-hidden="true"></div>
+</section>
+
+<!-- ② 진행 -->
+<section data-view="run" class="view hidden flex-col gap-3 lg:gap-4">
+    {{ view_header('진행', back='#/search', sub_id='runRoute') }}
+    {{ step_row(back='#/search', hint_id='runHint') }}
+
+    <!-- 예약 성공 (로그 스트림에서 성공이 오면 보인다) -->
+    <section id="successBanner" data-testid="success-banner" class="hidden bg-white border border-rail-line rounded-[20px] p-5" role="status" aria-live="polite">
+        <div class="flex items-start gap-3">
+            <span class="w-11 h-11 rounded-full bg-rail-ok flex items-center justify-center flex-shrink-0">
+                <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>
+            </span>
+            <div class="flex-1 min-w-0">
+                <h2 class="text-xl font-bold tracking-tight">예약했어요</h2>
+                <p id="successDetail" class="text-sm text-rail-muted mt-0.5"></p>
+            </div>
+            <button type="button" aria-label="닫기" onclick="const b = document.getElementById('successBanner'); b.classList.add('hidden'); try { localStorage.setItem('dismissedSuccess', b.dataset.message || ''); } catch (e) {}"
+                    class="w-11 h-11 -mr-2 -mt-2 flex items-center justify-center text-rail-muted">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </div>
+        <!-- 결제 결과: 자동결제 진행 중 / 완료 / 실패(직접 결제) / 자동결제 안 함(직접 결제) -->
+        <div id="payRunning" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-ground">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="#6B645C" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>
+            <div>
+                <p class="text-[15px] font-bold">자동결제 진행 중</p>
+                <p class="text-[13px] text-rail-muted">등록한 카드로 결제하고 있어요.</p>
+            </div>
+        </div>
+        <div id="payDone" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-okSoft">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#0B6B3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
+            <div>
+                <p class="text-[15px] font-bold text-rail-ok">자동결제까지 끝났어요</p>
+                <p class="text-[13px] text-[#245B3D]">등록한 카드로 결제했어요. 따로 할 일은 없어요.</p>
+            </div>
+        </div>
+        <div id="payFailed" role="alert" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-dangerSoft border border-rail-danger">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#C8102E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17.5h.01"/></svg>
+            <div>
+                <p class="text-[15px] font-bold text-rail-dangerDark">자동결제에 실패했어요</p>
+                <p id="payFailedReason" class="text-[13px] text-rail-dangerDark"></p>
+                <p class="pay-guide text-[13px] leading-relaxed text-rail-ink mt-1 font-semibold [word-break:keep-all]"></p>
+            </div>
+        </div>
+        <div id="payPending" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-[#FDF1DD]">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#8A4B00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div>
+                <p class="text-[15px] font-bold text-[#7A4200]">결제가 남았어요</p>
+                <p class="pay-guide text-[13px] leading-relaxed text-[#6B4A1E] [word-break:keep-all]"></p>
+            </div>
+        </div>
+        <div class="mt-3 flex justify-end">
+            <button type="button" id="ackBtn" data-testid="ack-button" class="h-10 px-3 rounded-lg border border-rail-line text-sm hover:bg-rail-ground transition-colors">알림음 끄기</button>
+        </div>
+    </section>
+
+    <!-- 실행 중·끝남: 왼쪽 검은 카드, 오른쪽 대상 열차 + 로그 -->
+    <div id="runBody" class="hidden grid grid-cols-1 lg:grid-cols-[440px_minmax(0,1fr)] gap-3 lg:gap-5">
+        <div class="flex flex-col gap-3 min-w-0">
+            <!-- 실행 중 (상태 폴링이 채운다) -->
+            <section id="macroHero" data-testid="macro-hero" class="hidden bg-rail-ink text-white rounded-[22px] p-5 lg:p-6 flex flex-col gap-3 lg:gap-4 lg:min-h-[340px]" aria-live="polite">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-[#4ADE80] shadow-[0_0_0_4px_rgba(74,222,128,0.25)] animate-pulse"></span>
+                    <span class="text-sm font-semibold">좌석 찾는 중</span>
+                    <span id="heroElapsed" class="text-[13px] text-[#C9C2B8] tabular"></span>
+                    <span class="flex-1"></span>
+                    <!-- 폰: 중단은 카드 위쪽 -->
+                    <button type="button" id="heroStopBtn" data-testid="hero-stop"
+                            class="h-11 px-3.5 rounded-xl border-[1.5px] border-white/55 text-white text-[15px] font-bold flex items-center gap-1.5 flex-shrink-0 lg:hidden">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        <span>중단</span>
+                    </button>
+                </div>
+                <div class="flex items-end gap-2.5">
+                    <span id="heroAttempt" class="text-[52px] lg:text-[64px] leading-none font-bold tracking-tight tabular">0</span>
+                    <span class="text-[15px] text-[#C9C2B8] pb-1.5 lg:pb-2">번째 조회</span>
+                </div>
+                <p id="heroCurrent" class="text-sm lg:text-[15px] text-[#E8E2D9] min-h-[1.25rem] tabular"></p>
+                <p id="heroResumed" class="hidden text-[13px] leading-relaxed text-[#FDE68A]"></p>
+                <p class="text-[13px] leading-relaxed text-[#C9C2B8]">앱을 닫거나 다른 탭으로 가도 계속 찾아요. 끝나면 알림으로 알려드리고 여기서 결과 보기가 열려요.</p>
+                <div class="hidden lg:block flex-1"></div>
+                <!-- PC: 중단은 카드 아래쪽 (같은 동작) -->
+                <button type="button" data-stop-macro data-testid="hero-stop-desktop"
+                        class="hidden lg:flex w-40 h-12 rounded-2xl bg-white text-rail-ink font-bold items-center justify-center gap-2">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    <span>중단</span>
+                </button>
+            </section>
+
+            <!-- 끝남 (결과 보기 전 · 결과에서 ← 로 돌아왔을 때) -->
+            <section id="runFinished" data-testid="run-finished" class="hidden bg-rail-ink text-white rounded-[22px] p-5 lg:p-6 flex flex-col gap-3 lg:gap-4 lg:min-h-[340px]">
+                <div class="flex items-center gap-2">
+                    <span id="runFinishedIcon" class="w-[22px] h-[22px] rounded-full flex items-center justify-center" aria-hidden="true"></span>
+                    <span class="text-sm font-semibold">매크로가 끝났어요</span>
+                    <span id="runFinishedTime" class="ml-auto text-[13px] text-[#C9C2B8] tabular"></span>
+                </div>
+                <div class="flex items-end gap-2.5 flex-wrap">
+                    <span id="runFinishedCount" class="text-[52px] lg:text-[64px] leading-none font-bold tracking-tight tabular"></span>
+                    <span id="runFinishedText" class="text-[15px] text-[#C9C2B8] pb-1.5 lg:pb-2"></span>
+                </div>
+                <p id="runFinishedDetail" class="text-sm lg:text-[15px] text-[#E8E2D9] tabular"></p>
+                <p class="text-[13px] leading-relaxed text-[#C9C2B8]">결제 상태는 다음 단계 결과에서 확인하세요. 기록 탭으로 저절로 넘어가지 않아요.</p>
+            </section>
+        </div>
+
+        <div class="flex flex-col gap-3 min-w-0">
+            <section id="heroTargetsCard" class="hidden bg-white border border-rail-line rounded-2xl">
+                <p id="heroTargetsTitle" class="px-4 lg:px-[18px] pt-3 pb-1 text-[13px] font-semibold text-rail-muted">대상 열차</p>
+                <ul id="heroTargets" class="divide-y divide-[#EFEBE5] mx-4 lg:mx-[18px]"></ul>
+            </section>
+            <section data-testid="log-panel" class="flex-1 bg-white border border-rail-line rounded-2xl px-4 lg:px-[18px] py-3 flex flex-col gap-1 min-w-0">
+                <p class="text-[13px] font-semibold text-rail-muted pb-0.5">최근 기록</p>
+                <div id="logContainer" data-testid="log-stream-container"
+                     class="log-container h-56 lg:h-[260px] overflow-y-auto text-xs leading-relaxed text-[#4A443E] break-words">
+                    <div class="text-rail-muted">대기 중...</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- 비어 있음 (아무것도 돈 적 없을 때) -->
+    <section id="runEmpty" data-testid="run-empty" class="hidden flex-col items-center justify-center gap-3.5 text-center px-4 py-16 lg:py-24">
+        <span class="w-[72px] h-[72px] rounded-full bg-[#EDE9E3] flex items-center justify-center text-rail-muted"><span class="w-8 h-8">{{ ic_run() }}</span></span>
+        <h2 class="mt-1 text-xl font-bold tracking-tight">돌고 있는 매크로가 없어요</h2>
+        <p class="text-sm leading-relaxed text-rail-muted max-w-[280px]">1단계 조회에서 열차를 고르고 예약 시작을 누르면 여기서 진행 상황을 볼 수 있어요.</p>
+    </section>
+
+    <!-- 아래 고정 버튼 (PC 는 본문 끝) -->
+    <div class="action-bar" id="runActions">
+        <div class="flex items-center gap-2 lg:justify-end">
+            <span id="runActionsHint" class="hidden lg:inline text-[13px] text-rail-muted mr-1.5">매크로가 끝나면 결과 보기가 열려요</span>
+            <a href="#/search" id="runToSearch" class="btn-secondary">{{ ic_left() }}<span>조회로</span></a>
+            <a href="#/result" id="runToResult" data-testid="run-to-result" class="btn-primary flex-1 lg:flex-none">
+                <span class="flex flex-col items-center leading-tight">
+                    <span class="flex items-center gap-1.5">결과 보기{{ ic_right() }}</span>
+                    <span id="runToResultSub" class="text-[11px] font-medium">끝나면 열려요</span>
+                </span>
+            </a>
+            <a href="#/search" id="runEmptyAction" class="hidden btn-primary flex-1 lg:flex-none">{{ ic_left() }}<span>열차 조회하러 가기</span></a>
+        </div>
+    </div>
+    <div class="h-40 lg:h-2" aria-hidden="true"></div>
+</section>
+
+<!-- ③ 결과 (진행의 다음 단계. 탭은 '진행' 이 켜진 채로) -->
+<section data-view="result" class="view hidden flex-col gap-3 lg:gap-4">
+    {{ view_header('결과', back='#/run', sub_id='resultRoute') }}
+    {{ step_row(back='#/run', hint_id='resultHint') }}
+    <div class="grid grid-cols-1 lg:grid-cols-[580px_minmax(0,1fr)] gap-3 lg:gap-5 items-start">
+        <div data-slot="result" class="min-w-0"></div>
+        <section id="runSummary" data-testid="run-summary" class="hidden bg-white border border-rail-line rounded-2xl px-4 lg:px-5 pt-2.5 pb-1.5">
+            <h3 class="text-[13px] font-semibold text-rail-muted mb-0.5">이번 실행</h3>
+            <dl id="runSummaryRows" class="divide-y divide-[#EFEBE5]"></dl>
+        </section>
+    </div>
+    <p class="mx-1 text-xs leading-relaxed text-rail-muted">이 결과는 기록 탭에도 남아요. 자동으로 넘어가지 않으니 필요할 때 기록 보기를 누르세요.</p>
+    <div class="action-bar">
+        <div class="flex items-center gap-2 lg:justify-end">
+            <a href="#/run" class="btn-secondary px-3">{{ ic_left() }}<span>진행으로</span></a>
+            <a href="#/search" data-new-search class="btn-secondary px-3"><span>새로 조회</span></a>
+            <a href="#/history" data-testid="result-to-history" class="btn-primary flex-1 lg:flex-none"><span>기록 보기</span>{{ ic_right() }}</a>
+        </div>
+    </div>
+    <div class="h-40 lg:h-2" aria-hidden="true"></div>
+</section>
+
+<!-- 기록 -->
+<section data-view="history" class="view hidden flex-col gap-3 lg:gap-4">
+    {{ view_header('기록') }}
+    {{ runbar('lg:!hidden') }}
+    <h2 class="mx-1 text-[13px] font-semibold text-rail-muted">마지막 결과</h2>
+    <div data-slot="history" class="lg:max-w-[640px]">
+    <!-- 마지막 결과 (매크로가 끝난 뒤 앱을 다시 열었을 때) -->
+    <section id="lastResult" data-testid="last-result" class="hidden bg-white border border-rail-line rounded-[20px] p-5" aria-live="polite">
+        <div class="flex items-start gap-3">
+            <span id="lastResultIcon" class="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" aria-hidden="true"></span>
+            <div class="flex-1 min-w-0">
+                <p id="lastResultTime" class="text-xs text-rail-muted"></p>
+                <h2 id="lastResultTitle" class="text-lg font-bold tracking-tight"></h2>
+                <p id="lastResultBody" class="text-sm text-rail-muted mt-0.5 break-words"></p>
+            </div>
+            <button type="button" id="lastResultClose" aria-label="닫기"
+                    class="w-11 h-11 -mr-2 -mt-2 flex items-center justify-center text-rail-muted">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </div>
+        <!-- 결제 안내: 성공 배너와 같은 모양 (아이콘 + 굵은 제목 + 안내) -->
+        <div id="lastResultNote" class="hidden mt-4 sm:ml-14 flex gap-3 items-start p-3.5 rounded-2xl">
+            <span id="lastResultNoteIcon" class="flex-shrink-0 mt-0.5" aria-hidden="true"></span>
+            <div class="min-w-0">
+                <p id="lastResultNoteTitle" class="text-[15px] font-bold"></p>
+                <p id="lastResultNoteBody" class="text-[13px] leading-relaxed [word-break:keep-all]"></p>
+            </div>
+        </div>
+        <!-- 로그인이 계속 실패했을 때: 로그아웃 → 로그인 화면 -->
+        <form id="lastResultRelogin" action="{{ url_for('auth.logout') }}" method="POST" class="hidden mt-4 sm:ml-14">
+            <input type="hidden" name="logout_all" value="true">
+            <button type="submit" class="w-full sm:w-auto h-11 px-4 rounded-xl border-[1.5px] border-rail-ink bg-white text-rail-ink text-[15px] font-bold">다시 로그인</button>
+        </form>
+    </section>
+    </div>
+    <section id="historyEmpty" data-testid="history-empty" class="hidden lg:max-w-[640px] bg-white border border-rail-line rounded-[20px] px-5 py-8 text-center">
+        <p class="text-base font-bold">아직 끝난 실행이 없어요</p>
+        <p class="mt-1 text-sm text-rail-muted">매크로가 끝나면 마지막 결과가 여기에 남아요.</p>
+    </section>
+    <div class="h-24 lg:h-6" aria-hidden="true"></div>
+</section>
+
+<!-- 설정 -->
+<section data-view="settings" class="view hidden flex-col gap-3 lg:gap-4">
+    {{ view_header('설정') }}
+    {{ runbar('lg:!hidden') }}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <div class="flex flex-col gap-4 min-w-0">
+            <h2 class="-mb-2 mx-1 text-[13px] font-semibold text-rail-muted">알림</h2>
+    {% if server_mode %}
+    <!-- Web Push Card (서버 모드) -->
+    <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden" data-testid="push-card">
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
+             onclick="document.getElementById('pushBody').classList.toggle('hidden'); document.getElementById('pushChevron').classList.toggle('rotate-180');">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-rail-ink" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                </div>
+                <div class="min-w-0">
+                    <h3 class="text-base font-bold text-rail-ink">폰 알림</h3>
+                    <p class="text-xs text-rail-muted">앱을 닫아도 예약 성공·결제·중단을 알려줍니다</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0">
+                <div class="flex items-center gap-2">
+                    <span id="pushStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="pushStatusText" class="text-sm text-rail-muted">확인 중...</span>
+                </div>
+                <svg id="pushChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="pushBody" class="hidden border-t border-rail-line">
+            <div class="p-4 sm:p-5 space-y-4">
+                <p id="pushHint" class="hidden text-sm text-[#7A4200] bg-[#FDF1DD] rounded-xl px-3 py-2"></p>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="pushEnableBtn" onclick="enablePush()"
+                            class="hidden h-11 px-5 rounded-xl bg-ktx-primary text-white text-sm font-semibold hover:bg-ktx-secondary transition-colors">
+                        이 기기에서 알림 켜기
+                    </button>
+                    <button type="button" id="pushTestBtn" onclick="testPush()"
+                            class="hidden h-11 px-5 rounded-xl border border-rail-line bg-white text-rail-ink text-sm font-semibold hover:border-rail-muted transition-colors">
+                        테스트 알림
+                    </button>
+                    <button type="button" id="pushDisableBtn" onclick="disablePush()"
+                            class="hidden h-11 px-5 rounded-xl border border-rail-line bg-white text-ktx-primary text-sm font-semibold hover:border-ktx-primary transition-colors">
+                        이 기기 알림 끄기
+                    </button>
+                </div>
+                <p class="text-xs leading-relaxed text-rail-muted">
+                    iPhone: Safari 공유 버튼 → <b>홈 화면에 추가</b> → 홈 화면 아이콘으로 열어서 켜세요 (iOS 16.4 이상).
+                    Android: Chrome 에서 바로 켤 수 있습니다.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- Telegram Settings Card (always visible) -->
+    <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
+        <!-- Header / Toggle -->
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
+             onclick="document.getElementById('tgBody').classList.toggle('hidden'); document.getElementById('tgChevron').classList.toggle('rotate-180');">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-rail-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4L3 11l6 2.5M21 4l-3.5 16-8.5-6.5M21 4L9 13.5v5.5l3-3"/></svg>
+                </div>
+                <div class="min-w-0">
+                    <h3 class="text-base font-bold text-rail-ink">텔레그램 알림</h3>
+                    <p class="text-xs text-rail-muted">예약 성공 알림 · 원격 제어 (/stop /status /reserve)</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0">
+                <div id="tgStatus" class="flex items-center gap-2">
+                    <span id="tgStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="tgStatusText" class="text-sm text-rail-muted">미연결</span>
+                </div>
+                <svg id="tgChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Body (collapsible) -->
+        <div id="tgBody" class="hidden border-t border-rail-line">
+            <div class="p-4 sm:p-5 space-y-4">
+                <!-- Token + Chat ID inputs -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="tgBotToken" class="block text-xs font-medium text-rail-muted mb-1.5">Bot Token</label>
+                        <div class="relative">
+                            <input type="password" id="tgBotToken" placeholder="123456:ABC-DEF..."
+                                   class="w-full h-11 pl-4 pr-11 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
+                            <button type="button" onclick="toggleTokenVisibility()" aria-label="토큰 보기" class="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-rail-muted hover:text-rail-ink">
+                                <svg id="tgEyeIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="tgChatId" class="block text-xs font-medium text-rail-muted mb-1.5">Chat ID <span class="font-normal">(코드로 등록하면 자동으로 채워져요)</span></label>
+                        <input type="text" id="tgChatId" placeholder="123456789"
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="tgConnectBtn" onclick="connectTelegram()"
+                            class="h-11 px-5 rounded-xl bg-ktx-primary text-white text-sm font-semibold hover:bg-ktx-secondary transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        연결
+                    </button>
+                    <button type="button" id="tgTestBtn" onclick="testTelegram()" class="hidden h-11 px-5 rounded-xl border border-rail-line bg-white text-rail-ink text-sm font-semibold hover:border-rail-muted transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                        테스트 전송
+                    </button>
+                    <button type="button" id="tgDisconnectBtn" onclick="disconnectTelegram()" class="hidden h-11 px-5 rounded-xl border border-rail-line bg-white text-ktx-primary text-sm font-semibold hover:border-ktx-primary transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                        연결 해제
+                    </button>
+                    <span id="tgMessage" class="text-sm text-rail-muted basis-full mt-1"></span>
+                </div>
+
+                <!-- 채팅 등록: 봇에게 일회용 코드로 /start 를 보내면 그 채팅이 등록된다 -->
+                <div id="tgPairing" data-testid="tg-pairing" class="hidden rounded-2xl bg-rail-ground p-4 flex flex-col gap-2" aria-live="polite">
+                    <p class="text-sm font-semibold text-rail-ink">봇에게 아래 명령을 보내 주세요</p>
+                    <div class="flex items-center gap-2">
+                        <code id="tgPairingCommand" data-testid="tg-pairing-command"
+                              class="flex-1 min-w-0 truncate h-11 px-3 rounded-xl bg-white border border-rail-line font-mono text-[15px] font-semibold flex items-center select-all"></code>
+                        <button type="button" id="tgPairingCopy" onclick="copyPairingCommand()"
+                                class="h-11 px-4 rounded-xl border border-rail-line bg-white text-sm font-semibold text-rail-ink hover:border-rail-muted flex-shrink-0">복사</button>
+                    </div>
+                    <p id="tgPairingExpires" class="text-xs text-rail-muted"></p>
+                </div>
+
+                <!-- Help Section -->
+                <details class="mt-2">
+                    <summary class="text-sm font-semibold text-rail-ink hover:text-ktx-primary cursor-pointer select-none">
+                        설정 방법 및 명령어 안내
+                    </summary>
+                    <div class="mt-3 p-4 bg-rail-ground rounded-2xl text-sm text-rail-ink space-y-4">
+                        <div>
+                            <p class="font-semibold mb-2">설정 방법</p>
+                            <ol class="list-decimal list-inside space-y-1 text-rail-muted">
+                                <li>텔레그램에서 <b class="text-rail-ink">@BotFather</b>를 검색하고 <code class="bg-white border border-rail-line px-1 rounded">/newbot</code> 명령어로 봇 생성</li>
+                                <li>발급받은 <b class="text-rail-ink">Bot Token</b>을 위 입력란에 붙여넣기</li>
+                                <li>"연결" 버튼 클릭</li>
+                                <li>생성한 봇의 대화창에 위에 나온 <code class="bg-white border border-rail-line px-1 rounded">/start 코드</code> 전송 → 이 채팅이 등록됨 (코드는 10분 동안 한 번만 쓸 수 있어요)</li>
+                                <li>"자동 연결" 체크 시 다음 접속부터 자동으로 연결됩니다</li>
+                            </ol>
+                        </div>
+                        <div>
+                            <p class="font-semibold mb-2">봇 명령어</p>
+                            <div class="bg-white rounded-xl overflow-hidden border border-rail-line">
+                                <table class="w-full text-sm">
+                                    <tbody class="divide-y divide-[#EFEBE5]">
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/start</td><td class="px-3 py-2 text-rail-muted">봇 연결 및 Chat ID 자동 등록</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/reserve</td><td class="px-3 py-2 text-rail-muted">텔레그램에서 열차 검색 및 예약 시작<br><span class="text-xs">예: /reserve 수서 부산 2026-03-01 06:00</span></td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/stop</td><td class="px-3 py-2 text-rail-muted">실행 중인 매크로 원격 중단</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/restart</td><td class="px-3 py-2 text-rail-muted">최신 데이터로 매크로 재시작</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/status</td><td class="px-3 py-2 text-rail-muted">현재 매크로 상태 상세 확인</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/trains</td><td class="px-3 py-2 text-rail-muted">마지막 검색된 열차 목록 보기</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/chatid</td><td class="px-3 py-2 text-rail-muted">현재 Chat ID 확인</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/help</td><td class="px-3 py-2 text-rail-muted">명령어 목록 표시</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="font-semibold mb-2">/reserve 사용 예시</p>
+                            <div class="bg-rail-ink text-[#E8E2D9] rounded-xl p-3 font-mono text-xs space-y-1">
+                                <p>/reserve 수서 부산 2026-03-01 06:00</p>
+                                <p class="text-[#8A8279]">→ 열차 목록이 표시되면 번호를 선택</p>
+                                <p class="text-[#8A8279]">→ 예: "1,3,5" 입력 시 해당 열차 예약 시작</p>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    {% endif %}
+            <h2 class="-mb-2 mx-1 text-[13px] font-semibold text-rail-muted">결제</h2>
+    <!-- Card Auto-Payment Settings Card (always visible) -->
+    <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
+        <!-- Header / Toggle -->
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
+             onclick="document.getElementById('cardBody').classList.toggle('hidden'); document.getElementById('cardChevron').classList.toggle('rotate-180');">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5 text-rail-ink" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/><path d="M6 15h3"/></svg>
+                </div>
+                <div class="min-w-0">
+                    <h3 class="text-base font-bold text-rail-ink">카드 자동결제</h3>
+                    <p class="text-xs text-rail-muted">예매 성공 시 등록된 카드로 즉시 결제</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0">
+                <div id="cardStatus" class="flex items-center gap-2">
+                    <span id="cardStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="cardStatusText" class="text-sm text-rail-muted">미등록</span>
+                </div>
+                <svg id="cardChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Body (collapsible) -->
+        <div id="cardBody" class="hidden border-t border-rail-line">
+            <div class="p-4 sm:p-5 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="cardNumber" class="block text-xs font-medium text-rail-muted mb-1.5">카드 번호</label>
+                        <input type="text" id="cardNumber" placeholder="1234567890123456" inputmode="numeric" autocomplete="off"
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
+                    </div>
+                    <div>
+                        <label for="cardExpire" class="block text-xs font-medium text-rail-muted mb-1.5">유효기간 (MM/YY)</label>
+                        <input type="text" id="cardExpire" placeholder="09/30" maxlength="5" inputmode="numeric" autocomplete="off"
+                               oninput="formatCardExpireInput(this)"
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
+                    </div>
+                    <div>
+                        <label for="cardPassword" class="block text-xs font-medium text-rail-muted mb-1.5">비밀번호 앞 2자리</label>
+                        <input type="password" id="cardPassword" placeholder="12" maxlength="2" inputmode="numeric" autocomplete="off"
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
+                    </div>
+                    <div>
+                        <label for="cardValidationNumber" class="block text-xs font-medium text-rail-muted mb-1.5">생년월일(YYMMDD) / 사업자번호</label>
+                        <input type="text" id="cardValidationNumber" placeholder="981204" inputmode="numeric" autocomplete="off"
+                               class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm font-mono">
+                    </div>
+                    <div>
+                        <label for="cardType" class="block text-xs font-medium text-rail-muted mb-1.5">카드 타입</label>
+                        <select id="cardType" class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm">
+                            <option value="J">개인</option>
+                            <option value="S">법인</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="cardInstallment" class="block text-xs font-medium text-rail-muted mb-1.5">할부</label>
+                        <select id="cardInstallment" class="w-full h-11 px-4 border border-rail-line rounded-xl bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary transition-colors text-sm">
+                            <option value="0">일시불</option>
+                            {% for m in [2,3,4,5,6,7,8,9,10,11,12,24] %}
+                            <option value="{{ m }}">{{ m }}개월</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <label class="inline-flex items-center gap-2 mr-2 min-h-[44px]">
+                        <input type="checkbox" id="cardAutoPay" checked class="w-4 h-4 rounded accent-[#1E4FD8]">
+                        <span class="text-sm text-rail-ink">예매 성공 시 자동으로 결제</span>
+                    </label>
+                    <button type="button" id="cardSaveBtn" onclick="saveCardSettings()"
+                            class="h-11 px-5 rounded-xl bg-ktx-primary text-white text-sm font-semibold hover:bg-ktx-secondary transition-colors">
+                        저장
+                    </button>
+                    <button type="button" id="cardClearBtn" onclick="clearCardSettings()"
+                            class="h-11 px-5 rounded-xl border border-rail-line bg-white text-ktx-primary text-sm font-semibold hover:border-ktx-primary transition-colors">
+                        삭제
+                    </button>
+                    <span id="cardMessage" class="text-sm text-rail-muted basis-full mt-1"></span>
+                </div>
+
+                <p class="text-xs leading-relaxed text-rail-muted">
+                    카드 정보는 로그인 세션 쿠키에 저장되며 로그아웃 시 삭제됩니다. DB 등에 영구 저장되지 않지만, 브라우저에는 남으니 개인 기기에서만 사용해주세요.
+                </p>
+            </div>
+        </div>
+    </div>
+        </div>
+        <div class="flex flex-col gap-4 min-w-0">
+            <section class="bg-white border border-rail-line rounded-[20px] px-4 sm:px-5 py-4 flex flex-col gap-1">
+                <h2 class="text-[15px] font-bold mb-1">예약 기본값</h2>
+                <div class="py-2 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[15px] font-medium">기본 호출 간격</p>
+                        <p class="text-[13px] text-rail-muted">짧을수록 빨리 잡지만 차단될 수 있어요</p>
+                    </div>
+                    <div id="defaultInterval" role="radiogroup" aria-label="기본 호출 간격" data-testid="default-interval"
+                         class="flex p-[3px] rounded-xl bg-rail-offSoft gap-0.5 self-start sm:self-auto">
+                        {% for v in ['1', '1.5', '2', '2.5', '3'] %}
+                        <button type="button" role="radio" aria-checked="false" data-value="{{ v }}"
+                                class="interval-opt h-9 min-w-[44px] px-2 rounded-[9px] text-[13px] text-rail-muted font-medium">{{ v }}초</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="py-2 border-t border-[#EFEBE5] flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span class="text-[15px] font-medium mr-auto">성공하면 알림음</span>
+                    <label class="inline-flex items-center gap-1.5 min-h-[44px]">
+                        <input type="radio" name="sound_option" value="once" checked data-testid="sound-option-once" class="accent-[#1E4FD8]">
+                        <span>1번</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 min-h-[44px]">
+                        <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat" class="accent-[#1E4FD8]">
+                        <span>10초 반복</span>
+                    </label>
+                </div>
+            </section>
+            <section class="bg-white border border-rail-line rounded-[20px] px-4 sm:px-5 py-4 flex flex-col gap-1">
+                <h2 class="text-[15px] font-bold mb-1">계정</h2>
+                <div class="min-h-[56px] flex items-center gap-3">
+                    <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[15px] font-medium">{{ '코레일' if provider == 'korail' else 'SRT' }} ID</p>
+                        <p class="text-[13px] text-rail-muted truncate tabular">{{ current_auth.get('user_id', '') }}</p>
+                    </div>
+                    <form action="{{ url_for('auth.logout') }}" method="POST">
+                        <input type="hidden" name="logout_all" value="true">
+                        <button type="submit" data-testid="logout-button"
+                                class="h-10 px-3.5 rounded-[10px] border border-rail-dangerLine bg-white text-sm font-semibold text-rail-dangerDark">로그아웃</button>
+                    </form>
+                </div>
+            </section>
+            <section class="bg-white border border-rail-line rounded-[20px] px-4 sm:px-5 py-4 flex flex-col gap-1">
+                <h2 class="text-[15px] font-bold mb-1">앱 정보</h2>
+                <div class="min-h-[48px] flex items-center gap-3">
+                    <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1"/></svg>
+                    <p class="flex-1 text-[15px] font-medium">버전</p>
+                    <span class="text-sm text-rail-muted tabular" data-testid="app-version">{{ app_version }}</span>
+                </div>
+                <p class="text-xs text-rail-muted">개인 학습용 · <span class="font-semibold text-ktx-primary">상업용 사용 · 배포 금지</span></p>
+            </section>
+        </div>
+    </div>
+    <div class="h-24 lg:h-6" aria-hidden="true"></div>
+</section>
+
+<!-- 폰: 아래 탭 바 (홈 인디케이터 만큼 띄운다) -->
+<nav aria-label="주 메뉴" data-testid="tabs-mobile"
+     class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-rail-line flex px-2 pt-1.5"
+     style="padding-bottom: calc(6px + env(safe-area-inset-bottom));">
+    {% for key, label, icon in [('search', '조회', ic_search), ('run', '진행', ic_run), ('history', '기록', ic_history), ('settings', '설정', ic_settings)] %}
+    <a href="#/{{ key }}" data-tab="{{ key }}" class="tab-link flex-1 min-h-[56px] flex flex-col items-center justify-center gap-1 text-xs text-rail-muted font-medium">
+        <span class="relative w-6 h-6 flex">{{ icon() }}{% if key == 'run' %}<span data-tab-dot class="hidden absolute -top-[3px] -right-[5px] w-2.5 h-2.5 rounded-full border-2 border-white"></span>{% endif %}</span>
+        <span>{{ label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Show the "함께 예약 / 순차 예약" mode picker only when 2 passengers are selected
+function updatePassengerModeVisibility() {
+    const count = document.getElementById('passengerCount')?.value;
+    const modeSelect = document.getElementById('passengerMode');
+    if (modeSelect) modeSelect.classList.toggle('hidden', count !== '2');
+    if (typeof window.updateSearchActions === 'function') window.updateSearchActions();
+}
+
+// Train selection toggle function
+function toggleTrainSelection(row) {
+    row.classList.toggle('selected');
+    row.setAttribute('aria-pressed', row.classList.contains('selected') ? 'true' : 'false');
+    updateSelectedCount();
+}
+
+// 고른 열차 수가 바뀌면 아래 "N편 선택 · 예약 시작" 버튼을 다시 그린다
+function updateSelectedCount() {
+    if (typeof window.updateSearchActions === 'function') window.updateSearchActions();
+}
+
+// Get selected train indices
+function getSelectedTrainIndices() {
+    const selected = document.querySelectorAll('.train-row.selected');
+    return Array.from(selected).map(row => row.dataset.index);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 호출 간격은 한 번 고르면 다음에도 그대로 (브라우저에만 기억)
+    const callIntervalEl = document.getElementById('callInterval');
+    if (callIntervalEl) {
+        try {
+            const saved = localStorage.getItem('callInterval');
+            if (saved && callIntervalEl.querySelector(`option[value="${saved}"]`)) {
+                callIntervalEl.value = saved;
+            }
+            callIntervalEl.addEventListener('change', function() {
+                try { localStorage.setItem('callInterval', callIntervalEl.value); } catch (e) {}
+            });
+        } catch (e) {}
+    }
+
+    // Initialize Flatpickr for date input
+    const dateInput = document.getElementById('dateInput');
+    if (dateInput && !window.flatpickr) {
+        // 달력 스크립트를 못 불렀으면 휴대폰 기본 날짜 선택기로 (나머지 화면은 계속 동작)
+        dateInput.type = 'date';
+        dateInput.readOnly = false;
+        document.querySelectorAll('.quick-date').forEach(btn => btn.addEventListener('click', () => {
+            const d = new Date();
+            d.setDate(d.getDate() + Number(btn.dataset.offset));
+            dateInput.value = d.toISOString().slice(0, 10);
+        }));
+    }
+    if (dateInput && window.flatpickr) {
+        flatpickr(dateInput, {
+            locale: 'ko',
+            dateFormat: 'Y-m-d',       // 서버로 보내는 값은 그대로 ISO
+            altInput: true,            // 보이는 칸은 "10월 3일 (토)"
+            altFormat: 'n월 j일 (D)',
+            minDate: 'today',
+            maxDate: new Date().fp_incr(30), // 30 days from today
+            defaultDate: dateInput.value || 'today',
+            disableMobile: true,
+            onChange: markQuickDate
+        });
+
+        // 오늘/내일/모레: 누르면 그 날짜로, 지금 날짜와 같은 버튼은 강조
+        function markQuickDate() {
+            const picked = dateInput.value;
+            document.querySelectorAll('.quick-date').forEach(btn => {
+                const d = new Date();
+                d.setDate(d.getDate() + Number(btn.dataset.offset));
+                const on = flatpickr.formatDate(d, 'Y-m-d') === picked;
+                btn.classList.toggle('border-ktx-primary', on);
+                btn.classList.toggle('bg-rail-accentSoft', on);
+                btn.classList.toggle('text-ktx-primary', on);
+                btn.classList.toggle('font-semibold', on);
+            });
+        }
+        document.querySelectorAll('.quick-date').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const d = new Date();
+                d.setDate(d.getDate() + Number(btn.dataset.offset));
+                dateInput._flatpickr.setDate(d, true);
+            });
+        });
+        markQuickDate();
+    }
+
+    // Swap stations
+    const swapBtn = document.getElementById('swapBtn');
+    const depStation = document.getElementById('depStation');
+    const arrStation = document.getElementById('arrStation');
+
+    if (swapBtn) {
+        swapBtn.addEventListener('click', function() {
+            const temp = depStation.value;
+            depStation.value = arrStation.value;
+            arrStation.value = temp;
+        });
+    }
+
+    // Searchable station dropdown: shows the full list on click/focus, filters as you type
+    function initStationDropdown(input) {
+        const list = document.querySelector('[data-for="' + input.id + '"]');
+        if (!list) return;
+        const options = Array.from(list.querySelectorAll('.station-option'));
+        let activeIndex = -1;
+
+        const visibleOptions = () => options.filter(o => !o.classList.contains('hidden'));
+        const isOpen = () => !list.classList.contains('hidden');
+
+        function setActive(idx) {
+            const vis = visibleOptions();
+            vis.forEach(o => o.classList.remove('bg-rail-ground'));
+            activeIndex = idx;
+            if (idx >= 0 && idx < vis.length) {
+                vis[idx].classList.add('bg-rail-ground');
+                vis[idx].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function filter(query) {
+            const q = (query || '').trim().toLowerCase();
+            options.forEach(o => {
+                const match = !q || o.dataset.value.toLowerCase().includes(q);
+                o.classList.toggle('hidden', !match);
+            });
+        }
+
+        function open() {
+            filter('');
+            list.classList.remove('hidden');
+            setActive(visibleOptions().findIndex(o => o.dataset.value === input.value));
+        }
+
+        function close() {
+            list.classList.add('hidden');
+            setActive(-1);
+        }
+
+        function choose(option) {
+            input.value = option.dataset.value;
+            close();
+        }
+
+        input.addEventListener('focus', open);
+        input.addEventListener('click', open);
+        input.addEventListener('input', function() {
+            filter(input.value);
+            list.classList.remove('hidden');
+            setActive(-1);
+        });
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!isOpen()) { open(); return; }
+                setActive(Math.min(activeIndex + 1, visibleOptions().length - 1));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActive(Math.max(activeIndex - 1, 0));
+            } else if (e.key === 'Enter') {
+                if (isOpen() && activeIndex >= 0) {
+                    e.preventDefault();
+                    choose(visibleOptions()[activeIndex]);
+                }
+            } else if (e.key === 'Escape') {
+                close();
+            }
+        });
+        // mousedown (not click) so the option is picked before the input loses focus
+        list.addEventListener('mousedown', function(e) {
+            const opt = e.target.closest('.station-option');
+            if (opt) {
+                e.preventDefault();
+                choose(opt);
+            }
+        });
+        document.addEventListener('click', function(e) {
+            if (!input.contains(e.target) && !list.contains(e.target)) close();
+        });
+    }
+
+    [depStation, arrStation].forEach(function(el) { if (el) initStationDropdown(el); });
+
+    // Load More Functionality
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    let isLoading = false; // Prevent multiple fetch calls
+
+    if (loadMoreBtn) {
+        // Function to load data
+        const loadMoreTrains = async function() {
+            if (isLoading || loadMoreBtn.disabled) return;
+
+            const lastRow = document.querySelector('.train-row:last-child');
+            if (!lastRow) return;
+
+            isLoading = true;
+            const lastTime = lastRow.dataset.time;
+            const dep = document.querySelector('[name="dep"]').value;
+            const arr = document.querySelector('[name="arr"]').value;
+            const date = document.querySelector('[name="date"]').value;
+
+            // Show loading state
+            const originalBtnContent = loadMoreBtn.innerHTML;
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg><span>불러오는 중...</span>';
+
+            try {
+                const formData = new FormData();
+                formData.append('dep', dep);
+                formData.append('arr', arr);
+                formData.append('date', date);
+                formData.append('last_time', lastTime);
+
+                const response = await fetch('/api/search_more', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.trains && data.trains.length > 0) {
+                    appendTrains(data.trains);
+                    // Re-observe the new sentinel if needed (not needed here as btn is sentinel)
+                } else {
+                    loadMoreBtn.textContent = '마지막 열차입니다';
+                    loadMoreBtn.classList.add('bg-rail-ground', 'text-rail-muted', 'cursor-not-allowed');
+                    loadMoreBtn.disabled = true;
+                    // Stop observing
+                    if (observer) observer.disconnect();
+                }
+            } catch (error) {
+                console.error('Error loading more trains:', error);
+                // On error, reset button to manual retry
+                loadMoreBtn.innerHTML = '<span class="text-ktx-primary">불러오지 못했어요 · 다시 시도</span>';
+                loadMoreBtn.dataset.failed = '1';
+            } finally {
+                isLoading = false;
+                if (!loadMoreBtn.classList.contains('cursor-not-allowed')) {
+                    loadMoreBtn.disabled = false;
+                    if (!loadMoreBtn.dataset.failed) loadMoreBtn.innerHTML = originalBtnContent;
+                    delete loadMoreBtn.dataset.failed;
+                }
+            }
+        };
+
+        // Infinite Scroll (Intersection Observer)
+        const observerOptions = {
+            root: null, // viewport
+            rootMargin: '200px', // Trigger 200px before reaching the end
+            threshold: 0.1
+        };
+
+        const autoLoad = window.matchMedia('(min-width: 1024px)').matches;
+        let observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (autoLoad && entry.isIntersecting && !isLoading && !loadMoreBtn.disabled) {
+                    loadMoreTrains();
+                }
+            });
+        }, observerOptions);
+
+        // Function to observe the last element
+        function observeLastItem() {
+            // Disconnect previous observation
+            observer.disconnect();
+
+            // Find last item (Desktop table row OR Mobile card)
+            // We check desktop row first as it is inside the scrollable container
+            const lastTableRow = document.querySelector('#trainTableBody .train-row:last-child');
+            const lastCard = document.querySelector('#trainCardContainer .train-row:last-child');
+            
+            // Observe whichever is visible or both
+            if (lastTableRow) observer.observe(lastTableRow);
+            if (lastCard && window.getComputedStyle(lastCard.parentElement).display !== 'none') {
+                observer.observe(lastCard);
+            }
+        }
+
+        // Initial observation
+        observeLastItem();
+
+        // Also add manual click
+        loadMoreBtn.addEventListener('click', loadMoreTrains);
+
+        // Overwrite appendTrains to re-observe after appending
+        const originalAppendTrains = window.appendTrains; // capture if defined elsewhere? No, defined below.
+        
+        // Let's redefine appendTrains to include observation update
+        // We need to move the appendTrains function definition UP or wrap logic.
+        // Since I'm editing inside the block, I will just call observeLastItem() at the end of loadMoreTrains
+    }
+
+    // 서버에서 온 글자(열차 이름·역 이름 등)를 HTML 로 끼워 넣을 때는 꼭 이스케이프한다
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, ch => (
+            {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
+    }
+
+    function appendTrains(trains) {
+        const tableBody = document.getElementById('trainTableBody');
+        const cardContainer = document.getElementById('trainCardContainer');
+
+        trains.forEach(train => {
+            // ... (row creation logic same as before) ...
+            // Desktop Row
+            const row = document.createElement('tr');
+            row.className = 'train-row cursor-pointer transition-colors duration-150 hover:bg-[#FAF8F5]';
+            row.dataset.index = train.index;
+            row.dataset.time = train.dep_time;
+            row.onclick = function() { toggleTrainSelection(this); };
+            
+            const seatCell = (ok) => ok
+                ? '<span class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-semibold bg-rail-okSoft text-rail-ok">있음</span>'
+                : '<span class="inline-flex items-center px-3 py-1 rounded-lg text-[13px] font-medium bg-rail-offSoft text-rail-off">매진</span>';
+            row.innerHTML = `
+                <td class="px-6 py-4">
+                    <div class="text-[15px] font-semibold text-rail-ink">${esc(train.train_name)}</div>
+                    <div class="text-xs text-rail-muted tabular">#${esc(train.train_number)}</div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-5 tabular">
+                        <div class="text-center">
+                            <div class="text-xl font-bold tracking-tight text-rail-ink">${esc(train.dep_time_formatted)}</div>
+                            <div class="text-xs text-rail-muted">${esc(train.dep_station)}</div>
+                        </div>
+                        <div class="w-20 flex flex-col items-center gap-0.5">
+                            <span class="text-xs text-rail-muted whitespace-nowrap">${esc(train.duration_formatted)}</span>
+                            <span class="w-full h-px bg-[#D6D0C8]"></span>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-xl font-bold tracking-tight text-rail-ink">${esc(train.arr_time_formatted)}</div>
+                            <div class="text-xs text-rail-muted">${esc(train.arr_station)}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4 text-center">${seatCell(train.special_seat_available)}</td>
+                <td class="px-6 py-4 text-center">${seatCell(train.general_seat_available)}</td>
+            `;
+            tableBody.appendChild(row);
+
+            // Mobile Card (템플릿의 카드와 같은 모양)
+            const card = document.createElement('div');
+            card.className = 'train-row train-card bg-white border border-rail-line rounded-2xl px-4 py-3.5 flex items-center gap-3 cursor-pointer select-none transition';
+            card.dataset.index = train.index;
+            card.dataset.time = train.dep_time;
+            card.setAttribute('role', 'button');
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('aria-pressed', 'false');
+            card.onclick = function() { toggleTrainSelection(this); };
+            card.onkeydown = function(event) {
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleTrainSelection(this); }
+            };
+            const seatPill = (label, ok) => ok
+                ? `<span class="px-2 py-0.5 rounded-lg bg-rail-okSoft text-rail-ok text-xs font-semibold">${label} 있음</span>`
+                : `<span class="px-2 py-0.5 rounded-lg bg-rail-offSoft text-rail-off text-xs font-medium">${label} 매진</span>`;
+            card.innerHTML = `
+                <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+                    <div class="flex items-baseline gap-2 tabular">
+                        <span class="text-[22px] font-bold tracking-tight">${esc(train.dep_time_formatted)}</span>
+                        <span class="text-sm text-rail-muted">→</span>
+                        <span class="text-[22px] font-bold tracking-tight">${esc(train.arr_time_formatted)}</span>
+                        <span class="text-xs text-rail-muted">${esc(train.duration_formatted)}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[13px] font-semibold">${esc(train.train_name)}</span>
+                        <span class="text-xs text-rail-muted">${esc(train.train_number)}</span>
+                    </div>
+                    <div class="flex gap-1.5">
+                        ${seatPill('일반', train.general_seat_available)}
+                        ${seatPill('특실', train.special_seat_available)}
+                    </div>
+                </div>
+                <span class="select-mark w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                    <svg class="w-4 h-4 opacity-0" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+                </span>
+            `;
+            cardContainer.appendChild(card);
+        });
+
+        // Re-observe the new last item
+        if (typeof observeLastItem === 'function') {
+            observeLastItem();
+        }
+    }
+
+    // Reservation
+    const startBtn = document.getElementById('startBtn');
+    const logContainer = document.getElementById('logContainer');
+    const successSound = document.getElementById('successSound');
+
+    // ─── 화면 이동 (해시 주소) ───────────────────────────────
+    // #/search ① 조회 · #/run ② 진행 · #/result ③ 결과 (진행의 하위 단계) · #/history 기록 · #/settings 설정
+    const ROUTES = ['search', 'run', 'result', 'history', 'settings'];
+    const TAB_OF = { search: 'search', run: 'run', result: 'run', history: 'history', settings: 'settings' };
+    const INITIAL_RUNNING = {{ 'true' if initial_running else 'false' }};
+
+    // 화면 상태 (상태 폴링이 채운다)
+    const app = {
+        loaded: false,          // 첫 상태 응답을 받았나
+        running: INITIAL_RUNNING,
+        status: null,           // 마지막 /api/telegram/status 응답
+        lastResult: null,       // 이 제공자의 마지막 결과
+        unseenResult: false,    // 끝났는데 아직 진행/결과 화면을 안 봄 → 진행 탭에 점
+        swapping: false,        // "바꿔서 시작" 으로 멈추고 다시 시작하는 중
+        logAttempt: 0,          // 로그의 "시도 #N" 에서 읽은 가장 큰 조회 번호
+    };
+
+    function currentRoute() {
+        const m = location.hash.match(/^#\/(\w+)/);
+        return m && ROUTES.includes(m[1]) ? m[1] : 'search';
+    }
+
+    function go(route, replace = false) {
+        const hash = '#/' + route;
+        if (location.hash === hash) { renderRoute(); return; }
+        if (replace) {
+            history.replaceState(null, '', hash);
+            renderRoute();
+        } else {
+            location.hash = hash;   // hashchange → renderRoute
+        }
+    }
+
+    // 앱 안에서 거쳐 온 화면들 (뒤로 가기가 앱 안에서 끝나는지 알려고)
+    const navStack = [];
+    let lastRoute = null;
+
+    function renderRoute() {
+        let route = currentRoute();
+        // 결과는 끝난 실행이 있을 때만. 없으면 진행으로
+        if (route === 'result' && app.loaded && !app.lastResult) {
+            history.replaceState(null, '', '#/run');
+            route = 'run';
+        }
+        if (navStack.length > 1 && navStack[navStack.length - 2] === route) navStack.pop();
+        else if (navStack[navStack.length - 1] !== route) navStack.push(route);
+
+        document.querySelectorAll('[data-view]').forEach(v => {
+            const on = v.dataset.view === route;
+            v.classList.toggle('is-active', on);
+            v.classList.toggle('hidden', !on);
+        });
+        document.querySelectorAll('[data-tab]').forEach(a => {
+            if (a.dataset.tab === TAB_OF[route]) a.setAttribute('aria-current', 'page');
+            else a.removeAttribute('aria-current');
+        });
+        if (route === 'run' || route === 'result') app.unseenResult = false;
+
+        // 마지막 결과 카드는 하나를 결과·기록 화면이 나눠 쓴다
+        const card = document.getElementById('lastResult');
+        const slot = document.querySelector(`[data-slot="${route === 'result' ? 'result' : 'history'}"]`);
+        if (card && slot && card.parentElement !== slot) slot.appendChild(card);
+        document.getElementById('lastResultClose')?.classList.toggle('hidden', route !== 'history');
+
+        if (lastRoute !== route) window.scrollTo(0, 0);
+        lastRoute = route;
+        renderChrome();
+    }
+
+    window.addEventListener('hashchange', renderRoute);
+
+    // 안드로이드 뒤로 가기 버튼용: 앱 안에서 한 단계 돌아갔으면 true.
+    // (주소 경로는 늘 "/" 라서 WebView.canGoBack 만으로는 앱 첫 화면인지 알 수 없다)
+    //   Kotlin: webView.evaluateJavascript("window.__appBack && window.__appBack()") { r ->
+    //               if (r != "true") 기본 동작(앱 닫기) }
+    window.__appBack = function() {
+        if (navStack.length > 1) { history.back(); return true; }
+        if (currentRoute() !== 'search') { go('search', true); navStack.length = 0; navStack.push('search'); return true; }
+        return false;
+    };
+
+    // ─── 단계 바 ① 조회 · ② 진행 · ③ 결과 ───────────────────
+    const CHECK_SVG = '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
+    function stepStates(route) {
+        const finished = !app.running && !!app.lastResult;
+        if (route === 'run') return [app.running || finished ? 'done' : 'link', 'current', finished ? 'link' : 'disabled'];
+        if (route === 'result') return ['done', 'done', 'current'];
+        return ['current', app.running ? 'link' : 'disabled', 'disabled'];
+    }
+    function renderStepBars(route) {
+        const names = ['조회', '진행', '결과'];
+        const hrefs = ['#/search', '#/run', '#/result'];
+        const states = stepStates(route);
+        const html = states.map((st, i) => {
+            const n = i + 1;
+            const dot = (i === 1 && app.running && st !== 'current')
+                ? '<span class="w-[7px] h-[7px] rounded-full bg-[#16A34A]" aria-label="실행 중"></span>' : '';
+            let item;
+            if (st === 'current') {
+                item = `<span aria-current="step" class="h-8 px-1.5 rounded-[10px] flex items-center gap-1.5 whitespace-nowrap text-[13px] bg-rail-accentSoft text-ktx-primary font-bold">` +
+                    `<span class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold tabular bg-ktx-primary text-white">${n}</span>${names[i]}</span>`;
+            } else if (st === 'done') {
+                item = `<a href="${hrefs[i]}" aria-label="${n}단계 ${names[i]} (완료) 로 돌아가기" class="h-11 -my-0.5 px-1.5 rounded-[10px] flex items-center gap-1.5 whitespace-nowrap text-[13px] text-rail-ink font-semibold">` +
+                    `<span class="w-5 h-5 rounded-full flex items-center justify-center bg-rail-ink text-white">${CHECK_SVG}</span>${names[i]}${dot}</a>`;
+            } else if (st === 'link') {
+                item = `<a href="${hrefs[i]}" aria-label="${n}단계 ${names[i]}${app.running && i === 1 ? ' (실행 중)' : ''} 보기" class="h-11 -my-0.5 px-1.5 rounded-[10px] flex items-center gap-1.5 whitespace-nowrap text-[13px] text-rail-ink font-semibold">` +
+                    `<span class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold tabular border-[1.5px] border-rail-ink">${n}</span>${names[i]}${dot}</a>`;
+            } else {
+                item = `<span aria-disabled="true" class="h-11 -my-0.5 px-1.5 rounded-[10px] flex items-center gap-1.5 whitespace-nowrap text-[13px] text-[#9A938A] font-medium">` +
+                    `<span class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold tabular border-[1.5px] border-dashed border-[#CFC9C1]">${n}</span>${names[i]}</span>`;
+            }
+            const line = i < 2
+                ? `<span aria-hidden="true" class="flex-1 min-w-[10px] h-0.5 rounded-sm ${st === 'done' ? 'bg-rail-ink' : 'bg-rail-line'}"></span>` : '';
+            return `<li class="${i < 2 ? 'flex-1' : 'flex-shrink-0'} flex items-center gap-1.5">${item}${line}</li>`;
+        }).join('');
+        document.querySelectorAll(`[data-view="${route}"] [data-stepbar]`).forEach(nav => {
+            if (nav.dataset.html !== html) {
+                nav.dataset.html = html;
+                nav.innerHTML = `<ol class="flex items-center min-w-0">${html}</ol>`;
+            }
+        });
+    }
+
+    // ─── 실행 정보 (끝난 뒤 "이번 실행" 에 쓰려고 이 브라우저에 남긴다) ─────
+    function loadSnapshot() {
+        try { return JSON.parse(localStorage.getItem('runSnapshot') || 'null'); } catch (e) { return null; }
+    }
+    function saveSnapshot(status) {
+        const prev = loadSnapshot();
+        const start = status.macro_start_time;
+        if (!start) return;
+        const same = prev && prev.start === start;
+        const info = Object.assign({}, same ? prev.info : {}, status.macro_info || {});
+        const snap = {
+            start, provider: status.provider, info,
+            attempt: Math.max(status.macro_attempt || 0, same ? prev.attempt || 0 : 0, app.logAttempt || 0),
+        };
+        try { localStorage.setItem('runSnapshot', JSON.stringify(snap)); } catch (e) {}
+    }
+    // 지금 보이는 마지막 결과와 같은 실행의 기록일 때만 쓴다
+    function snapshotFor(result) {
+        if (!result || !result.ended_at) return null;
+        let snap = loadSnapshot();
+        if (snap && (snap.provider !== currentProvider || snap.start.slice(0, 19) > result.ended_at.slice(0, 19))) snap = null;
+        // 끝난 뒤 다시 받은 로그의 "시도 #N" 이 더 정확하다 (폴링은 3초마다라 마지막 몇 번을 놓친다)
+        if (!app.running && app.logAttempt) {
+            snap = Object.assign({ start: null, info: {} }, snap || {});
+            snap.attempt = Math.max(snap.attempt || 0, app.logAttempt);
+        }
+        return snap;
+    }
+    function parseTargets(trains) {
+        return (trains || '').split(',').map(t => t.trim()).filter(Boolean).map(t => {
+            const m = t.match(/^(.*?)\s*\((\d{1,2}:\d{2})\)$/);
+            return m ? { name: m[1], time: m[2] } : { name: t, time: '' };
+        });
+    }
+    // '20261003' 또는 '2026-10-03' → '10월 3일 (토)'
+    function dateLabel(d) {
+        const m = (d || '').replace(/-/g, '').match(/^(\d{4})(\d{2})(\d{2})$/);
+        if (!m) return '';
+        const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        return `${Number(m[2])}월 ${Number(m[3])}일 (${'일월화수목금토'[day.getDay()]})`;
+    }
+    function routeLabel(info, withWeekday = false) {
+        if (!info || !info.dep || !info.arr) return '';
+        const d = dateLabel(info.date);
+        return `${info.dep} → ${info.arr}` + (d ? ` · ${withWeekday ? d : d.replace(/ \(.\)$/, '')}` : '');
+    }
+    function hhmm(iso) {
+        const m = (iso || '').match(/T(\d{2}:\d{2})/);
+        return m ? m[1] : '';
+    }
+    function minutesBetween(a, b) {
+        const ms = new Date(b) - new Date(a);
+        if (!(ms >= 0)) return '';
+        const m = Math.round(ms / 60000);
+        if (m < 1) return '1분 미만';
+        return m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`;
+    }
+
+    // ─── 화면 곳곳 (탭 점, 실행 중 바, 단계 바, 진행·결과 화면) ─────
+    function renderChrome() {
+        const route = currentRoute();
+        const running = app.running;
+        document.querySelectorAll('[data-tab-dot]').forEach(dot => {
+            const show = running || app.unseenResult;
+            dot.classList.toggle('hidden', !show);
+            dot.classList.toggle('bg-[#16A34A]', running);
+            dot.classList.toggle('bg-ktx-primary', !running && app.unseenResult);
+            dot.setAttribute('aria-label', running ? '실행 중' : '새 결과');
+        });
+        document.querySelectorAll('[data-runbar]').forEach(el => {
+            el.classList.toggle('hidden', !running);
+            el.classList.toggle('flex', running);
+        });
+        document.querySelectorAll('[data-runpill]').forEach(el => {
+            const show = running && route !== 'run';
+            el.classList.toggle('hidden', !show);
+            el.classList.toggle('flex', show);
+        });
+        renderStepBars(route);
+        if (route === 'run') renderRunView();
+        if (route === 'result') renderResultView();
+        if (route === 'history') renderHistoryView();
+        updateSearchActions();
+    }
+
+    function runbarText() {
+        const s = app.status || {};
+        const parts = [];
+        const n = Math.max(s.macro_attempt || 0, app.logAttempt || 0);
+        if (n) parts.push(`${n.toLocaleString('ko-KR')}번째 조회`);
+        if (s.macro_start_time) {
+            const m = Math.floor((Date.now() - new Date(s.macro_start_time)) / 60000);
+            parts.push(m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분째` : m > 0 ? `${m}분째` : '방금 시작');
+        }
+        return parts.join(' · ');
+    }
+    function updateRunbarText() {
+        const text = runbarText();
+        document.querySelectorAll('[data-runbar-text]').forEach(el => { el.textContent = text; });
+    }
+
+    // ② 진행: 실행 중 / 끝남 / 비어 있음
+    function renderRunView() {
+        const running = app.running;
+        const result = app.lastResult;
+        const finished = !running && !!result;
+        const snap = running ? null : snapshotFor(result);
+        const info = running ? ((app.status || {}).macro_info || {}) : (snap ? snap.info : {});
+
+        document.getElementById('runBody').classList.toggle('hidden', !running && !finished);
+        const empty = document.getElementById('runEmpty');
+        empty.classList.toggle('hidden', running || finished);
+        empty.classList.toggle('flex', !running && !finished);
+        document.getElementById('macroHero').classList.toggle('hidden', !running);
+        document.getElementById('runFinished').classList.toggle('hidden', !finished);
+
+        const route = routeLabel(info);
+        document.getElementById('runRoute').textContent = route;
+        document.getElementById('runHint').textContent = running
+            ? '2단계 · 좌석이 나면 바로 예약해요' : finished ? '2단계 · 끝났어요. 결과를 확인하세요' : '';
+
+        if (finished) renderRunFinished(result, snap);
+        // 실시간 성공 배너는 도는 동안만. 끝나면 결과 화면의 카드가 같은 내용을 보여준다
+        if (!running) document.getElementById('successBanner')?.classList.add('hidden');
+        renderHeroTargets(info, finished ? result : null);
+
+        // 아래 버튼: 실행 중 "← 조회로 / 결과 보기(잠김)", 끝남 "← 조회로 / 결과 보기 →", 비어 있음 "← 열차 조회하러 가기"
+        const toResult = document.getElementById('runToResult');
+        const disabled = !finished;
+        toResult.classList.toggle('hidden', !running && !finished);
+        document.getElementById('runToSearch').classList.toggle('hidden', !running && !finished);
+        document.getElementById('runEmptyAction').classList.toggle('hidden', running || finished);
+        toResult.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+        if (disabled) toResult.setAttribute('tabindex', '-1'); else toResult.removeAttribute('tabindex');
+        document.getElementById('runToResultSub').classList.toggle('hidden', !disabled);
+        document.getElementById('runActionsHint').classList.toggle('lg:inline', running);
+    }
+
+    const FINISHED_VIEWS = {
+        success: { color: 'bg-[#16A34A]', svg: '<path d="M5 12l5 5 9-10"/>', count: '번째 조회에서 좌석을 잡았어요', none: '좌석을 잡았어요' },
+        stopped: { color: 'bg-rail-muted', svg: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>', count: '번 조회하고 멈췄어요', none: '매크로를 멈췄어요' },
+        gave_up: { color: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>', count: '번 조회 뒤 로그인이 계속 실패했어요', none: '로그인이 계속 실패해서 멈췄어요' },
+        crash: { color: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>', count: '번 조회 뒤 오류로 멈췄어요', none: '오류로 멈췄어요' },
+    };
+    function renderRunFinished(result, snap) {
+        const v = FINISHED_VIEWS[result.reason] || FINISHED_VIEWS.stopped;
+        const icon = document.getElementById('runFinishedIcon');
+        icon.className = `w-[22px] h-[22px] rounded-full flex items-center justify-center ${v.color}`;
+        icon.innerHTML = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${v.svg}</svg>`;
+        document.getElementById('runFinishedTime').textContent = hhmm(result.ended_at);
+        const n = snap && snap.attempt;
+        document.getElementById('runFinishedCount').textContent = n ? n.toLocaleString('ko-KR') : '';
+        document.getElementById('runFinishedCount').classList.toggle('hidden', !n);
+        const text = document.getElementById('runFinishedText');
+        text.textContent = n ? v.count : v.none;
+        text.className = n ? 'text-[15px] text-[#C9C2B8] pb-1.5 lg:pb-2' : 'text-2xl font-bold tracking-tight';
+        document.getElementById('runFinishedDetail').textContent =
+            result.reason === 'success' ? (result.reserved || '') : (snap ? routeLabel(snap.info) : '');
+    }
+
+    // 대상 열차 목록 ("KTX 103(07:00), KTX 107(08:00)" 을 줄마다)
+    function renderHeroTargets(info, result) {
+        const list = document.getElementById('heroTargets');
+        const card = document.getElementById('heroTargetsCard');
+        if (!list) return;
+        const items = parseTargets(info.trains);
+        card.classList.toggle('hidden', !items.length);
+        const key = JSON.stringify([items, info.current_train, info.current_time, result && result.ended_at]);
+        if (list.dataset.key === key) return;
+        list.dataset.key = key;
+        const route = routeLabel(info, true);
+        document.getElementById('heroTargetsTitle').textContent =
+            `대상 열차 ${items.length}편` + (route ? ` · ${route}` : '');
+        list.innerHTML = '';
+        items.forEach(it => {
+            let label, on;
+            if (result) {
+                // 끝났으면: 예약 문구에 이름과 시각이 다 들어 있는 열차만 "예약됨"
+                const got = result.reason === 'success' && (result.reserved || '').includes(it.name) &&
+                    (!it.time || (result.reserved || '').includes(it.time));
+                label = got ? '예약됨' : '조회 끝';
+                on = got ? 'ok' : '';
+            } else {
+                const now = it.name === info.current_train && (!it.time || it.time === info.current_time);
+                label = now ? '조회 중' : '대기';
+                on = now ? 'accent' : '';
+            }
+            const li = document.createElement('li');
+            li.className = 'py-2.5 lg:py-3 flex items-center gap-3 lg:gap-3.5';
+            const time = document.createElement('span');
+            time.className = 'text-[17px] lg:text-lg font-bold tabular w-14';
+            time.textContent = it.time;
+            const name = document.createElement('span');
+            name.className = 'text-sm flex-1 min-w-0 truncate';
+            name.textContent = it.name;
+            const tag = document.createElement('span');
+            tag.className = on === 'accent'
+                ? 'px-2.5 py-0.5 rounded-lg bg-rail-accentSoft text-ktx-primary text-xs font-semibold'
+                : on === 'ok' ? 'px-2.5 py-0.5 rounded-lg bg-rail-okSoft text-rail-ok text-xs font-semibold'
+                : 'px-2.5 py-0.5 rounded-lg bg-rail-offSoft text-rail-off text-xs font-medium';
+            tag.textContent = label;
+            li.append(time, name, tag);
+            list.appendChild(li);
+        });
+    }
+
+    // ③ 결과: 마지막 결과 카드 + "이번 실행" (가진 정보만)
+    function renderResultView() {
+        const result = app.lastResult;
+        if (!result) return;
+        updateLastResult(result, true);
+        const snap = snapshotFor(result);
+        const info = snap ? snap.info : {};
+        document.getElementById('resultRoute').textContent = routeLabel(info);
+        document.getElementById('resultHint').textContent = '3단계 · 방금 끝난 실행' + (result.ended_at ? ` · ${formatResultTime(result.ended_at)}` : '');
+        const rows = [];
+        const route = routeLabel(info, true);
+        if (route) rows.push(['구간', route]);
+        const targets = parseTargets(info.trains);
+        if (targets.length) rows.push(['대상 열차', targets.map(t => `${t.name}${t.time ? ' ' + t.time : ''}`).join('\n')]);
+        const n = snap && snap.attempt;
+        const count = [];
+        if (n) count.push(result.reason === 'success' ? `${n.toLocaleString('ko-KR')}번째 조회에서 잡음` : `${n.toLocaleString('ko-KR')}번 조회`);
+        if (snap && snap.start && result.ended_at) {
+            count.push(`${hhmm(snap.start)} – ${hhmm(result.ended_at)}`);
+            const took = minutesBetween(snap.start, result.ended_at);
+            if (took) count.push(took);
+        }
+        if (result.reason === 'stopped') count.push('직접 중단');
+        if (count.length) rows.push(['조회', count.join(' · ')]);
+        const box = document.getElementById('runSummaryRows');
+        box.innerHTML = '';
+        rows.forEach(([k, val]) => {
+            const row = document.createElement('div');
+            row.className = 'flex items-baseline gap-3 py-2.5';
+            const dt = document.createElement('dt');
+            dt.className = 'w-16 flex-shrink-0 text-[13px] text-rail-muted';
+            dt.textContent = k;
+            const dd = document.createElement('dd');
+            dd.className = 'flex-1 min-w-0 text-sm font-semibold tabular whitespace-pre-line';
+            dd.textContent = val;
+            row.append(dt, dd);
+            box.appendChild(row);
+        });
+        document.getElementById('runSummary').classList.toggle('hidden', !rows.length);
+    }
+
+    function renderHistoryView() {
+        const result = app.lastResult;
+        let dismissed = null;
+        try { dismissed = localStorage.getItem('dismissedResult'); } catch (e) {}
+        const show = !!result && dismissed !== result.ended_at;
+        if (result) updateLastResult(result, show);
+        document.getElementById('lastResult').classList.toggle('hidden', !show);
+        document.getElementById('historyEmpty').classList.toggle('hidden', show || !app.loaded);
+    }
+
+    // ① 조회: 아래 "N편 선택 · 예약 시작 →" (실행 중이면 "바꿔서 시작 →")
+    function selectedCount() {
+        return new Set(getSelectedTrainIndices()).size;
+    }
+    const SEAT_LABELS = { GENERAL_FIRST: '일반실 우선', GENERAL_ONLY: '일반실만', SPECIAL_FIRST: '특실 우선', SPECIAL_ONLY: '특실만' };
+    function updateSearchActions() {
+        if (!startBtn || startBtn.dataset.busy) return;
+        const n = selectedCount();
+        const running = app.running;
+        document.getElementById('selectedCount').textContent = `${n}편 선택`;
+        const seat = SEAT_LABELS[document.getElementById('seatOption')?.value] || '';
+        const interval = document.getElementById('callInterval')?.value;
+        document.getElementById('startHint').textContent = running
+            ? '지금 도는 매크로를 멈추고 이 열차들로 새로 시작해요'
+            : `좌석이 나면 바로 예약해요 · ${seat} · ${interval}초 간격`;
+        document.getElementById('startLabel').textContent =
+            n ? `${n}편 선택 · ${running ? '바꿔서 시작' : '예약 시작'}` : '예약 시작';
+        document.getElementById('startSub').classList.toggle('hidden', n > 0);
+        startBtn.disabled = n === 0;
+        startBtn.setAttribute('aria-disabled', n === 0 ? 'true' : 'false');
+    }
+    window.updateSearchActions = updateSearchActions;
+    ['seatOption', 'callInterval'].forEach(id => document.getElementById(id)?.addEventListener('change', updateSearchActions));
+
+    // 결과 보기 버튼이 잠겨 있으면 눌러도 가지 않는다
+    document.getElementById('runToResult')?.addEventListener('click', function(e) {
+        if (this.getAttribute('aria-disabled') === 'true') e.preventDefault();
+    });
+
+    // ─── 설정: 기본 호출 간격 · 알림음 (이 브라우저에 기억) ─────────
+    function syncIntervalOptions() {
+        const value = document.getElementById('callInterval')?.value ||
+            (function() { try { return localStorage.getItem('callInterval'); } catch (e) { return null; } })() || '2';
+        document.querySelectorAll('#defaultInterval .interval-opt').forEach(b =>
+            b.setAttribute('aria-checked', b.dataset.value === value ? 'true' : 'false'));
+    }
+    document.querySelectorAll('#defaultInterval .interval-opt').forEach(b => b.addEventListener('click', function() {
+        try { localStorage.setItem('callInterval', b.dataset.value); } catch (e) {}
+        const pill = document.getElementById('callInterval');
+        if (pill) pill.value = b.dataset.value;
+        syncIntervalOptions();
+        updateSearchActions();
+    }));
+    document.getElementById('callInterval')?.addEventListener('change', syncIntervalOptions);
+    syncIntervalOptions();
+    try {
+        const savedSound = localStorage.getItem('soundOption');
+        const radio = savedSound && document.querySelector(`input[name="sound_option"][value="${savedSound}"]`);
+        if (radio) radio.checked = true;
+    } catch (e) {}
+    document.querySelectorAll('input[name="sound_option"]').forEach(r => r.addEventListener('change', () => {
+        try { localStorage.setItem('soundOption', r.value); } catch (e) {}
+    }));
+
+
+    let macroStreamSource = null;
+    let macroCheckInterval = null;
+    let soundRepeatId = null;
+    let elapsedTimerInterval = null;
+
+    // 로그는 진행 화면에 (최대 500줄)
+    function log(message, type = 'info') {
+        const colors = {
+            'info': 'text-[#4A443E]',
+            'success': 'text-rail-ok font-semibold',
+            'error': 'text-ktx-primary',
+            'warning': 'text-[#7A4200]'
+        };
+        const m = String(message || '').match(/시도 #(\d+)/);
+        if (m) app.logAttempt = Math.max(app.logAttempt, Number(m[1]));
+        const div = document.createElement('div');
+        div.className = colors[type] || colors.info;
+        div.textContent = message;
+        logContainer.appendChild(div);
+        while (logContainer.childElementCount > 500) logContainer.firstElementChild.remove();
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    function playSound() {
+        if (soundRepeatId) clearInterval(soundRepeatId);
+
+        successSound.currentTime = 0;
+        successSound.play().catch(() => {});  // 자동 재생이 막힌 브라우저에서도 조용히
+
+        const soundOption = document.querySelector('input[name="sound_option"]:checked')?.value || 'once';
+        if (soundOption === 'repeat') {
+            soundRepeatId = setInterval(() => {
+                successSound.currentTime = 0;
+                successSound.play();
+            }, 10000);
+        }
+    }
+
+    document.getElementById('ackBtn')?.addEventListener('click', function() {
+        if (soundRepeatId) {
+            clearInterval(soundRepeatId);
+            soundRepeatId = null;
+        }
+        successSound.pause();
+        successSound.currentTime = 0;
+    });
+
+    async function fetchStatus() {
+        const resp = await fetch('/api/telegram/status');
+        return resp.json();
+    }
+
+    // "바꿔서 시작": 지금 도는 매크로를 멈추고, 정말 멈춘 걸 확인한 뒤 새로 시작한다
+    async function stopCurrentAndWait() {
+        const resp = await fetch('/stop_macro', { method: 'POST' });
+        if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            throw new Error(data.message || '지금 매크로를 멈추지 못했어요.');
+        }
+        const deadline = Date.now() + 30000;
+        while (Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 500));
+            const s = await fetchStatus().catch(() => null);
+            if (s && !s.macro_running) return;
+        }
+        throw new Error('지금 매크로가 30초 안에 멈추지 않았어요. 잠시 뒤 다시 시도해 주세요.');
+    }
+
+    function setStartBusy(text) {
+        if (text) {
+            startBtn.dataset.busy = '1';
+            startBtn.disabled = true;
+            document.getElementById('startLabel').textContent = text;
+            document.getElementById('startSub').classList.add('hidden');
+        } else {
+            delete startBtn.dataset.busy;
+            updateSearchActions();
+        }
+    }
+
+    if (startBtn) {
+        startBtn.addEventListener('click', async function() {
+            const selectedIndices = getSelectedTrainIndices();
+            if (selectedIndices.length === 0) {
+                alert('예약할 열차를 선택해주세요.\n열차 행을 클릭하면 선택됩니다.');
+                return;
+            }
+            if (startBtn.dataset.busy) return;
+
+            const swap = app.running;
+            if (swap && !confirm('지금 도는 매크로를 멈추고, 고른 열차로 새로 시작할까요?')) return;
+
+            const seatOption = document.getElementById('seatOption').value;
+            const passengerCount = document.getElementById('passengerCount')?.value || '1';
+            const passengerMode = document.getElementById('passengerMode')?.value || 'together';
+
+            // Send selected trains
+            const formData = new FormData();
+            selectedIndices.forEach(idx => formData.append('train_indices[]', idx));
+            formData.append('seat_option', seatOption);
+            formData.append('call_interval', document.getElementById('callInterval').value);
+            formData.append('passenger_count', passengerCount);
+            formData.append('sequential', passengerCount === '2' && passengerMode === 'sequential' ? 'true' : 'false');
+
+            let data;
+            try {
+                if (swap) {
+                    app.swapping = true;
+                    setStartBusy('지금 매크로 멈추는 중...');
+                    await stopCurrentAndWait();
+                }
+                setStartBusy('시작하는 중...');
+                await fetch('/reserve_select', { method: 'POST', body: formData });
+                // Kick off the macro on the server - it now runs on a background thread,
+                // independent of this page/tab, so closing or refreshing won't stop it.
+                const resp = await fetch('/start_reservation', { method: 'POST' });
+                if (resp.redirected && resp.url.includes('/login')) {
+                    alert('로그인이 만료됐어요. 다시 로그인해 주세요.');
+                    window.location.href = '/login';
+                    return;
+                }
+                data = await resp.json();
+            } catch (e) {
+                alert(e && e.message && swap ? e.message : '예약을 시작하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.');
+                return;
+            } finally {
+                app.swapping = false;
+                setStartBusy(null);
+            }
+            if (!data.success) {
+                alert(data.message || '예약 시작에 실패했습니다.');
+                return;
+            }
+
+            // 지난 실행의 기록을 다시 받는 중이던 연결이 있으면 닫고 새로 붙는다
+            // (그대로 두면 새 매크로의 초반 로그와 성공 알림을 놓친다)
+            if (macroStreamSource) {
+                macroStreamSource.close();
+                macroStreamSource = null;
+            }
+            historyReplayed = true;
+            app.running = true;
+            app.unseenResult = false;
+            app.logAttempt = 0;
+            showPayState(null);
+            document.getElementById('successBanner')?.classList.add('hidden');
+
+            // Watch progress the same way a Telegram-triggered macro is watched -
+            // this is also what lets a refresh reconnect and replay the log history.
+            connectMacroStream(false);
+            go('run');
+            checkMacroStatus();
+        });
+    }
+
+    // ─── Macro Log Stream (shared by web-triggered and Telegram-triggered macros) ───
+    // isLive=false is for replaying an already-FINISHED run's history (e.g. right after
+    // opening/refreshing the page) - nothing is actually running, so unlike a real live
+    // connection this must not play the success sound or show the live success banner.
+    function connectMacroStream(showBadge = true, isLive = true) {
+        if (macroStreamSource) return;  // already connected
+
+        logContainer.innerHTML = '';
+        app.logAttempt = 0;
+        log(isLive ? '매크로 로그에 연결 중...' : '마지막 예약 기록을 불러옵니다...', 'info');
+
+        macroStreamSource = new EventSource('/macro_stream');
+        macroStreamSource.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+
+            if (data.type === 'stream_end') {
+                macroStreamSource.close();
+                macroStreamSource = null;
+                if (isLive) checkMacroStatus();
+                return;
+            }
+
+            switch(data.type) {
+                case 'log':
+                    log(data.message);
+                    break;
+                case 'success':
+                    // Reservation (and possibly payment) succeeded - keep the
+                    // stream open until 'stream_end' so payment log lines still arrive.
+                    log(data.message, 'success');
+                    // 백그라운드에서 성공하고 끝난 뒤 앱을 열면 기록 재생(isLive=false)으로 온다.
+                    // 그때 결과는 결과·기록 화면의 마지막 결과 카드가 보여준다. 여기선 소리만.
+                    if (isLive) {
+                        showSuccess(data);
+                        playSound();
+                    }
+                    break;
+                case 'error':
+                    log(data.message, 'error');
+                    if (isLive && data.message.startsWith('결제 실패')) showPayFailed(data.message);
+                    break;
+                case 'warning':
+                    log(data.message, 'warning');
+                    break;
+                case 'stopped':
+                    log(data.message, 'warning');
+                    macroStreamSource.close();
+                    macroStreamSource = null;
+                    if (isLive) checkMacroStatus();
+                    break;
+            }
+        };
+        macroStreamSource.onerror = function() {
+            macroStreamSource.close();
+            macroStreamSource = null;
+        };
+    }
+
+    const currentProvider = {{ provider|tojson }};
+
+    // ─── 실행 시간 ("12분째") ─────────────
+    function startElapsedTimer(startTimeIso) {
+        const startTime = new Date(startTimeIso);
+        const tick = () => {
+            const ms = Date.now() - startTime.getTime();
+            const heroEl = document.getElementById('heroElapsed');
+            if (heroEl) {
+                const m = Math.floor(ms / 60000);
+                heroEl.textContent = '· ' + (m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분째` : m > 0 ? `${m}분째` : '방금 시작');
+            }
+            updateRunbarText();
+        };
+        tick();
+        if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
+        elapsedTimerInterval = setInterval(tick, 1000);
+    }
+
+    function stopElapsedTimer() {
+        if (elapsedTimerInterval) {
+            clearInterval(elapsedTimerInterval);
+            elapsedTimerInterval = null;
+        }
+    }
+
+    // ─── 실행 중 카드 ─────────────────────────
+    function updateMacroHero(status) {
+        const hero = document.getElementById('macroHero');
+        if (!hero) return;
+        if (!status) {
+            // 다음 실행 때 "중단" 으로 다시
+            document.querySelectorAll('#heroStopBtn, [data-stop-macro]').forEach(b => {
+                b.disabled = false;
+                const label = b.querySelector('span');
+                if (label) label.textContent = '중단';
+            });
+            return;
+        }
+        document.getElementById('heroAttempt').textContent =
+            Math.max(status.macro_attempt || 0, app.logAttempt || 0).toLocaleString('ko-KR');
+        const info = status.macro_info || {};
+        let current = '';
+        if (info.current_train && info.current_time) {
+            const idx = (info.current_index && info.current_total) ? ` (${info.current_index}/${info.current_total})` : '';
+            current = `${info.current_train} ${info.current_time} 확인 중${idx}`;
+        } else if (info.trains) {
+            current = `대상: ${info.trains}`;
+        }
+        document.getElementById('heroCurrent').textContent = current;
+        const resumedEl = document.getElementById('heroResumed');
+        if (status.resumed_at) {
+            resumedEl.textContent = `휴대폰이 앱을 정리해서 ${status.resumed_at.slice(11, 16)}에 자동으로 다시 시작했어요`;
+            resumedEl.classList.remove('hidden');
+        } else {
+            resumedEl.classList.add('hidden');
+        }
+    }
+
+    // '2026-10-03T14:14:00' -> '10월 3일 14:14'
+    function formatResultTime(iso) {
+        const m = (iso || '').match(/^\d{4}-(\d{2})-(\d{2})[T ](\d{2}:\d{2})/);
+        return m ? `${Number(m[1])}월 ${Number(m[2])}일 ${m[3]}` : (iso || '');
+    }
+
+    // ─── 마지막 결과 카드 (결과·기록 화면) ───────────────────
+    const RESULT_VIEWS = {
+        success: { title: '예약했어요', icon: 'bg-rail-ok', svg: '<path d="M5 12l5 5 9-10"/>' },
+        stopped: { title: '매크로를 멈췄어요', icon: 'bg-rail-muted', svg: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>' },
+        gave_up: { title: '로그인이 계속 실패해서 멈췄어요', icon: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
+        crash: { title: '오류로 멈췄어요', icon: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
+    };
+
+    // 결제 안내 3가지 (성공 배너의 payDone / payFailed / payPending 과 같은 모양)
+    const noteSvg = (stroke, paths) =>
+        `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+    const NOTE_VIEWS = {
+        paid: body => ({ body, title: '자동결제까지 끝났어요', box: 'bg-rail-okSoft',
+            titleClass: 'text-rail-ok', bodyClass: 'text-[#245B3D]',
+            icon: noteSvg('#0B6B3A', '<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/>') }),
+        failed: body => ({ body, title: '자동결제에 실패했어요', box: 'bg-rail-dangerSoft border border-rail-danger', alert: true,
+            titleClass: 'text-rail-dangerDark', bodyClass: 'text-rail-ink font-semibold',
+            icon: noteSvg('#C8102E', '<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17.5h.01"/>') }),
+        pending: body => ({ body, title: '결제가 남았어요', box: 'bg-[#FDF1DD]',
+            titleClass: 'text-[#7A4200]', bodyClass: 'text-[#6B4A1E]',
+            icon: noteSvg('#8A4B00', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>') }),
+    };
+
+    // 카드 내용을 채운다. 보일지(show)는 화면이 정한다 (기록 화면은 닫은 카드를 숨긴다)
+    function updateLastResult(result, show = true) {
+        const card = document.getElementById('lastResult');
+        if (!card) return;
+        const view = result && RESULT_VIEWS[result.reason];
+        if (!view) {
+            card.classList.add('hidden');
+            return;
+        }
+        card.dataset.endedAt = result.ended_at;
+        document.getElementById('lastResultIcon').className =
+            `w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${view.icon}`;
+        document.getElementById('lastResultIcon').innerHTML =
+            `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${view.svg}</svg>`;
+        document.getElementById('lastResultTitle').textContent = view.title;
+        document.getElementById('lastResultTime').textContent = formatResultTime(result.ended_at);
+
+        let body = '', note = null;
+        if (result.reason === 'success') {
+            body = result.reserved || '';
+            if (result.paid === true) {
+                note = NOTE_VIEWS.paid('등록한 카드로 결제했어요. 따로 할 일은 없어요.');
+            } else if (result.autopay) {
+                // 자동결제를 걸었는데 실패: 직접 결제해야 한다는 걸 가장 눈에 띄게
+                note = NOTE_VIEWS.failed((result.pay_message ? `실패 사유: ${result.pay_message}. ` : '') +
+                    payGuide(result.pay_deadline));
+            } else {
+                note = NOTE_VIEWS.pending(payGuide(result.pay_deadline));
+            }
+        } else if (result.reason === 'gave_up') {
+            body = '코레일 비밀번호가 바뀌었거나 계정이 잠겼을 수 있어요. 다시 로그인한 뒤 시작해 주세요.';
+        } else if (result.reason === 'crash') {
+            body = result.detail || '알 수 없는 오류';
+        } else {
+            body = result.detail && !result.detail.startsWith('매크로가 멈췄') ? result.detail : '';
+        }
+        document.getElementById('lastResultBody').textContent = body;
+        const noteEl = document.getElementById('lastResultNote');
+        if (note) {
+            noteEl.className = `mt-4 sm:ml-14 flex gap-3 items-start p-3.5 rounded-2xl ${note.box}`;
+            noteEl.setAttribute('role', note.alert ? 'alert' : 'status');
+            document.getElementById('lastResultNoteIcon').innerHTML = note.icon;
+            const t = document.getElementById('lastResultNoteTitle');
+            t.textContent = note.title;
+            t.className = `text-[15px] font-bold ${note.titleClass}`;
+            const b = document.getElementById('lastResultNoteBody');
+            b.textContent = note.body;
+            b.className = `text-[13px] leading-relaxed [word-break:keep-all] ${note.bodyClass}`;
+        }
+        noteEl.classList.toggle('hidden', !note);
+        document.getElementById('lastResultRelogin')?.classList.toggle('hidden', result.reason !== 'gave_up');
+        card.classList.toggle('hidden', !show);
+    }
+
+    document.getElementById('lastResultClose')?.addEventListener('click', function() {
+        const card = document.getElementById('lastResult');
+        card.classList.add('hidden');
+        try { localStorage.setItem('dismissedResult', card.dataset.endedAt || ''); } catch (e) {}
+        renderHistoryView();
+    });
+
+    // 중단: 검색 결과가 없는 화면(텔레그램으로 시작한 매크로 등)에서도 멈출 수 있게 직접 부른다.
+    // 멈추면 상태 폴링이 끝난 걸 알아채고 결과(멈춤)로 넘긴다.
+    async function stopMacro(btn) {
+        const resp = await fetch('/stop_macro', { method: 'POST' });
+        if (resp.ok) {
+            document.querySelectorAll('#heroStopBtn, [data-stop-macro]').forEach(b => {
+                b.disabled = true;
+                const label = b.querySelector('span');
+                if (label) label.textContent = '멈추는 중...';
+            });
+            log('중단 요청을 보냈습니다...', 'warning');
+            setTimeout(checkMacroStatus, 600);
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            alert(data.message || '중단하지 못했습니다.');
+        }
+    }
+    document.querySelectorAll('#heroStopBtn, [data-stop-macro]').forEach(b =>
+        b.addEventListener('click', function() { stopMacro(this); }));
+
+    // ─── 예약 성공 배너 (진행 화면, 실시간) ─────────────────────
+    // 결제 안내 문구 (서버의 core.reservation.pay_guide 와 같은 말)
+    function payGuide(deadline) {
+        const when = deadline ? `${deadline}까지` : '결제 기한 안에';
+        return `${when} 코레일 앱이나 웹에서 직접 결제하세요. 안 하면 예약이 자동으로 취소돼요.`;
+    }
+
+    function showPayState(state) {
+        ['payRunning', 'payDone', 'payFailed', 'payPending'].forEach(id =>
+            document.getElementById(id)?.classList.toggle('hidden', id !== state));
+    }
+
+    function revealBanner(banner) {
+        banner.classList.remove('hidden');
+        if (currentRoute() === 'run') banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function showSuccess(event) {
+        const banner = document.getElementById('successBanner');
+        if (!banner) return;
+        const message = event.message || '';
+        // 예약과 결제 말고 다른 success 로그에는 반응하지 않는다
+        if (message.startsWith('결제 완료')) {
+            showPayState('payDone');
+        } else if (message.startsWith('예약 성공')) {
+            banner.dataset.message = message;
+            banner.dataset.deadline = event.pay_deadline || '';
+            document.getElementById('successDetail').textContent = message.replace(/^예약 성공!\s*/, '');
+            banner.querySelectorAll('.pay-guide').forEach(el => { el.textContent = payGuide(event.pay_deadline); });
+            showPayState(event.autopay ? 'payRunning' : 'payPending');
+        } else {
+            return;
+        }
+        revealBanner(banner);
+    }
+
+    // 자동결제가 실패하면 놓치지 않게 빨간 경고로 바꾼다 (직접 결제해야 한다)
+    function showPayFailed(message) {
+        const banner = document.getElementById('successBanner');
+        if (!banner) return;
+        document.getElementById('payFailedReason').textContent = message.replace(/^결제 실패:\s*/, '');
+        banner.querySelectorAll('.pay-guide').forEach(el => { el.textContent = payGuide(banner.dataset.deadline); });
+        showPayState('payFailed');
+        revealBanner(banner);
+    }
+
+    // Once we've shown a finished run's log history (or watched one live), don't
+    // keep re-replaying it every poll tick - only a genuinely new run (macro_running
+    // flips true again) should trigger another connect.
+    let historyReplayed = false;
+
+    function checkMacroStatus() {
+        fetch('/api/telegram/status')
+            .then(r => r.json())
+            .then(data => {
+                const busyEl = document.getElementById('busyNotice');
+                if (busyEl) {
+                    if (data.busy) {
+                        busyEl.textContent = `지금 ${data.busy.user} 님이 예약 매크로를 쓰는 중입니다. ` +
+                            '서버에서는 한 번에 한 명만 돌릴 수 있어요. 끝나면 시작할 수 있습니다.';
+                        busyEl.classList.remove('hidden');
+                    } else {
+                        busyEl.classList.add('hidden');
+                    }
+                }
+                const forThisProvider = data.provider === currentProvider;
+                const macroActiveForThisProvider = data.macro_running && forThisProvider;
+                const wasRunning = app.running;
+                const firstLoad = !app.loaded;
+                app.loaded = true;
+                app.status = data;
+                app.running = !!macroActiveForThisProvider;
+                app.lastResult = forThisProvider && data.last_result && RESULT_VIEWS[data.last_result.reason]
+                    ? data.last_result : null;
+
+                if (macroActiveForThisProvider) {
+                    historyReplayed = true;
+                    saveSnapshot(data);
+                    // Auto-connect to stream if not already connected - this is what makes a
+                    // refresh (or reopening the tab) pick the running macro back up instead
+                    // of losing it.
+                    if (!macroStreamSource) {
+                        connectMacroStream();
+                    }
+                    if (data.macro_start_time) {
+                        startElapsedTimer(data.macro_start_time);
+                    }
+                    updateMacroHero(data);
+                    app.unseenResult = false;
+                } else {
+                    updateMacroHero(null);
+                    // Nothing running right now - but if the last run's log is still in the
+                    // buffer and we haven't shown it yet (e.g. just loaded/refreshed the page
+                    // after a reservation finished), replay it once so 진행 shows it.
+                    if (forThisProvider && data.has_logs && !historyReplayed && !macroStreamSource) {
+                        historyReplayed = true;
+                        connectMacroStream(false, false);
+                    }
+                    stopElapsedTimer();
+                    // 방금 끝났다: 진행 화면을 보고 있으면 결과로, 아니면 진행 탭에 점만
+                    if (wasRunning && !firstLoad && !app.swapping && app.lastResult) {
+                        if (currentRoute() === 'run') go('result');
+                        else app.unseenResult = true;
+                    }
+                }
+                renderRoute();
+                updateRunbarText();
+                // 같은 응답으로 설정 › 텔레그램 상태도 갱신 (채팅이 등록되면 '연결됨' 으로)
+                if (typeof updateTelegramUI === 'function' && document.getElementById('tgStatusDot')) updateTelegramUI(data);
+            })
+            .catch(() => {});
+    }
+
+    // 첫 화면: 주소에 화면이 없으면 조회 (실행 중이면 진행)
+    const hashMatch = location.hash.match(/^#\/(\w+)/);
+    if (!hashMatch || !ROUTES.includes(hashMatch[1])) {
+        history.replaceState(null, '', INITIAL_RUNNING ? '#/run' : '#/search');
+    }
+    renderRoute();
+
+    // Poll for macro status every 3 seconds (also drives the elapsed-time display)
+    macroCheckInterval = setInterval(checkMacroStatus, 3000);
+    // Check immediately on load
+    checkMacroStatus();
+
+    // 모바일(특히 iOS Safari)은 앱을 내리면 스트림 연결을 말없이 끊고, 돌아와도
+    // onerror 가 안 올 때가 있다. 그러면 macroStreamSource 가 살아 있는 것처럼 남아
+    // 폴링이 재연결을 안 한다. 화면으로 돌아오면 스트림을 새로 맺고 로그를 다시 받는다
+    // (매크로는 서버에서 계속 돌았으니, 그사이 끝났다면 결과도 이때 보인다).
+    let hiddenAt = null;
+    function resyncMacroStream() {
+        if (macroStreamSource) {
+            macroStreamSource.close();
+            macroStreamSource = null;
+        }
+        historyReplayed = false;
+        checkMacroStatus();
+    }
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') {
+            hiddenAt = Date.now();
+        } else if (hiddenAt && Date.now() - hiddenAt > 5000) {
+            // 데스크톱에서 탭을 잠깐 오가는 정도로는 다시 맺지 않는다
+            hiddenAt = null;
+            resyncMacroStream();
+        }
+    });
+    // 뒤로가기 캐시(bfcache)에서 복원된 페이지는 스크립트 상태가 멈춘 그대로다
+    window.addEventListener('pageshow', function(e) {
+        if (e.persisted) resyncMacroStream();
+    });
+
+    {% if server_mode %}
+    // 서버 모드 알림은 웹 푸시 (봇은 서버 전체에 하나라 화면에서 설정하지 않는다)
+    updatePushUI();
+    {% else %}
+    // Load telegram status on page load
+    loadTelegramSettings();
+    checkTelegramStatus();
+    {% endif %}
+
+    // Load card auto-payment status on page load
+    loadCardStatus();
+});
+
+// ─── Web Push (서버 모드) ─────────────────────────────────────
+
+function urlB64ToUint8Array(base64) {
+    const padded = (base64 + '='.repeat((4 - base64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(padded);
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+function pushSupported() {
+    return window.isSecureContext && 'serviceWorker' in navigator &&
+        'PushManager' in window && 'Notification' in window;
+}
+
+function setPushUI(state, text, hint) {
+    const dot = document.getElementById('pushStatusDot');
+    const label = document.getElementById('pushStatusText');
+    const hintEl = document.getElementById('pushHint');
+    if (!dot) return;
+    const on = state === 'on';
+    dot.className = 'w-2.5 h-2.5 rounded-full ' + (on ? 'bg-rail-ok' : state === 'blocked' ? 'bg-ktx-primary' : 'bg-[#D6D0C8]');
+    label.textContent = text;
+    label.className = 'text-sm ' + (on ? 'text-rail-ok font-medium' : 'text-rail-muted');
+    hintEl.textContent = hint || '';
+    hintEl.classList.toggle('hidden', !hint);
+    document.getElementById('pushEnableBtn').classList.toggle('hidden', state !== 'off');
+    document.getElementById('pushTestBtn').classList.toggle('hidden', !on);
+    document.getElementById('pushDisableBtn').classList.toggle('hidden', !on);
+}
+
+async function updatePushUI() {
+    if (!document.getElementById('pushStatusDot')) return;
+    if (!pushSupported()) {
+        const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+        let hint = '이 브라우저에서는 알림을 쓸 수 없습니다. (HTTPS 주소로 접속해야 합니다)';
+        if (ios && !standalone) hint = 'iPhone 은 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요. Safari 공유 버튼 → 홈 화면에 추가 → 그 아이콘으로 열어 주세요.';
+        setPushUI('unsupported', '사용 불가', hint);
+        return;
+    }
+    if (Notification.permission === 'denied') {
+        setPushUI('blocked', '차단됨', '알림이 차단돼 있습니다. 폰 설정에서 이 앱의 알림을 허용한 뒤 다시 열어 주세요.');
+        return;
+    }
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        const resp = await fetch('/api/push/status?endpoint=' + encodeURIComponent(sub ? sub.endpoint : ''));
+        const data = await resp.json();
+        if (sub && data.this_device) {
+            setPushUI('on', data.devices > 1 ? `켜짐 (기기 ${data.devices}대)` : '켜짐');
+        } else {
+            setPushUI('off', '꺼짐');
+        }
+    } catch (e) {
+        setPushUI('off', '꺼짐');
+    }
+}
+
+async function enablePush() {
+    try {
+        // iOS 는 버튼 탭 안에서 바로 권한을 물어야 한다
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            updatePushUI();
+            return;
+        }
+        const reg = await navigator.serviceWorker.ready;
+        const {publicKey} = await (await fetch('/api/push/key')).json();
+        let sub = await reg.pushManager.getSubscription();
+        if (sub) await sub.unsubscribe();  // 서버 키가 바뀌었을 수 있으니 새로 받는다
+        sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlB64ToUint8Array(publicKey),
+        });
+        const resp = await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({subscription: sub.toJSON()}),
+        });
+        const data = await resp.json();
+        if (!data.success) alert(data.message || '알림을 켜지 못했습니다.');
+    } catch (e) {
+        alert('알림을 켜지 못했습니다: ' + e.message);
+    }
+    updatePushUI();
+}
+
+async function disablePush() {
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+            await fetch('/api/push/unsubscribe', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({endpoint: sub.endpoint}),
+            });
+            await sub.unsubscribe();
+        }
+    } catch (e) {}
+    updatePushUI();
+}
+
+async function testPush() {
+    try {
+        const data = await (await fetch('/api/push/test', {method: 'POST'})).json();
+        alert(data.message);
+    } catch (e) {
+        alert('테스트 알림을 보내지 못했습니다.');
+    }
+}
+
+// ─── Telegram Functions ─────────────────────────────────────
+
+// localStorage keys
+const TG_STORAGE_KEY = 'tg_settings';
+
+function saveTelegramSettings() {
+    const token = document.getElementById('tgBotToken')?.value.trim() || '';
+    const chatId = document.getElementById('tgChatId')?.value.trim() || '';
+    localStorage.setItem(TG_STORAGE_KEY, JSON.stringify({token, chatId}));
+}
+
+function loadTelegramSettings() {
+    try {
+        const raw = localStorage.getItem(TG_STORAGE_KEY);
+        if (!raw) {
+            // 이 브라우저엔 저장된 게 없어도 서버가 기억하는 토큰으로 다시 붙는다
+            setTimeout(() => reconnectSavedTelegram(), 500);
+            return;
+        }
+        const {token, chatId} = JSON.parse(raw);
+        const tokenInput = document.getElementById('tgBotToken');
+        const chatIdInput = document.getElementById('tgChatId');
+        if (tokenInput && token) tokenInput.value = token;
+        if (chatIdInput && chatId) chatIdInput.value = chatId;
+
+        // The bot token/chat id are remembered in this browser - reconnect
+        // automatically on load (server-side connection state resets on every
+        // server restart, but the browser-saved settings should not).
+        if (token) {
+            setTimeout(() => connectTelegram(true), 500);
+        }
+    } catch(e) {}
+}
+
+async function reconnectSavedTelegram() {
+    try {
+        const resp = await fetch('/api/telegram/configure', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        });
+        const data = await resp.json();
+        if (data.success) checkTelegramStatus();
+    } catch(e) {}
+}
+
+function toggleTokenVisibility() {
+    const input = document.getElementById('tgBotToken');
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function checkTelegramStatus() {
+    try {
+        const resp = await fetch('/api/telegram/status');
+        const data = await resp.json();
+        updateTelegramUI(data);
+    } catch(e) {
+        // Telegram API not available
+    }
+}
+
+function updateTelegramUI(status) {
+    const dot = document.getElementById('tgStatusDot');
+    const text = document.getElementById('tgStatusText');
+    const testBtn = document.getElementById('tgTestBtn');
+    const disconnectBtn = document.getElementById('tgDisconnectBtn');
+    const connectBtn = document.getElementById('tgConnectBtn');
+
+    if (!dot) return;
+
+    // 봇은 붙었는데 채팅이 아직 없으면 등록 코드를 보여준다
+    if ((status.connected || status.configured) && !status.chat_id) {
+        if (!pairingShown()) refreshPairing();
+    } else {
+        if (pairingShown() && status.chat_id) {
+            const msgEl = document.getElementById('tgMessage');
+            if (msgEl) {
+                msgEl.textContent = '채팅이 등록됐어요. 이제 알림을 받을 수 있어요.';
+                msgEl.className = 'text-sm text-rail-ok basis-full mt-1';
+            }
+        }
+        hidePairing();
+    }
+
+    if (status.connected) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rail-ok animate-pulse';
+        text.textContent = status.chat_id ? '연결됨' : '등록 대기';
+        text.title = status.chat_id ? `Chat ID ${status.chat_id}` : '봇에게 /start 코드를 보내면 연결돼요';
+        text.className = 'text-sm text-rail-ok font-medium';
+        testBtn?.classList.remove('hidden');
+        disconnectBtn?.classList.remove('hidden');
+        connectBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> 재연결';
+        // Update chatId input if auto-detected
+        if (status.chat_id) {
+            const chatIdInput = document.getElementById('tgChatId');
+            if (chatIdInput && !chatIdInput.value) {
+                chatIdInput.value = status.chat_id;
+                saveTelegramSettings();
+            }
+        }
+    } else if (status.configured) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#B45309]';
+        text.textContent = '설정됨 (폴링 중단)';
+        text.className = 'text-sm text-[#7A4200]';
+        testBtn?.classList.remove('hidden');
+        disconnectBtn?.classList.remove('hidden');
+    } else {
+        hidePairing();
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#D6D0C8]';
+        text.textContent = '미연결';
+        text.className = 'text-sm text-rail-muted';
+        testBtn?.classList.add('hidden');
+        disconnectBtn?.classList.add('hidden');
+        connectBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> 연결';
+    }
+}
+
+async function connectTelegram(silent = false) {
+    const tokenInput = document.getElementById('tgBotToken');
+    const chatIdInput = document.getElementById('tgChatId');
+    const msgEl = document.getElementById('tgMessage');
+    const botToken = tokenInput?.value.trim();
+    const chatId = chatIdInput?.value.trim();
+
+    if (!botToken) {
+        if (!silent) {
+            msgEl.textContent = '봇 토큰을 입력해주세요.';
+            msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+        }
+        return;
+    }
+
+    if (!silent) {
+        msgEl.textContent = '연결 중...';
+        msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
+    }
+
+    try {
+        const resp = await fetch('/api/telegram/configure', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({bot_token: botToken, chat_id: chatId})
+        });
+        const data = await resp.json();
+
+        if (!silent) {
+            msgEl.textContent = data.message;
+            msgEl.className = data.success ? 'text-sm text-rail-ok basis-full mt-1' : 'text-sm text-ktx-primary basis-full mt-1';
+        }
+
+        if (data.success) {
+            saveTelegramSettings();
+            if (data.pairing) showPairing(data.pairing);
+            checkTelegramStatus();
+        }
+    } catch(e) {
+        if (!silent) {
+            msgEl.textContent = '연결 오류가 발생했습니다.';
+            msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+        }
+    }
+}
+
+async function testTelegram() {
+    const msgEl = document.getElementById('tgMessage');
+    msgEl.textContent = '테스트 전송 중...';
+    msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
+
+    try {
+        const resp = await fetch('/api/telegram/test', {method: 'POST'});
+        const data = await resp.json();
+        msgEl.textContent = data.message;
+        msgEl.className = data.success ? 'text-sm text-rail-ok basis-full mt-1' : 'text-sm text-ktx-primary basis-full mt-1';
+    } catch(e) {
+        msgEl.textContent = '전송 오류가 발생했습니다.';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+    }
+}
+
+// ─── 텔레그램 채팅 등록 코드 ("/start ABCD2345") ─────────────
+let pairingTimer = null;
+let pairingDeadline = 0;
+
+function pairingShown() {
+    const box = document.getElementById('tgPairing');
+    return !!box && !box.classList.contains('hidden');
+}
+
+function hidePairing() {
+    document.getElementById('tgPairing')?.classList.add('hidden');
+    if (pairingTimer) { clearInterval(pairingTimer); pairingTimer = null; }
+}
+
+function showPairing(p) {
+    const box = document.getElementById('tgPairing');
+    if (!box || !p || !p.command) return;
+    document.getElementById('tgPairingCommand').textContent = p.command;
+    pairingDeadline = p.expires_in ? Date.now() + p.expires_in * 1000 : 0;
+    box.classList.remove('hidden');
+    renderPairingExpiry();
+    if (!pairingTimer) {
+        // 카드가 열려 있는 동안만 서버에 물어 본다 (등록되면 '연결됨' 으로)
+        pairingTimer = setInterval(() => {
+            renderPairingExpiry();
+            const body = document.getElementById('tgBody');
+            const visible = body && !body.classList.contains('hidden') && location.hash.startsWith('#/settings');
+            if (visible || (pairingDeadline && Date.now() > pairingDeadline)) refreshPairing();
+        }, 4000);
+    }
+}
+
+function renderPairingExpiry() {
+    const el = document.getElementById('tgPairingExpires');
+    if (!el) return;
+    if (!pairingDeadline) { el.textContent = '한 번만 쓸 수 있는 코드예요.'; return; }
+    const left = pairingDeadline - Date.now();
+    el.textContent = left > 0
+        ? `${Math.ceil(left / 60000)}분 안에 보내 주세요 · 한 번만 쓸 수 있어요`
+        : '코드가 만료돼서 새 코드를 받고 있어요...';
+}
+
+async function refreshPairing() {
+    try {
+        const resp = await fetch('/api/telegram/pairing');
+        if (!resp.ok) { hidePairing(); return; }
+        const data = await resp.json();
+        if (data.paired) {
+            hidePairing();
+            const msgEl = document.getElementById('tgMessage');
+            if (msgEl) {
+                msgEl.textContent = '채팅이 등록됐어요. 이제 알림을 받을 수 있어요.';
+                msgEl.className = 'text-sm text-rail-ok basis-full mt-1';
+            }
+            checkTelegramStatus();
+        } else if (data.success && data.command) {
+            showPairing(data);
+        } else {
+            hidePairing();
+        }
+    } catch (e) {}
+}
+
+async function copyPairingCommand() {
+    const text = document.getElementById('tgPairingCommand')?.textContent || '';
+    const btn = document.getElementById('tgPairingCopy');
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch (e) {
+        // http(비보안) 주소에서는 clipboard API 가 없다: 글자를 골라 두어 길게 눌러 복사하게
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById('tgPairingCommand'));
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        try { document.execCommand('copy'); } catch (e2) {}
+    }
+    if (btn) {
+        btn.textContent = '복사했어요';
+        setTimeout(() => { btn.textContent = '복사'; }, 1500);
+    }
+}
+
+async function disconnectTelegram() {
+    const msgEl = document.getElementById('tgMessage');
+    try {
+        const resp = await fetch('/api/telegram/disconnect', {method: 'POST'});
+        const data = await resp.json();
+        msgEl.textContent = data.message;
+        msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
+        localStorage.removeItem(TG_STORAGE_KEY);
+        checkTelegramStatus();
+    } catch(e) {
+        msgEl.textContent = '연결 해제 오류';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+    }
+}
+
+// ─── Card Auto-Payment Functions ─────────────────────────────
+
+// Auto-insert "/" as the user types MM/YY (e.g. "0930" -> "09/30")
+function formatCardExpireInput(input) {
+    const digits = input.value.replace(/\D/g, '').slice(0, 4);
+    input.value = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+}
+
+// The card shows MM/YY, but the reservation API expects YYMM - convert on save
+function expireToApiFormat(mmYY) {
+    const digits = (mmYY || '').replace(/\D/g, '');
+    if (digits.length !== 4) return digits;
+    return digits.slice(2, 4) + digits.slice(0, 2);
+}
+
+// Convert the API's YYMM back to MM/YY for display in the input
+function expireToDisplayFormat(yyMM) {
+    const digits = (yyMM || '').replace(/\D/g, '');
+    if (digits.length !== 4) return yyMM || '';
+    return `${digits.slice(2, 4)}/${digits.slice(0, 2)}`;
+}
+
+async function loadCardStatus() {
+    try {
+        const resp = await fetch('/api/card/status');
+        const data = await resp.json();
+        updateCardUI(data);
+    } catch (e) {
+        // ignore - not logged in yet, etc.
+    }
+}
+
+function updateCardUI(status) {
+    const dot = document.getElementById('cardStatusDot');
+    const text = document.getElementById('cardStatusText');
+    if (!dot) return;
+
+    if (status.configured) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rail-ok';
+        text.textContent = `등록됨 (${status.masked_number})${status.auto_pay ? '' : ' · 자동결제 꺼짐'}`;
+        text.className = 'text-sm text-rail-ok font-medium';
+
+        const expireInput = document.getElementById('cardExpire');
+        const typeSelect = document.getElementById('cardType');
+        const installmentSelect = document.getElementById('cardInstallment');
+        const autoPayCheckbox = document.getElementById('cardAutoPay');
+        if (expireInput && status.card_expire) expireInput.value = expireToDisplayFormat(status.card_expire);
+        if (typeSelect && status.card_type) typeSelect.value = status.card_type;
+        if (installmentSelect && status.installment !== undefined) installmentSelect.value = String(status.installment);
+        if (autoPayCheckbox) autoPayCheckbox.checked = !!status.auto_pay;
+    } else {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#D6D0C8]';
+        text.textContent = '미등록';
+        text.className = 'text-sm text-rail-muted';
+    }
+}
+
+async function saveCardSettings() {
+    const msgEl = document.getElementById('cardMessage');
+    const expireDisplay = document.getElementById('cardExpire')?.value.trim() || '';
+    const expireApi = expireToApiFormat(expireDisplay);
+    const month = parseInt(expireDisplay.replace(/\D/g, '').slice(0, 2), 10);
+
+    if (expireDisplay && (expireApi.length !== 4 || month < 1 || month > 12)) {
+        msgEl.textContent = '유효기간은 MM/YY 형식으로 입력해주세요. 예: 09/30';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+        return;
+    }
+
+    if (expireDisplay) {
+        const expireYear = 2000 + parseInt(expireDisplay.replace(/\D/g, '').slice(2, 4), 10);
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1; // 1-12
+        if (expireYear < currentYear || (expireYear === currentYear && month < currentMonth)) {
+            msgEl.textContent = `카드 유효기간이 지났습니다 (${expireDisplay}). 카드를 확인해주세요.`;
+            msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+            return;
+        }
+    }
+
+    const payload = {
+        card_number: document.getElementById('cardNumber')?.value.trim() || '',
+        card_password: document.getElementById('cardPassword')?.value.trim() || '',
+        validation_number: document.getElementById('cardValidationNumber')?.value.trim() || '',
+        card_expire: expireApi,
+        card_type: document.getElementById('cardType')?.value || 'J',
+        installment: parseInt(document.getElementById('cardInstallment')?.value || '0', 10),
+        auto_pay: document.getElementById('cardAutoPay')?.checked ?? true,
+    };
+
+    msgEl.textContent = '저장 중...';
+    msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
+
+    try {
+        const resp = await fetch('/api/card/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        msgEl.textContent = data.message;
+        msgEl.className = data.success ? 'text-sm text-rail-ok basis-full mt-1' : 'text-sm text-ktx-primary basis-full mt-1';
+
+        if (data.success) {
+            // Clear sensitive fields from the DOM after saving
+            document.getElementById('cardNumber').value = '';
+            document.getElementById('cardPassword').value = '';
+            document.getElementById('cardValidationNumber').value = '';
+            loadCardStatus();
+        }
+    } catch (e) {
+        msgEl.textContent = '저장 중 오류가 발생했습니다.';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+    }
+}
+
+async function clearCardSettings() {
+    const msgEl = document.getElementById('cardMessage');
+    try {
+        const resp = await fetch('/api/card/clear', {method: 'POST'});
+        const data = await resp.json();
+        msgEl.textContent = data.message;
+        msgEl.className = 'text-sm text-rail-muted basis-full mt-1';
+        loadCardStatus();
+    } catch (e) {
+        msgEl.textContent = '삭제 중 오류가 발생했습니다.';
+        msgEl.className = 'text-sm text-ktx-primary basis-full mt-1';
+    }
+}
+</script>
+{% endblock %}

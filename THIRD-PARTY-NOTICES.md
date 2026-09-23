@@ -8,6 +8,8 @@
 | 구성요소 | 라이선스 | 저작권 | 원본 |
 |---|---|---|---|
 | `korail2/` | BSD | (c) 2014 Taehoon Kim | https://github.com/carpedm20/korail2 |
+| `webui/static/vendor/tailwindcss.js` (3.4.17) | MIT | (c) Tailwind Labs, Inc. | https://tailwindcss.com |
+| `webui/static/vendor/flatpickr*` (4.6.13) | MIT | (c) Gregory Petrosyan | https://github.com/flatpickr/flatpickr |
 
 전문: [`korail2/LICENSE`](korail2/LICENSE)
 
@@ -38,4 +40,6 @@ python -m pip install pip-licenses && pip-licenses --format=markdown --with-lice
 
 | 구성요소 | 라이선스 |
 |---|---|
-| Tailwind CSS | MIT |
+| Tailwind CSS (앱에 포함, 위 표 참고) | MIT |
+| flatpickr (앱에 포함, 위 표 참고) | MIT |
+| IBM Plex Sans KR / IBM Plex Mono (Google Fonts 에서 불러옴) | SIL OFL 1.1 |

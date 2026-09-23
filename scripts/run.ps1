@@ -49,7 +49,7 @@ if ($needInstall) {
 }
 
 # 3) 캐시 정리 (최신 코드 보장)
-Get-ChildItem -Path app,korail2 -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+Get-ChildItem -Path desktop,webui,core,server,korail2 -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 # 4) 실행

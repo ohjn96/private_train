@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}로그인 - 열차 예약{% endblock %}
+
+{% block content %}
+<div class="min-h-[calc(100vh-10rem)] flex items-center justify-center">
+    <div class="w-full max-w-sm">
+        <div class="mb-6 px-1">
+            <h1 class="text-[26px] font-bold tracking-tight leading-snug">코레일 계정으로<br>로그인하세요</h1>
+            <p class="mt-2 text-sm text-rail-muted">KTX와 SRT 열차를 함께 조회해요.</p>
+        </div>
+
+        {% if error %}
+        <div class="mb-4 p-3.5 rounded-2xl bg-rail-dangerSoft" role="alert">
+            <p class="text-sm text-rail-dangerDark">{{ error }}</p>
+        </div>
+        {% endif %}
+
+        <form method="POST" class="bg-white border border-rail-line rounded-[20px] p-5 space-y-4">
+            <div>
+                <label for="user_id" class="block text-[13px] font-medium text-rail-muted mb-1.5">아이디</label>
+                <input type="text" id="user_id" name="user_id" required
+                       placeholder="010-0000-0000 또는 이메일" inputmode="text" autocomplete="username"
+                       class="w-full h-12 px-4 rounded-xl border border-rail-line bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary text-base">
+                <p id="user_id_hint" class="mt-1 text-xs text-rail-muted hidden">전화번호: 010-0000-0000 형식</p>
+            </div>
+
+            <div>
+                <label for="password" class="block text-[13px] font-medium text-rail-muted mb-1.5">비밀번호</label>
+                <input type="password" id="password" name="password" required
+                       placeholder="비밀번호" autocomplete="current-password"
+                       class="w-full h-12 px-4 rounded-xl border border-rail-line bg-rail-ground focus:bg-white focus:outline-none focus:border-ktx-primary text-base">
+            </div>
+
+            <button type="submit" class="w-full h-14 rounded-2xl bg-ktx-primary hover:bg-ktx-secondary text-white text-[17px] font-bold transition-colors">
+                로그인
+            </button>
+            <input type="hidden" name="provider" value="{{ provider }}">
+        </form>
+
+        <p class="mt-4 px-1 text-xs text-rail-muted leading-relaxed">
+            비밀번호는 이 기기(또는 서버)의 메모리에만 두고, 브라우저에는 저장하지 않아요.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const input = document.getElementById('user_id');
+    const hint  = document.getElementById('user_id_hint');
+
+    function isPhone(val) {
+        // Starts with 010/011/016/017/018/019 or pure digits ≥ 9 chars
+        return /^0[1-9][\d\-]*$/.test(val);
+    }
+
+    function formatPhone(val) {
+        // Strip all non-digits
+        const digits = val.replace(/\D/g, '');
+        if (digits.length <= 3)  return digits;
+        if (digits.length <= 7)  return digits.slice(0, 3) + '-' + digits.slice(3);
+        if (digits.length <= 11) return digits.slice(0, 3) + '-' + digits.slice(3, 7) + '-' + digits.slice(7);
+        return digits.slice(0, 3) + '-' + digits.slice(3, 7) + '-' + digits.slice(7, 11);
+    }
+
+    input.addEventListener('input', function (e) {
+        const raw = input.value;
+
+        // Only auto-format if it looks like a phone number
+        if (isPhone(raw)) {
+            const cursor = input.selectionStart;
+            const prevLen = raw.length;
+            const formatted = formatPhone(raw);
+            input.value = formatted;
+            // Keep cursor position roughly correct
+            const diff = formatted.length - prevLen;
+            input.setSelectionRange(cursor + diff, cursor + diff);
+            hint.classList.remove('hidden');
+        } else {
+            hint.classList.add('hidden');
+        }
+    });
+
+    // On form submit: ensure phone number has dashes (server requires 010-XXXX-XXXX format)
+    input.closest('form').addEventListener('submit', function () {
+        if (isPhone(input.value)) {
+            input.value = formatPhone(input.value);
+        }
+    });
+})();
+</script>
+{% endblock %}

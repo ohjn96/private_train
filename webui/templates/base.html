@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{% block title %}열차 예약{% endblock %}</title>
+    <!-- 홈 화면에 추가(PWA): 주소창 없이 앱처럼 열린다 -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#F6F4F0">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="열차예약">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Tailwind·달력은 앱에 같이 싣는다 (static/vendor). CDN 에서 받으면 연결이 약할 때
+         화면이 깨지거나 시작·중단 버튼까지 멈추고, 외부 스크립트가 앱 권한으로 돈다. -->
+    <script src="{{ url_for('static', filename='vendor/tailwindcss.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/flatpickr.min.css') }}">
+    <script src="{{ url_for('static', filename='vendor/flatpickr.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/flatpickr-ko.js') }}"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"IBM Plex Sans KR"', 'system-ui', 'sans-serif'],
+                        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+                    },
+                    colors: {
+                        // 강조색: 앱 아이콘과 같은 파랑 (예전 이름 그대로 두어 기존 화면이 새 색을 따르게)
+                        ktx: {
+                            primary: '#1E4FD8',
+                            secondary: '#1740B0',
+                            light: '#BFD0F7'
+                        },
+                        // "레일 티켓" 팔레트: 따뜻한 미색 바탕 + 먹색 글자 + 레드 하나
+                        rail: {
+                            ground: '#F6F4F0',
+                            ink: '#1A1714',
+                            muted: '#6B645C',
+                            line: '#E6E1DA',
+                            accentSoft: '#E8EEFC',
+                            // 위험·실패 알림은 강조색이 파랑이어도 빨강으로 둔다 (자동결제 실패, 오류)
+                            danger: '#C8102E',
+                            dangerDark: '#9E0C24',
+                            dangerSoft: '#FBE9EB',
+                            dangerLine: '#F1C4BF',
+                            ok: '#0B6B3A',
+                            okSoft: '#E3F4EA',
+                            off: '#5A544D',
+                            offSoft: '#EFECE7'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-feature-settings: "tnum" 0; }
+        /* 한국어는 단어 중간에서 끊지 않는다 ("멈췄 / 어요" 방지). 아주 긴 단어만 끊는다 */
+        body { word-break: keep-all; overflow-wrap: anywhere; }
+        .tabular { font-variant-numeric: tabular-nums; }
+        /* 고른 열차: 레드 테두리 + 옅은 레드 바탕 (표의 행과 폰의 카드 모두) */
+        .train-row.selected { background-color: #F3F6FE; }
+        /* 표의 행은 tr 에 그림자가 안 그려져서 칸(td)에 칠한다 */
+        tr.train-row.selected td { background-color: #E8EEFC; }
+        tr.train-row.selected td:first-child { box-shadow: inset 4px 0 0 #1E4FD8; }
+        .train-card.selected { box-shadow: 0 0 0 2px #1E4FD8; border-color: transparent; }
+        .train-card .select-mark { border: 2px solid #D6D0C8; }
+        .train-card.selected .select-mark { background: #1E4FD8; border-color: #1E4FD8; }
+        .train-card.selected .select-mark svg { opacity: 1; }
+        .log-container { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+        /* 폰: 탭할 때 회색 번쩍임 없애기 */
+        * { -webkit-tap-highlight-color: transparent; }
+        /* iOS 는 글씨가 16px 보다 작은 입력칸을 누르면 화면을 확대한다. 작은 글씨 입력칸만 16px 로 */
+        @media (max-width: 639px) {
+            input.text-sm, select.text-sm, textarea.text-sm,
+            input.text-xs, select.text-xs, textarea.text-xs { font-size: 16px; }
+        }
+    </style>
+</head>
+<body class="h-full bg-rail-ground text-rail-ink font-sans antialiased provider-{{ provider }}">
+    <div class="min-h-full">
+        <!-- Navigation -->
+        {% block topnav %}
+        <nav class="bg-rail-ground">
+            <div class="mx-auto max-w-5xl px-4 sm:px-6">
+                <div class="flex h-14 sm:h-16 justify-between items-center gap-2">
+                    <a href="/" class="flex items-center gap-2.5 min-w-0" aria-label="열차예약 홈">
+                        <span class="w-8 h-8 rounded-[9px] bg-ktx-primary flex items-center justify-center flex-shrink-0">
+                            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14"/><path d="M9 21l-2-4"/><path d="M15 21l2-4"/></svg>
+                        </span>
+                        <span class="text-lg font-bold tracking-tight whitespace-nowrap">열차예약</span>
+                    </a>
+
+                    {% set current_auth = session.get('auth', {}).get(provider, {}) %}
+                    {% if current_auth.get('logged_in') %}
+                    <div class="flex items-center gap-1 sm:gap-3 min-w-0">
+                        <span class="text-[13px] text-rail-muted truncate tabular">{{ current_auth.get('user_id', '') }}</span>
+                        <form action="{{ url_for('auth.logout') }}" method="POST">
+                            <input type="hidden" name="logout_all" value="true">
+                            <button type="submit" data-testid="logout-button"
+                                    class="h-11 px-3 text-sm text-rail-ink rounded-xl hover:bg-white transition-colors whitespace-nowrap">
+                                로그아웃
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </nav>
+        {% endblock %}
+
+        <!-- Main Content -->
+        <main class="{% block main_class %}mx-auto max-w-5xl px-4 sm:px-6 pt-2 lg:pt-4 pb-6 sm:pb-10{% endblock %}">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Footer -->
+        {% block footer %}
+        <footer class="mx-auto max-w-5xl px-4 sm:px-6 pb-6 text-center">
+            <p class="text-xs text-rail-muted">열차예약 v{{ app_version }} · 개인 학습용</p>
+            <p class="mt-1 text-xs font-semibold text-ktx-primary">상업용 사용 · 배포 금지</p>
+        </footer>
+        {% endblock %}
+    </div>
+
+    <!-- Audio for success notification -->
+    <audio id="successSound" preload="auto">
+        <source src="{{ url_for('static', filename='success_sound.mp3') }}" type="audio/mpeg">
+    </audio>
+
+    {% block scripts %}{% endblock %}
+
+    <script>
+        // 서비스 워커는 HTTPS(또는 localhost)에서만 등록된다
+        if ('serviceWorker' in navigator && window.isSecureContext) {
+            navigator.serviceWorker.register('/sw.js').catch(function() {});
+        }
+    </script>
+</body>
+</html>

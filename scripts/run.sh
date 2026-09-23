@@ -42,7 +42,7 @@ if [[ $REINSTALL -eq 1 || ! -f "$STAMP" || "$(cat "$STAMP")" != "$REQ_HASH" ]]; 
 fi
 
 # 3) 캐시 정리 (최신 코드 보장)
-find app korail2 -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+find desktop webui core server korail2 -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
 # 4) 실행
 echo ""

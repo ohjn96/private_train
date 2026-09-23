@@ -43,6 +43,11 @@ Python 3.12+ 만 설치돼 있으면 됩니다. **명령어 하나로 가상환�
 
 실행 후 브라우저에서 **http://localhost:5050** 접속.
 
+> 🔒 기본으로는 **이 컴퓨터에서만** 열립니다 (`127.0.0.1`). 같은 와이파이의 폰·다른 PC 에서
+> 열려면 `HOST=0.0.0.0` 을 주고 `http://<이 PC 의 IP>:5050` 으로 접속하세요. IP 가 아니라
+> 이름(예: `mypc.local`)으로 열 거라면 `ALLOWED_HOSTS=mypc.local` 도 함께 줍니다.
+> 디버그 모드는 `FLASK_DEBUG=true` 를 줄 때만 켜집니다 (절대 LAN 에 연 채로 켜지 마세요).
+
 | 하고 싶은 것 | 명령 (Windows) | 명령 (Linux/macOS) |
 |---|---|---|
 | 그냥 실행 | `.\scripts\run.ps1` | `./scripts/run.sh` |
@@ -106,7 +111,8 @@ python main.py --headless --id 1234567890 --pw 비밀번호 --telegram-token <�
 ```
 
 봇 토큰은 텔레그램 [@BotFather](https://t.me/BotFather) 에서 받습니다. 채팅 ID 는
-따로 안 넣어도 되고, 봇에게 `/start` 를 한 번 보내면 자동으로 등록됩니다.
+따로 안 넣어도 되고, 실행하면 콘솔에 찍히는 `/start <코드>` 를 봇에게 보내면 등록됩니다.
+(아무나 먼저 `/start` 를 보내 봇을 가로채지 못하게, 코드가 맞는 채팅만 받습니다)
 
 > 💡 배포된 실행 파일도 같은 방식으로 됩니다:
 > `TrainReservationApp-v2.3.2.exe --headless --telegram-token <봇토큰> ...`
@@ -144,6 +150,7 @@ python main.py --headless ... --dry-run
 | `--from` / `--to` | `TRAIN_FROM` / `TRAIN_TO` | 노릴 시간대. `--to` 생략 시 `--from` +3시간 |
 | `--trains` | `TRAIN_NUMBERS` | 특정 열차번호만 (`101,103`). 주면 시간대는 무시 |
 | `--passengers` | `PASSENGERS` | 좌석 수 1 또는 2 |
+| `--interval` | `CALL_INTERVAL` | 코레일 호출 간격(초, 1~3). 기본 2 |
 | `--sequential` | `SEQUENTIAL` | 2석을 한 석씩 순차로 (같은 열차 고정) |
 | `--telegram-token` | `TELEGRAM_BOT_TOKEN` | 알림 + 원격 조종 (대기 모드에서 필수) |
 | `--card-number` 외 | `CARD_*` | 예약 성공 시 자동결제 |
@@ -176,6 +183,69 @@ Restart=on-failure
   실패합니다. 집에 있는 기기(라즈베리파이, 안 쓰는 노트북)가 이 점에서 안전합니다.
 - **계정 정보가 그 서버에 남습니다.** 환경변수 파일 권한(`chmod 600`)을 꼭 확인하세요.
 
+### 안드로이드 앱 (APK)
+
+안드로이드폰이면 앱을 깔아서 **폰에서 직접** 돌릴 수 있습니다. 서버가 필요 없고, 코레일 호출도
+각자 폰의 IP 로 나갑니다. 앱을 내리거나 화면을 꺼도 매크로가 계속 돌고, 예약 성공은 폰 알림으로 옵니다.
+[Releases](https://github.com/ohjn96/private_train/releases) 에서 `TrainReservationApp-v<버전>.apk` 를 받아 설치하세요.
+설치·빌드·서명 방법은 [mobile/android/README.md](mobile/android/README.md).
+
+### iPhone 앱 (.ipa)
+
+아이폰도 앱을 깔아 **폰에서 직접** 돌릴 수 있습니다. 단, **앱을 화면에 띄워 둔 동안에만** 매크로가 돕니다
+(iOS 제약. 도는 동안엔 자동 잠금이 꺼집니다). Mac·유료 개발자 계정 없이, Windows PC 의
+[Sideloadly](https://sideloadly.io/) 와 무료 Apple ID 로 `TrainReservationApp-v<버전>.ipa` 를 설치합니다 (7일마다 다시 서명).
+설치·빌드 방법은 [mobile/ios/README.md](mobile/ios/README.md).
+
+### Oracle Cloud 에 올리기 (무료, 폰에서 접속, 여러 명)
+
+PC 를 계속 켜 둘 수 없을 때. Oracle Cloud Always Free VM 에 **서버 버전**(`python -m server`)을
+올리고 폰에서 Tailscale 로 접속합니다. 포트를 인터넷에 열지 않아도 됩니다.
+가족·친구가 같이 쓸 수 있고, 예약 매크로는 한 번에 한 명만 돌립니다. 자세한 건 [server/README.md](server/README.md).
+
+1. Oracle Cloud 가입. **홈 리전을 Seoul 또는 Chuncheon** 으로 (나중에 못 바꿈, 해외 IP 는 코레일이 막을 수 있음)
+2. 인스턴스 생성: 이미지 **Ubuntu 24.04**, Shape 는 Always Free 표시된 것
+3. SSH 로 접속해서:
+
+```bash
+git clone https://github.com/ohjn96/private_train.git && cd private_train
+./server/setup-server.sh --tailscale              # 서버 버전 (웹 + 웹 푸시 알림)
+./server/setup-server.sh --headless --tailscale   # 혼자, 텔레그램으로만 쓸 때
+```
+
+4. 폰(과 같이 쓸 가족·친구 폰)에 Tailscale 앱 설치 → 같은 tailnet 에 초대(Share) →
+   스크립트가 알려준 `https://<서버이름>.ts.net` 접속 → **접근 비밀번호** 입력 → 코레일 로그인
+   (처음 한 번 Tailscale 관리 화면에서 HTTPS 를 켜라는 안내가 나오면 따라 하면 됩니다)
+
+#### 폰에서 앱처럼 쓰기
+
+- **iPhone**: Safari 로 접속 → 공유 버튼 → **홈 화면에 추가**. **Android**: Chrome 메뉴 → **앱 설치**
+- 홈 화면 아이콘으로 열면 주소창 없이 앱처럼 뜹니다. iPhone 은 홈 화면 앱과 Safari 가
+  로그인 정보를 따로 가지므로, 앱으로 처음 열 때 한 번 더 로그인하면 됩니다.
+- **예약 매크로는 서버에서 돕니다.** Safari·앱을 내리거나 닫아도, 폰을 잠가도 계속 시도합니다.
+  다시 열면 그동안의 로그를 이어서 보여줍니다.
+- 앱이 꺼져 있어도 **"폰 알림" 카드에서 알림을 켜 두면** 예약 성공·결제·중단을 푸시로 받습니다.
+  (iPhone 은 홈 화면 앱에서 켜야 하고 iOS 16.4 이상)
+
+설정은 `/etc/train.env` 에 있고, 바꾼 뒤엔 `sudo systemctl restart train`. 업데이트는 `git pull` 후
+스크립트를 다시 돌리면 됩니다.
+
+| 환경변수 | 설명 |
+|---|---|
+| `APP_PASSWORD` | 설정하면 모든 페이지 앞에 접근 비밀번호를 묻습니다. 외부에 열 땐 필수 |
+| `FLASK_DEBUG` | 서버에선 반드시 `false`. 켜져 있으면 웹 디버거로 원격 코드 실행이 가능해집니다 |
+| `HOST` / `PORT` | 바인딩 주소/포트 (기본 `127.0.0.1` / `5050`). LAN 에 열려면 `HOST=0.0.0.0` |
+| `ALLOWED_HOSTS` | `localhost`·IP 주소 말고 **이름**으로 접속할 때 그 이름 (쉼표 구분, `.ts.net` 처럼 앞에 점을 붙이면 하위 도메인 전부). DNS 리바인딩 공격을 막으려고 모르는 이름으로 온 요청은 400 으로 거절합니다. `--tailscale` 설치 시 Tailscale 주소가 자동으로 들어갑니다 |
+| `COOKIE_SECURE` | `1` 이면 세션 쿠키를 HTTPS 로만 보냅니다 (`--tailscale` 설치 시 자동) |
+| `FLASK_SECRET_KEY` | 세션 서명 키. 비우면 `~/.train_reservation/secret_key` 에 무작위로 만들어 둡니다 |
+
+> 🔒 코레일 비밀번호와 카드 정보는 브라우저 쿠키가 아니라 서버 메모리에만 둡니다.
+> 그래서 서버를 재시작하면 웹에서 다시 로그인해야 합니다.
+
+> ℹ️ 여러 명이 각자 코레일 계정으로 로그인할 수 있지만, **예약 매크로는 서버 전체에 한 번에 하나**입니다.
+> 누가 쓰는 중이면 "010*** 님이 사용 중" 이라고 뜨고, 남의 로그를 보거나 멈출 수는 없습니다.
+> 모든 호출이 서버 IP 하나로 나가므로 코레일 차단을 피하려는 제한입니다.
+
 ---
 
 ## 요구사항
@@ -197,7 +267,7 @@ python -m unittest discover -s tests -v
 검사하는 것:
 
 - 조회 페이징 (선택한 열차가 전부 조회 범위에 들어오는지)
-- API 호출 간격 1.5초 유지, 단 좌석을 찾은 직후의 예약만 즉시 실행
+- API 호출 간격은 예약 화면에서 1~3초 중 선택 (기본 2초, 1초 미만 불가), 단 좌석을 찾은 직후의 예약만 즉시 실행
 - 여러 열차를 선택해도 시도당 조회는 한 번, 좌석 있는 열차만 예약
 - 2인 동시 예약 / 2인 순차 예약 (순차 예약은 첫 좌석을 잡은 열차로 고정)
 - 매크로 이중 실행 차단, 예외로 죽어도 실행 슬롯 반납
@@ -249,7 +319,8 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 1. 검색 페이지 하단의 **텔레그램 알림** 카드 클릭
 2. Bot Token 입력 후 **"연결"** 클릭
-3. 생성한 봇의 대화창에서 `/start` 전송 → **Chat ID 자동 등록**
+3. 화면에 나온 `/start <코드>` 를 봇 대화창에 전송 → **Chat ID 자동 등록**
+   (코드는 10분 동안 한 번만 쓸 수 있습니다. 코드 없는 `/start` 는 무시합니다)
 4. **"자동 연결"** 체크 시 다음 접속부터 자동 연결
 
 > 💡 Bot Token은 브라우저 localStorage에 저장되어 새로고침 후에도 유지됩니다.
@@ -261,13 +332,13 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 | 질문 | 답변 |
 |------|------|
-| 직접 입력해야 하나요? | **아니요.** 봇에게 `/start`만 보내면 자동 등록됩니다 |
+| 직접 입력해야 하나요? | **아니요.** 봇에게 `/start <코드>` 만 보내면 자동 등록됩니다 |
 | 어디서 확인하나요? | 봇에게 `/chatid` 명령어를 보내면 표시됩니다 |
 | 왜 필요한가요? | 봇이 예약 성공 알림을 보낼 대상을 지정하기 위함 |
 | 예시 | `123456789` (숫자) |
 
 ```
-사용자 → 봇: /start
+사용자 → 봇: /start ABCD2345   (앱이 보여준 일회용 코드)
 봇 → 사용자: ✅ 연결 완료! Chat ID가 자동 등록되었습니다.
 
 이후 예약 성공 시 → 봇이 이 Chat ID로 알림 전송
@@ -283,7 +354,7 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 | 명령어 | 설명 | 예시 |
 |--------|------|------|
-| `/start` | 봇 연결 및 Chat ID 자동 등록 | `/start` |
+| `/start` | 봇 연결 및 Chat ID 등록 (앱이 보여준 코드 필요) | `/start ABCD2345` |
 | `/reserve` | 열차 검색 후 예약 시작 | `/reserve 수서 부산 2026-03-01 06:00` |
 | `/trains` | 마지막 검색된 열차 목록 확인 | `/trains` |
 | `/stop` | 실행 중인 매크로 원격 중단 | `/stop` |
@@ -344,17 +415,20 @@ Get-ChildItem -Recurse -Include *.pyc,__pycache__ | Remove-Item -Recurse -Force
 
 ```
 private_train/
-├── app/                        # Flask 앱
-│   ├── routes/                 # 라우트 (auth, search, reservation, telegram)
-│   ├── services/               # 서비스 레이어 (Korail, Telegram)
-│   ├── templates/              # Jinja2 템플릿
-│   └── static/                 # 정적 파일
-├── korail2/                    # Korail API 모듈
+│   ── 공통 (세 앱이 같이 쓴다) ──
+├── core/                       # 코레일 API 래퍼, 예약 루프, 호출 간격
+├── korail2/                    # 코레일 통신 라이브러리
+├── webui/                      # 화면(templates·static)과 라우트. 세 앱 모두 이 화면을 쓴다
+│
+│   ── 앱 3개 ──
+├── desktop/                    # ① PC 앱: python -m desktop (= python main.py), exe 빌드(build/), 헤드리스
+├── server/                     # ② 서버: python -m server, 여러 명·웹 푸시, setup-server.sh
+├── mobile/                     # ③ 폰 앱: 안드로이드(APK)·iPhone(.ipa), 폰 안에서 webui 를 띄운다
+│
 ├── tests/                      # 회귀 테스트 (네트워크 불필요)
 ├── scripts/                    # 실행/릴리스 스크립트 (run.sh, run.ps1, run.bat, release.sh)
-├── build/                      # 빌드 스크립트 (build.py, build.ps1, build.bat)
-├── .github/workflows/          # 태그 푸시 시 Windows/macOS 실행 파일 자동 빌드
-├── main.py                     # 진입점 (웹 / --headless 로 매크로만)
+├── .github/workflows/          # 태그 푸시 시 exe(Windows/macOS)·APK·IPA 자동 빌드
+├── main.py                     # 하위 호환 진입점 (= python -m desktop)
 ├── VERSION                     # 버전 단일 출처
 ├── LICENSE                     # 개인 사용 라이선스 (재배포·상업이용 금지)
 ├── THIRD-PARTY-NOTICES.md      # 번들 오픈소스 고지
@@ -390,17 +464,17 @@ Release 없이 아티팩트로만 받을 수 있습니다.
 ### 2. Windows PC 에서 직접 빌드
 
 ```powershell
-.\build\build.ps1          # venv 준비 + 의존성 설치 + 빌드
-.\build\build.ps1 -SkipInstall   # 이미 설치돼 있으면
+.\desktop\build\build.ps1          # venv 준비 + 의존성 설치 + 빌드
+.\desktop\build\build.ps1 -SkipInstall   # 이미 설치돼 있으면
 ```
-더블클릭으로 하려면 `build\build.bat`.
+더블클릭으로 하려면 `desktop\build\build.bat`.
 
 ### 3. 파이썬으로 직접
 
 ```bash
-python build/build.py unified
+python desktop/build/build.py unified
 ```
-PyInstaller 옵션은 `build/build.py` 한 곳에만 있고, `build.ps1` 은 이를 호출만 합니다.
+PyInstaller 옵션은 `desktop/build/build.py` 한 곳에만 있고, `build.ps1` 은 이를 호출만 합니다.
 
 ---
 

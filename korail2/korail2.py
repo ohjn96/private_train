@@ -11,21 +11,16 @@ import requests
 import itertools
 import sys
 import base64
-import warnings
 import time
 import random
 import string
 from functools import reduce
 
-# Suppress urllib3 InsecureRequestWarning
-warnings.filterwarnings('ignore', message='Unverified HTTPS request')
-
 from datetime import datetime, timedelta
 from pprint import pprint
 from datetime import timezone
 
-from Crypto.Util.Padding import pad
-from Crypto.Cipher import AES
+from ._aes import BLOCK_SIZE, cbc_encrypt, pad
 
 try:
     # noinspection PyPackageRequirements
@@ -637,6 +632,16 @@ class ExceptionForm(type):
         return item in cls.codes
 
 
+class ReservedOnly(object):
+    """예약은 됐지만 상세(결제에 필요한 정보)를 불러오지 못했을 때 돌려주는 최소 객체."""
+
+    def __init__(self, rsv_id):
+        self.rsv_id = rsv_id
+
+    def __repr__(self):
+        return f'ReservedOnly({self.rsv_id})'
+
+
 class KorailError(Exception, metaclass=ExceptionForm):
     """Korail Base Error Class"""
 
@@ -675,10 +680,25 @@ class SoldOutError(KorailError):
         KorailError.__init__(self, "Sold out", code)
 
 
+#: 코레일 요청의 (연결, 응답) 대기 한도(초). 없으면 네트워크가 끊겼을 때 영원히 기다려
+#: 매크로가 멈춘 채로 남는다.
+REQUEST_TIMEOUT = (10, 20)
+
+
+class _TimeoutSession(requests.Session):
+    """timeout 을 따로 주지 않은 요청에도 REQUEST_TIMEOUT 을 건다."""
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault('timeout', REQUEST_TIMEOUT)
+        return super().request(method, url, **kwargs)
+
+
 # noinspection PyUnresolvedReferences,PyRedeclaration
 class Korail(object):
     """Korail object"""
-    _session = requests.session()
+    # 인스턴스마다 따로 만든다 (__init__). 클래스 변수로 두면 모든 로그인이 쿠키 저장소
+    # 하나를 같이 써서, 여러 계정이 동시에 로그인하면 서로의 세션을 덮어쓴다.
+    _session = None
 
     _device = 'AD'
     _version = '250601002'
@@ -693,6 +713,7 @@ class Korail(object):
     email = None
 
     def __init__(self, korail_id, korail_pw, auto_login=True, want_feedback=False):
+        self._session = _TimeoutSession()
         self._session.headers.update({'User-Agent': DEFAULT_USER_AGENT})
         self._engine = DynaPathMasterEngine()
         self.korail_id = korail_id
@@ -704,8 +725,8 @@ class Korail(object):
 
     def _generate_sid(self, ts):
         plaintext = (f"{self._device}{ts}").encode('utf-8')
-        cipher = AES.new(self._sid_key, AES.MODE_CBC, iv=self._sid_key)
-        return base64.b64encode(cipher.encrypt(pad(plaintext, 16))).decode('utf-8') + "\n"
+        encrypted = cbc_encrypt(self._sid_key, self._sid_key, pad(plaintext, 16))
+        return base64.b64encode(encrypted).decode('utf-8') + "\n"
 
     def _get_auth_headers_and_sid(self, url):
         headers = {}
@@ -724,7 +745,7 @@ class Korail(object):
             'code': "app.login.cphd"
         }
 
-        r = self._session.post(url, data=data, verify =False)
+        r = self._session.post(url, data=data)
         j = json.loads(r.text)
 
         if j['strResult'] == 'SUCC' and j.get('app.login.cphd') is not None:
@@ -733,11 +754,9 @@ class Korail(object):
 
             encrypt_key = key.encode(encoding='utf-8', errors='strict')
             iv = key[:16].encode(encoding='utf-8', errors='strict')
-            cipher = AES.new(encrypt_key, AES.MODE_CBC, iv)
-            
-            padded_data = pad(password.encode("utf-8"), AES.block_size)
+            padded_data = pad(password.encode("utf-8"), BLOCK_SIZE)
 
-            return base64.b64encode(base64.b64encode(cipher.encrypt(padded_data))).decode("utf-8")
+            return base64.b64encode(base64.b64encode(cbc_encrypt(encrypt_key, iv, padded_data))).decode("utf-8")
         else:
             return False
 
@@ -803,7 +822,7 @@ When you want change ID using existing object,
         if sid:
             data['Sid'] = sid
 
-        r = self._session.post(url, data=data, headers=headers, verify=False)
+        r = self._session.post(url, data=data, headers=headers)
         j = json.loads(r.text)
 
         # 차단 등 비정상 응답은 strResult 없이 {"code": ..., "message": ...} 형태로 온다
@@ -825,7 +844,7 @@ When you want change ID using existing object,
     def logout(self):
         """Logout from Korail server"""
         url = KORAIL_LOGOUT
-        self._session.get(url, verify =False)
+        self._session.get(url)
         self.logined = False
 
     def _result_check(self, j):
@@ -1002,7 +1021,7 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
         }
 
 
-        r = self._session.post(url, params=data, headers=headers, verify=False)
+        r = self._session.post(url, params=data, headers=headers)
         j = json.loads(r.text)
 
         if self._result_check(j):
@@ -1152,13 +1171,20 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             data.update(psg.get_dict(index))
             index += 1
 
-        r = self._session.get(url, params=data, headers=headers, verify=False)
+        r = self._session.get(url, params=data, headers=headers)
         j = json.loads(r.text)
         if self._result_check(j):
             rsv_id = j['h_pnr_no']
-            rsvlist = list(filter(lambda x: x.rsv_id == rsv_id, self.reservations()))
+            # 여기까지 왔으면 좌석은 이미 잡혔다. 뒤따르는 목록 조회가 실패했다고 예외를
+            # 내면 호출하는 쪽이 "예약 실패"로 알고 다른 열차를 또 예약할 수 있으므로,
+            # 그때는 예약번호만 든 객체를 돌려준다.
+            try:
+                rsvlist = list(filter(lambda x: x.rsv_id == rsv_id, self.reservations()))
+            except Exception:
+                rsvlist = []
             if len(rsvlist) == 1:
                 return rsvlist[0]
+            return ReservedOnly(rsv_id)
 
     def tickets(self):
         """Get list of tickets"""
@@ -1174,7 +1200,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'h_abrd_dt_to': '',
         }
 
-        r = self._session.get(url, params=data, verify =False)
+        r = self._session.get(url, params=data)
         j = json.loads(r.text)
         try:
             if self._result_check(j):
@@ -1194,7 +1220,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
                         'h_orgtk_sale_sqno': ticket.sale_info3,
                         'h_orgtk_ret_pwd': ticket.sale_info4,
                     }
-                    r = self._session.get(url, params=data, verify =False)
+                    r = self._session.get(url, params=data)
                     j = json.loads(r.text)
                     if self._result_check(j):
                         seat = j['ticket_infos']['ticket_info'][0]['tk_seat_info'][0]
@@ -1216,7 +1242,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'Key': self._key,
             'hidPnrNo': rsv_id,
         }
-        r = self._session.get(url, params=data, verify=False)
+        r = self._session.get(url, params=data)
         j = json.loads(r.text)
         try:
             if not self._result_check(j):
@@ -1239,7 +1265,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'Version': self._version,
             'Key': self._key,
         }
-        r = self._session.get(url, params=data, verify =False)
+        r = self._session.get(url, params=data)
         j = json.loads(r.text)
         try:
             if self._result_check(j):
@@ -1297,7 +1323,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'hidAthnVal1': birthday,
             'hiduserYn': 'Y',
         }
-        r = self._session.post(url, data=data, verify=False)
+        r = self._session.post(url, data=data)
         j = json.loads(r.text)
         if self._result_check(j):
             return True
@@ -1316,7 +1342,7 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'txtJrnyCnt': rsv.journey_cnt,
             'hidRsvChgNo': rsv.rsv_chg_no,
         }
-        r = self._session.get(url, data=data, verify =False)
+        r = self._session.get(url, data=data)
         j = json.loads(r.text)
         if self._result_check(j):
             return True
