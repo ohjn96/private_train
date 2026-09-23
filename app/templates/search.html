@@ -1281,7 +1281,11 @@ function saveTelegramSettings() {
 function loadTelegramSettings() {
     try {
         const raw = localStorage.getItem(TG_STORAGE_KEY);
-        if (!raw) return;
+        if (!raw) {
+            // 이 브라우저엔 저장된 게 없어도 서버가 기억하는 토큰으로 다시 붙는다
+            setTimeout(() => reconnectSavedTelegram(), 500);
+            return;
+        }
         const {token, chatId} = JSON.parse(raw);
         const tokenInput = document.getElementById('tgBotToken');
         const chatIdInput = document.getElementById('tgChatId');
@@ -1294,6 +1298,18 @@ function loadTelegramSettings() {
         if (token) {
             setTimeout(() => connectTelegram(true), 500);
         }
+    } catch(e) {}
+}
+
+async function reconnectSavedTelegram() {
+    try {
+        const resp = await fetch('/api/telegram/configure', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        });
+        const data = await resp.json();
+        if (data.success) checkTelegramStatus();
     } catch(e) {}
 }
 

@@ -3,14 +3,53 @@
 import collections
 import json
 import logging
+import os
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, Callable
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+#: 웹에서 연결한 봇 토큰/채팅 ID 를 서버 재시작 뒤에도 기억하는 파일.
+#: 브라우저 localStorage 는 브라우저·주소(localhost/127.0.0.1)마다 따로라 쉽게 비므로
+#: 서버 쪽에도 남겨 둔다. exe 는 임시 폴더에서 돌기 때문에 홈 디렉터리에 둔다.
+SETTINGS_PATH = Path.home() / '.train_reservation' / 'telegram.json'
+
+
+def load_saved_settings() -> dict:
+    """저장된 {'token', 'chat_id'} 를 돌려준다. 없으면 TELEGRAM_BOT_TOKEN 환경변수."""
+    try:
+        data = json.loads(SETTINGS_PATH.read_text(encoding='utf-8'))
+        if data.get('token'):
+            return {'token': data['token'], 'chat_id': data.get('chat_id', '')}
+    except (OSError, ValueError):
+        pass
+    return {
+        'token': os.environ.get('TELEGRAM_BOT_TOKEN', ''),
+        'chat_id': os.environ.get('TELEGRAM_CHAT_ID', ''),
+    }
+
+
+def save_settings(token: str, chat_id: str) -> None:
+    """토큰은 비밀번호나 마찬가지라 본인만 읽을 수 있게(600) 쓴다."""
+    try:
+        SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(SETTINGS_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump({'token': token, 'chat_id': chat_id or ''}, f)
+    except OSError as e:
+        logger.warning(f"텔레그램 설정 저장 실패: {e}")
+
+
+def clear_saved_settings() -> None:
+    try:
+        SETTINGS_PATH.unlink()
+    except OSError:
+        pass
 
 
 class TelegramService:

@@ -2,7 +2,9 @@
 """Telegram bot API routes."""
 from flask import Blueprint, request, jsonify
 
-from app.services.telegram_service import TelegramService
+from app.services.telegram_service import (
+    TelegramService, load_saved_settings, save_settings, clear_saved_settings
+)
 from app.utils.session_helper import (
     get_current_provider, is_logged_in, get_credentials,
     get_any_logged_in_provider
@@ -18,6 +20,11 @@ def configure():
     bot_token = data.get('bot_token', '').strip()
     chat_id = data.get('chat_id', '').strip()
 
+    # 토큰 없이 부르면 서버에 저장해 둔 설정으로 다시 붙는다 (페이지 로드 때 자동 연결)
+    if not bot_token:
+        saved = load_saved_settings()
+        bot_token = saved['token']
+        chat_id = chat_id or saved['chat_id']
     if not bot_token:
         return jsonify({'success': False, 'message': '봇 토큰을 입력해주세요.'})
 
@@ -25,6 +32,8 @@ def configure():
     result = tg.configure(bot_token, chat_id)
 
     if result['success']:
+        save_settings(bot_token, tg.chat_id or '')
+
         # Store web session credentials if user is logged in
         try:
             provider = get_current_provider() if is_logged_in() else get_any_logged_in_provider()
@@ -50,6 +59,7 @@ def disconnect():
     """Disconnect the Telegram bot."""
     tg = TelegramService.get_instance()
     tg.disconnect()
+    clear_saved_settings()
     return jsonify({'success': True, 'message': '텔레그램 봇 연결이 해제되었습니다.'})
 
 
@@ -57,6 +67,11 @@ def disconnect():
 def status():
     """Get current Telegram bot status."""
     tg = TelegramService.get_instance()
+    # /start 로 채팅 ID 가 나중에 잡히면 다음 재시작 때도 쓰도록 같이 저장한다
+    if tg.bot_token and tg.chat_id:
+        saved = load_saved_settings()
+        if saved['token'] == tg.bot_token and saved['chat_id'] != tg.chat_id:
+            save_settings(tg.bot_token, tg.chat_id)
     return jsonify(tg.get_status())
 
 
