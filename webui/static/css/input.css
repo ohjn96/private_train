@@ -7,7 +7,7 @@
 body { font-feature-settings: "tnum" 0; }
 /* 한국어는 단어 중간에서 끊지 않는다 ("멈췄 / 어요" 방지). 아주 긴 단어만 끊는다 */
 body { word-break: keep-all; overflow-wrap: anywhere; }
-.tabular { }
+.tabular { font-variant-numeric: tabular-nums; }
 /* 고른 열차: 파랑 테두리 + 옅은 파랑 바탕 (표의 행과 폰의 카드 모두) */
 .train-row.selected { background-color: theme('colors.rail.accentFaint'); }
 /* 표의 행은 tr 에 그림자가 안 그려져서 칸(td)에 칠한다 */
