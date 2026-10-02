@@ -15,13 +15,13 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.services.telegram_service import TelegramService
+from webui.services.telegram_service import TelegramService
 
 
 def setUpModule():
     """예외를 일부러 던지는 테스트가 많아 로그가 출력을 덮는다."""
     import logging
-    logging.getLogger('app.services.telegram_service').setLevel(logging.CRITICAL)
+    logging.getLogger('webui.services.telegram_service').setLevel(logging.CRITICAL)
 
 
 def message(update_id, text, chat_id='555'):
@@ -56,7 +56,7 @@ class PollLoopTest(unittest.TestCase):
 
         with mock.patch.object(self.tg, '_get_updates', side_effect=get_updates), \
              mock.patch.object(self.tg, '_handle_update', side_effect=handler), \
-             mock.patch('app.services.telegram_service.time.sleep'):
+             mock.patch('webui.services.telegram_service.time.sleep'):
             self.tg._polling_active = True
             self.tg._poll_loop()
 

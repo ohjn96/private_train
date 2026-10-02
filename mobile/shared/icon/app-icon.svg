@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 열차예약 앱 아이콘 원본 (시안 1-A: 단색 딥블루 + 흰 열차 정면). 색·크기는 README.md -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" fill="#1E4FD8"/>
+  <g transform="translate(512 512) scale(1.08) translate(-512 -530)">
+    <!-- 차체 -->
+    <path d="M342 700V420C342 300 420 250 512 250C604 250 682 300 682 420V700Q682 730 652 730H372Q342 730 342 700Z" fill="#FFFFFF"/>
+    <!-- 앞 유리 · 전조등 (배경색으로 뚫음) -->
+    <path d="M392 470V405C392 358 440 330 512 330C584 330 632 358 632 405V470Q632 492 610 492H414Q392 492 392 470Z" fill="#1E4FD8"/>
+    <circle cx="424" cy="612" r="32" fill="#1E4FD8"/>
+    <circle cx="600" cy="612" r="32" fill="#1E4FD8"/>
+    <!-- 바퀴 다리 · 레일 -->
+    <path d="M430 736L392 800M594 736L632 800" stroke="#FFFFFF" stroke-width="36" stroke-linecap="round" fill="none"/>
+    <path d="M344 808H680" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>

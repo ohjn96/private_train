@@ -17,10 +17,10 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import main as main_module
-from app import headless
-from app.services.base_service import SeatOption, TrainInfo, TrainProvider
-from app.services.telegram_service import TelegramService
+import desktop.main as main_module
+from desktop import headless
+from webui.services.base_service import SeatOption, TrainInfo, TrainProvider
+from webui.services.telegram_service import TelegramService
 
 
 def make_train(number='101', dep_time='080000', general=True, special=False):
@@ -219,14 +219,14 @@ class RunTest(unittest.TestCase):
         self.assertIn('101', output)  # 조회된 열차를 함께 보여준다
 
     def test_dry_run_does_not_start_macro(self):
-        with mock.patch('app.routes.reservation.run_reservation_loop') as loop:
+        with mock.patch('webui.routes.reservation.run_reservation_loop') as loop:
             code, output = self.run_main(BASE_ARGS + ['--from', '08:00', '--dry-run'])
         self.assertEqual(code, headless.EXIT_OK)
         self.assertIn('dry-run', output)
         loop.assert_not_called()
 
     def test_search_covers_the_requested_window(self):
-        with mock.patch('app.routes.reservation.run_reservation_loop'):
+        with mock.patch('webui.routes.reservation.run_reservation_loop'):
             self.run_main(BASE_ARGS + ['--from', '08:00', '--to', '10:00'])
         kwargs = self.service.search.call_args.kwargs
         self.assertEqual(kwargs['time'], '080000')
@@ -234,7 +234,7 @@ class RunTest(unittest.TestCase):
         self.assertTrue(kwargs['include_no_seats'])
 
     def test_macro_receives_selected_trains(self):
-        with mock.patch('app.routes.reservation.run_reservation_loop') as loop:
+        with mock.patch('webui.routes.reservation.run_reservation_loop') as loop:
             code, _ = self.run_main(BASE_ARGS + ['--from', '08:00', '--to', '09:00'])
         self.assertEqual(code, headless.EXIT_OK)
         service, provider, trains, seat_option, card = loop.call_args.args
@@ -246,17 +246,17 @@ class RunTest(unittest.TestCase):
         self.assertEqual(loop.call_args.kwargs, {'passenger_count': 1, 'sequential': False})
 
     def test_sequential_only_applies_to_multiple_seats(self):
-        with mock.patch('app.routes.reservation.run_reservation_loop') as loop:
+        with mock.patch('webui.routes.reservation.run_reservation_loop') as loop:
             self.run_main(BASE_ARGS + ['--from', '08:00', '--sequential'])
         self.assertFalse(loop.call_args.kwargs['sequential'])
 
         self.telegram.set_macro_state(False)
-        with mock.patch('app.routes.reservation.run_reservation_loop') as loop:
+        with mock.patch('webui.routes.reservation.run_reservation_loop') as loop:
             self.run_main(BASE_ARGS + ['--from', '08:00', '--passengers', '2', '--sequential'])
         self.assertEqual(loop.call_args.kwargs, {'passenger_count': 2, 'sequential': True})
 
     def test_credentials_are_handed_to_telegram_for_recovery(self):
-        with mock.patch('app.routes.reservation.run_reservation_loop'):
+        with mock.patch('webui.routes.reservation.run_reservation_loop'):
             self.run_main(BASE_ARGS + ['--from', '08:00'])
         self.assertEqual(
             self.telegram._stored_credentials,
@@ -268,7 +268,7 @@ class RecoveryWithoutFlaskTest(unittest.TestCase):
     """헤드리스에는 Flask 세션이 없다. 그래도 재로그인이 되어야 한다."""
 
     def test_falls_back_to_service_credentials(self):
-        import app.routes.reservation as reservation
+        import webui.routes.reservation as reservation
 
         service = mock.Mock()
         service.credentials = {'user_id': 'tester', 'password': 'secret'}
@@ -281,7 +281,7 @@ class RecoveryWithoutFlaskTest(unittest.TestCase):
         service.login.assert_called_once_with('tester', 'secret')
 
     def test_reports_failure_when_nothing_is_stored(self):
-        import app.routes.reservation as reservation
+        import webui.routes.reservation as reservation
 
         service = mock.Mock(spec=['logout', 'login'])  # credentials 속성 없음
         ok, message = reservation.attempt_recovery('korail', service)
@@ -411,7 +411,7 @@ class EntryPointTest(unittest.TestCase):
             main_module._force_utf8_output()
 
     def test_flag_is_stripped_before_handoff(self):
-        with mock.patch('app.headless.main', return_value=0) as headless_main:
+        with mock.patch('desktop.headless.main', return_value=0) as headless_main:
             main_module.run_headless(['--headless', '--id', 'x', '--pw', 'y'])
         headless_main.assert_called_once_with(['--id', 'x', '--pw', 'y'])
 

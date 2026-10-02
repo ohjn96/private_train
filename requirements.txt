@@ -20,6 +20,9 @@ idna==3.8
 # Cryptography
 pycryptodome==3.20.0
 
+# 시간대 (Asia/Seoul). 윈도우엔 시스템 시간대 DB 가 없어서 필요하다
+tzdata==2025.2
+
 # Build Tools
 pyinstaller==6.11.1
 pyinstaller-hooks-contrib==2025.0

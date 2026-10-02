@@ -6,8 +6,8 @@
   "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "scripts": {
-    "build:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --minify",
-    "watch:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --watch",
+    "build:css": "tailwindcss -i ./webui/static/css/input.css -o ./webui/static/css/output.css --minify",
+    "watch:css": "tailwindcss -i ./webui/static/css/input.css -o ./webui/static/css/output.css --watch",
     "dev": "npm run watch:css"
   },
   "devDependencies": {

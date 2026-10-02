@@ -1,0 +1,124 @@
+name: Build Android App
+
+# v 태그를 푸시하면 APK 를 빌드해 Release 에 첨부합니다 (데스크톱 빌드와 같은 태그).
+#   git tag v2.4.0 && git push origin v2.4.0
+# 수동 실행(Actions 탭 > Run workflow)도 가능하며, 이때는 아티팩트만 남습니다.
+#
+# 서명: 저장소 Settings > Secrets > Actions 에 아래 네 개를 넣으면 릴리스 키로 서명합니다.
+#   ANDROID_KEYSTORE_BASE64   keystore 파일을 base64 로 인코딩한 값
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+# 태그 빌드(릴리스)는 네 개가 모두 없으면 실패합니다. 디버그 키로 서명한 APK 는 빌드마다
+# 키가 달라서 기존 설치본을 업데이트할 수 없기 때문입니다.
+# 수동 실행은 시크릿이 없으면 디버그 키로 서명하고, 파일 이름에 -debugsigned 를 붙입니다.
+# (키 만드는 법은 mobile/android/README.md)
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Release 업로드
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Chaquopy 는 빌드하는 쪽에도 앱과 같은 파이썬(3.12)이 있어야 한다
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: VERSION 과 태그 일치 확인
+        run: |
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "태그(${GITHUB_REF_NAME#v}) 와 VERSION 파일($VERSION) 이 다릅니다." >&2
+            exit 1
+          fi
+
+      - name: 서명 키 준비
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # 값은 출력하지 않는다. 비어 있는 시크릿의 "이름" 만 알린다.
+          missing=""
+          [ -n "$KEYSTORE_BASE64" ]   || missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ]         || missing="$missing ANDROID_KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ]      || missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -z "$missing" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "APK_SUFFIX=" >> "$GITHUB_ENV"
+            echo "릴리스 키로 서명합니다."
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "::error::릴리스 서명 키 시크릿이 없습니다:$missing. 디버그 키로 서명하면 기존 설치본을 업데이트할 수 없어 릴리스를 만들지 않습니다. 저장소 Settings > Secrets > Actions 에 등록하세요 (mobile/android/README.md)."
+            exit 1
+          else
+            echo "APK_SUFFIX=-debugsigned" >> "$GITHUB_ENV"
+            echo "::warning::서명 키 시크릿이 없어($missing) 디버그 키로 서명합니다. 이 APK 는 시험용이며, 설치된 앱을 업데이트할 수 없습니다."
+          fi
+
+      - name: 빌드
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # 태그 빌드는 gradle 에서도 한 번 더 막는다 (키 없이 디버그 서명으로 새지 않게)
+          ANDROID_REQUIRE_RELEASE_KEY: ${{ github.ref_type == 'tag' && '1' || '' }}
+        run: ./gradlew assembleRelease --console=plain
+
+      - name: 릴리스 키로 서명됐는지 확인
+        if: github.ref_type == 'tag'
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          CERT=$("$APKSIGNER" verify --print-certs mobile/android/app/build/outputs/apk/release/app-release.apk)
+          if echo "$CERT" | grep -q "CN=Android Debug"; then
+            echo "::error::APK 가 디버그 키로 서명됐습니다. 릴리스로 내보내지 않습니다."
+            exit 1
+          fi
+
+      - name: 이름 정리
+        run: |
+          mkdir -p dist
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk \
+             "dist/TrainReservationApp-v${VERSION}${APK_SUFFIX}.apk"
+          ls -la dist
+
+      - name: 아티팩트 업로드
+        uses: actions/upload-artifact@v7
+        with:
+          name: TrainReservationApp-v${{ env.VERSION }}${{ env.APK_SUFFIX }}-android
+          path: dist/*.apk
+
+      - name: Release 에 첨부
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 데스크톱 빌드가 Release 를 먼저 만들었을 수도, 아닐 수도 있다
+          # 데스크톱·안드로이드·iOS 빌드가 같은 Release 를 동시에 만들 수 있어, 만들기 실패는 무시하고
+          # (이미 있음) 올리기만 한다. 버전에 '-' 가 있으면(3.0.0-beta.0) 미리보기(pre-release)로.
+          PRE=""; case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "" $PRE \
+            || sleep 5
+          gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber

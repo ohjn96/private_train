@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 적응형 아이콘 앞면: 흰 열차 정면 (원본 mobile/shared/icon/app-icon.svg 와 같은 도형).
+     108dp 캔버스 중 보이는 72dp 에 원본 1024 정사각형이 들어가게 줄였다 (0.667 × 1.08 = 0.72).
+     열차는 중심에서 반지름 약 25dp 안이라 안전 영역(지름 66dp) 안에 있다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:pivotX="512"
+        android:pivotY="530"
+        android:scaleX="0.72"
+        android:scaleY="0.72"
+        android:translateY="-18">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M342,700V420C342,300 420,250 512,250C604,250 682,300 682,420V700Q682,730 652,730H372Q342,730 342,700Z" />
+        <path
+            android:fillColor="@color/ic_launcher_background"
+            android:pathData="M392,470V405C392,358 440,330 512,330C584,330 632,358 632,405V470Q632,492 610,492H414Q392,492 392,470Z" />
+        <path
+            android:fillColor="@color/ic_launcher_background"
+            android:pathData="M392,612a32,32 0,1 0,64 0a32,32 0,1 0,-64 0zM568,612a32,32 0,1 0,64 0a32,32 0,1 0,-64 0z" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="36"
+            android:strokeLineCap="round"
+            android:pathData="M430,736L392,800M594,736L632,800" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="24"
+            android:strokeLineCap="round"
+            android:pathData="M344,808H680" />
+    </group>
+</vector>

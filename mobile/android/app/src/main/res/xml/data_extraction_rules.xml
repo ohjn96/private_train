@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ : 클라우드 백업과 기기 간 이전(새 폰으로 옮기기) 모두에서 앱 데이터를 전부 뺀다.
+  (allowBackup="false" 만으로는 기기 간 이전이 막히지 않는다.)
+  앱 토큰, 텔레그램 봇 토큰, 세션 키, 암호화된 매크로 작업(코레일 로그인·카드)이 여기 있다.
+  암호화 키는 Keystore 에 남아 옮겨지지도 않으므로 옮겨 봐야 쓸모도 없다.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>

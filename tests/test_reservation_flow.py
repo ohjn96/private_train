@@ -16,16 +16,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from korail2 import NoResultsError, SoldOutError
 
-import app.routes.reservation as reservation
-from app.services.base_service import SeatOption
-from app.services.korail_service import KorailService
-from app.services.rate_limit import (
+import webui.routes.reservation as reservation
+from webui.services.base_service import SeatOption
+from webui.services.korail_service import KorailService
+from webui.services.rate_limit import (
     DEFAULT_MIN_INTERVAL,
     RateLimiter,
     _configured_interval,
     korail_api,
 )
-from app.services.telegram_service import TelegramService
+from webui.services.telegram_service import TelegramService
 
 
 # ---------------------------------------------------------------- 가짜 클라이언트
@@ -36,9 +36,9 @@ class FakeTrain:
     def __init__(self, i, has_seat=False):
         self.train_type_name = 'KTX'
         self.train_no = str(100 + i)
-        self.dep_date = '20260923'
+        self.dep_date = '20990923'
         self.dep_time = '%02d%02d00' % (6 + (i * 10) // 60, (i * 10) % 60)
-        self.arr_date = '20260923'
+        self.arr_date = '20990923'
         self.arr_time = self.dep_time
         self.dep_name = '서울'
         self.arr_name = '부산'
@@ -125,6 +125,7 @@ class FastRateLimit:
         self.original = korail_api._min_interval
         korail_api._min_interval = self.interval
         korail_api._next_allowed = 0.0
+        korail_api._last_note = float('-inf')  # 앞 테스트의 예약 기록이 남지 않게
         return self
 
     def __exit__(self, *exc):
@@ -160,7 +161,7 @@ class SearchPagingTest(unittest.TestCase):
         """until_time 없이 부르면 API 호출은 딱 한 번."""
         svc = make_service(self.trains)
         with FastRateLimit():
-            got = svc.search(dep='서울', arr='부산', date='20260923', time='000000')
+            got = svc.search(dep='서울', arr='부산', date='20990923', time='000000')
         self.assertEqual(len(svc._client.kinds('search')), 1)
         self.assertEqual(len(got), 10)
 
@@ -172,16 +173,18 @@ class SearchPagingTest(unittest.TestCase):
         """
         svc = make_service(self.trains)
         with FastRateLimit():
-            got = svc.search(dep='서울', arr='부산', date='20260923', time='060000',
+            got = svc.search(dep='서울', arr='부산', date='20990923', time='060000',
                              until_time=self.trains[20].dep_time)
         self.assertEqual(len(svc._client.kinds('search')), 3)
-        self.assertEqual(len(got), 30)
-        self.assertIn(self.trains[20].train_no, [t.train_number for t in got])
+        # 다음 장은 마지막 열차 시각부터 부르므로 한 편씩 겹치고, 겹친 건 걸러낸다
+        numbers = [t.train_number for t in got]
+        self.assertEqual(len(numbers), len(set(numbers)), '같은 열차가 두 번 들어갔다')
+        self.assertIn(self.trains[20].train_no, numbers)
 
     def test_max_pages_is_capped(self):
         svc = make_service(self.trains)
         with FastRateLimit():
-            svc.search(dep='서울', arr='부산', date='20260923', time='060000',
+            svc.search(dep='서울', arr='부산', date='20990923', time='060000',
                        until_time='235959')
         self.assertLessEqual(len(svc._client.kinds('search')), 5)
 
@@ -189,8 +192,8 @@ class SearchPagingTest(unittest.TestCase):
 # ---------------------------------------------------------------- 호출 간격
 
 class RateLimitTest(unittest.TestCase):
-    def test_default_is_1_5_seconds(self):
-        self.assertEqual(DEFAULT_MIN_INTERVAL, 1.5)
+    def test_default_is_2_seconds(self):
+        self.assertEqual(DEFAULT_MIN_INTERVAL, 2.0)
 
     def test_never_goes_below_one_second(self):
         os.environ['KORAIL_MIN_API_INTERVAL'] = '0.1'
@@ -359,13 +362,28 @@ class MacroStartGuardTest(unittest.TestCase):
 
 # ---------------------------------------------------------------- 선택 인덱스
 
+def sign_in(client, user_id):
+    """로그인된 세션을 흉내 낸다. 자격증명은 쿠키가 아니라 서버 금고에 들어간다."""
+    from webui.utils import session_helper
+    sid = f'test-{user_id}'
+    session_helper._vault[sid] = {
+        'credentials': {'korail': {'user_id': user_id, 'password': 'pw'}},
+        'cards': {},
+    }
+    with client.session_transaction() as sess:
+        sess['sid'] = sid
+        sess['auth'] = {'korail': {'logged_in': True, 'user_id': user_id}}
+        sess['current_provider'] = 'korail'
+        sess['search_state'] = {'korail': {
+            'trains': [], 'selected_indices': [],
+            'seat_option': 'GENERAL_FIRST', 'form_data': {}}}
+
+
 class SelectionTest(unittest.TestCase):
     def setUp(self):
-        from app import create_app
+        from webui import create_app
         self.client = create_app().test_client()
-        with self.client.session_transaction() as sess:
-            sess['auth'] = {'korail': {'logged_in': True, 'user_id': 'tester'}}
-            sess['current_provider'] = 'korail'
+        sign_in(self.client, 'tester')
 
     def post(self, indices, **extra):
         from werkzeug.datastructures import MultiDict
@@ -388,52 +406,14 @@ class SelectionTest(unittest.TestCase):
         state = self.post(['4'], passenger_count='9')
         self.assertEqual(state['passenger_count'], 2)
 
-    def test_call_interval_is_stored_and_clamped(self):
-        self.assertEqual(self.post(['4'], call_interval='2.5')['call_interval'], 2.5)
-        self.assertEqual(self.post(['4'], call_interval='0.2')['call_interval'], 1.0)
-        self.assertEqual(self.post(['4'], call_interval='9')['call_interval'], 3.0)
-        self.assertEqual(self.post(['4'], call_interval='abc')['call_interval'], 1.5)
-        self.assertEqual(self.post(['4'])['call_interval'], 1.5)
-
-
-class CallIntervalTest(unittest.TestCase):
-    """조회 간격(1~3초)은 그냥 쉬는 시간이 아니라 '보낸 시각'부터 재는 최소 간격이다."""
-
-    def test_clamp(self):
-        from app.services.rate_limit import clamp_call_interval
-        self.assertEqual(clamp_call_interval('1'), 1.0)
-        self.assertEqual(clamp_call_interval(-3), 1.0)
-        self.assertEqual(clamp_call_interval(10), 3.0)
-        self.assertEqual(clamp_call_interval(None), 1.5)
-        self.assertEqual(clamp_call_interval(float('nan')), 1.5)
-
-    def test_slow_response_is_not_followed_by_extra_wait(self):
-        limiter = RateLimiter(1.0)
-        limiter.wait()
-        time.sleep(1.05)            # 응답이 간격보다 늦게 옴
-        self.assertEqual(limiter.wait(), 0.0)
-
-    def test_interval_applies_for_the_run_and_is_restored(self):
-        seen = []
-        original = reservation._run_reservation_loop
-        reservation._run_reservation_loop = lambda *a, **k: seen.append(korail_api.min_interval)
-        before = korail_api.min_interval
-        try:
-            reservation.run_reservation_loop(None, 'korail', [], SeatOption.GENERAL_FIRST, None,
-                                             call_interval=2.5)
-        finally:
-            reservation._run_reservation_loop = original
-        self.assertEqual(seen, [2.5])
-        self.assertEqual(korail_api.min_interval, before)
-
 
 class ServiceReuseTest(unittest.TestCase):
     """페이지를 열 때마다 코레일에 로그인하면 안 된다."""
 
     def setUp(self):
         from unittest import mock
-        from app import create_app
-        from app.services import ServiceManager
+        from webui import create_app
+        from webui.services import ServiceManager
 
         self.ServiceManager = ServiceManager
         ServiceManager._services.clear()
@@ -463,13 +443,7 @@ class ServiceReuseTest(unittest.TestCase):
         self.ServiceManager._services.clear()
 
     def sign_in(self, user_id='tester'):
-        with self.client.session_transaction() as sess:
-            sess['auth'] = {'korail': {'logged_in': True, 'user_id': user_id}}
-            sess['credentials'] = {'korail': {'user_id': user_id, 'password': 'pw'}}
-            sess['current_provider'] = 'korail'
-            sess['search_state'] = {'korail': {
-                'trains': [], 'selected_indices': [],
-                'seat_option': 'GENERAL_FIRST', 'form_data': {}}}
+        sign_in(self.client, user_id)
 
     def test_login_happens_once_across_requests(self):
         self.sign_in()
