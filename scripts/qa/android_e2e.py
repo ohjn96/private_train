@@ -405,13 +405,13 @@ def s_offline(tok):
         ok = wait_for(lambda: health(tok), 120, 2)
         info = wait_for(lambda: webview_eval(
             "(() => { const b = getComputedStyle(document.body); const btn = document.querySelector('button[type=submit]');"
-            " return {title: document.title, tailwind: typeof tailwind !== 'undefined', bg: b.backgroundColor,"
+            " return {title: document.title, tailwind: [...document.styleSheets].some(s => (s.href || '').includes('/static/css/app.css') && s.cssRules.length > 0), bg: b.backgroundColor,"
             " btn: btn ? getComputedStyle(btn).backgroundColor : null,"
             " font: b.fontFamily, fontsLoaded: [...new Set([...document.fonts].filter(f => f.status === 'loaded').map(f => f.family))]} })()"), 40, 2)
         shot = screencap('04_offline')
         styled = bool(info) and info.get('tailwind') and info.get('bg') == 'rgb(246, 244, 240)' \
             and info.get('btn') == 'rgb(200, 16, 46)'
-        record('오프라인 실행에도 화면 스타일 유지 (Tailwind 내장)', ok and styled, f'{info} {shot}')
+        record('오프라인 실행에도 화면 스타일 유지 (app.css 내장)', ok and styled, f'{info} {shot}')
     finally:
         sh('cmd connectivity airplane-mode disable')
         sh('svc wifi enable')

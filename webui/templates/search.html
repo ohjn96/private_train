@@ -15,19 +15,19 @@
 
 {% macro runbar(extra='') -%}
 <a href="#/run" data-runbar aria-label="실행 중인 매크로 보기" class="hidden {{ extra }} min-h-[48px] pl-3.5 pr-2 rounded-[14px] bg-rail-ink text-white items-center gap-2.5">
-    <span class="w-2 h-2 rounded-full bg-[#4ADE80] shadow-[0_0_0_3px_rgba(74,222,128,0.25)] flex-shrink-0"></span>
+    <span class="w-2 h-2 rounded-full bg-rail-okGlow shadow-[0_0_0_3px_rgba(74,222,128,0.25)] flex-shrink-0"></span>
     <span class="text-sm font-bold whitespace-nowrap">실행 중</span>
-    <span data-runbar-text class="flex-1 min-w-0 truncate text-[13px] text-[#C9C2B8] tabular"></span>
+    <span data-runbar-text class="flex-1 min-w-0 truncate text-[13px] text-rail-onDarkMuted tabular"></span>
     <span class="flex items-center gap-0.5 text-[13px] font-semibold whitespace-nowrap">보기{{ ic_chev() }}</span>
 </a>
 {%- endmacro %}
 
 {% macro bg_warn() -%}
 {# 폰 앱(안드로이드)만: 배터리 최적화 예외가 아니면 한 줄로 알리고 다시 요청하게 한다. 다른 곳에선 /__app/battery 가 404 라 숨은 채로 남는다. #}
-<div data-bg-warn role="status" class="hidden items-start gap-3 rounded-[14px] bg-[#FDF1DD] px-3.5 py-3">
+<div data-bg-warn role="status" class="hidden items-start gap-3 rounded-[14px] bg-rail-warnSoft px-3.5 py-3">
     <div class="flex-1 min-w-0">
-        <p class="text-[13px] font-semibold text-[#7A4200]">배터리 최적화가 켜져 있어요</p>
-        <p class="text-xs leading-relaxed text-[#7A4200]">화면이 꺼지면 예약 찾기가 멈출 수 있어요.<span data-bg-tip class="block mt-0.5"></span></p>
+        <p class="text-[13px] font-semibold text-rail-warnInk">배터리 최적화가 켜져 있어요</p>
+        <p class="text-xs leading-relaxed text-rail-warnInk">화면이 꺼지면 예약 찾기가 멈출 수 있어요.<span data-bg-tip class="block mt-0.5"></span></p>
     </div>
     <button type="button" data-bg-fix class="h-9 px-3.5 rounded-xl bg-ktx-primary hover:bg-ktx-secondary text-white text-[13px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors">예외 요청</button>
 </div>
@@ -53,7 +53,7 @@
 <!-- PC: 로고 옆 탭 (폰은 아래 탭 바) -->
 <header class="hidden lg:block border-b border-rail-line bg-rail-ground">
     <div class="mx-auto max-w-5xl px-6 h-16 flex items-center gap-7">
-        <a href="#/search" class="flex items-center gap-2.5" aria-label="열차예약 홈">
+        <a href="#/search" class="min-h-[44px] flex items-center gap-2.5" aria-label="열차예약 홈">
             <span class="w-8 h-8 rounded-[9px] bg-ktx-primary flex items-center justify-center flex-shrink-0">
                 <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14"/><path d="M9 21l-2-4"/><path d="M15 21l2-4"/></svg>
             </span>
@@ -69,9 +69,9 @@
         </nav>
         <span class="flex-1"></span>
         <a href="#/run" data-runpill aria-label="실행 중인 매크로 보기" class="hidden h-10 pl-3.5 pr-2.5 rounded-full bg-rail-ink text-white items-center gap-2.5 text-[13px]">
-            <span class="w-2 h-2 rounded-full bg-[#4ADE80] shadow-[0_0_0_3px_rgba(74,222,128,0.25)] flex-shrink-0"></span>
+            <span class="w-2 h-2 rounded-full bg-rail-okGlow shadow-[0_0_0_3px_rgba(74,222,128,0.25)] flex-shrink-0"></span>
             <span class="font-bold">실행 중</span>
-            <span data-runbar-text class="text-[#C9C2B8] tabular whitespace-nowrap"></span>
+            <span data-runbar-text class="text-rail-onDarkMuted tabular whitespace-nowrap"></span>
             <span class="flex items-center gap-0.5 font-semibold">보기{{ ic_chev() }}</span>
         </a>
     </div>
@@ -82,39 +82,6 @@
 {% block footer %}{% endblock %}
 
 {% block content %}
-<style>
-    /* 해시 주소에 맞는 화면 하나만 보인다 */
-    .view.is-active { display: flex; }
-    .btn-primary, .btn-secondary {
-        height: 52px; border-radius: 14px; font-weight: 700; white-space: nowrap;
-        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-        transition: background-color .15s;
-    }
-    .btn-primary { padding: 0 18px; background: #1E4FD8; color: #FFFFFF; font-size: 16px; }
-    .btn-primary:hover { background: #1740B0; }
-    .btn-primary[disabled], .btn-primary[aria-disabled="true"] { background: #ECE8E2; color: #8A8279; cursor: not-allowed; }
-    .btn-secondary { padding: 0 16px; border: 1.5px solid #D6D0C8; background: #FFFFFF; color: #1A1714; font-size: 15px; flex-shrink: 0; }
-    .btn-secondary:hover { border-color: #6B645C; }
-    .btn-primary.hidden, .btn-secondary.hidden { display: none; }
-    /* 폰: 아래 탭 바 바로 위에 붙는 다음 단계 버튼 */
-    .action-bar {
-        position: fixed; left: 0; right: 0; z-index: 30;
-        bottom: calc(68px + env(safe-area-inset-bottom));
-        background: #FFFFFF; border-top: 1px solid #E6E1DA;
-        box-shadow: 0 -8px 20px rgba(26, 23, 20, .06); padding: 10px 16px;
-    }
-    @media (min-width: 1024px) {
-        .action-bar { position: static; background: transparent; border: 0; box-shadow: none; padding: 0; }
-        .action-bar-float {
-            position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px;
-            width: min(1000px, calc(100% - 48px)); background: #FFFFFF; border: 1px solid #E6E1DA;
-            border-radius: 18px; box-shadow: 0 10px 30px rgba(26, 23, 20, .10); padding: 12px 12px 12px 24px;
-        }
-    }
-    nav[data-testid="tabs-mobile"] .tab-link[aria-current="page"] { color: #1E4FD8; font-weight: 700; }
-    nav[data-testid="tabs-desktop"] .tab-link[aria-current="page"] { color: #1A1714; font-weight: 700; box-shadow: inset 0 -2px 0 #1E4FD8; }
-    .interval-opt[aria-checked="true"] { background: #FFFFFF; color: #1A1714; font-weight: 700; box-shadow: 0 1px 2px rgba(26, 23, 20, .12); }
-</style>
 {% set current_auth = session.get('auth', {}).get(provider, {}) %}
 <!-- ① 조회 -->
 <section data-view="search" class="view hidden flex-col gap-3 lg:gap-4">
@@ -137,7 +104,7 @@
                         <input type="text" name="dep" id="depStation" data-testid="search-from"
                                autocomplete="off" placeholder="출발역"
                                value="{{ form_data.dep }}"
-                               class="w-full py-1 bg-transparent border-0 border-b-2 border-transparent focus:border-ktx-primary focus:outline-none text-2xl font-bold tracking-tight text-rail-ink placeholder:text-rail-line">
+                               class="w-full min-h-[44px] lg:min-h-0 py-1 bg-transparent border-0 border-b-2 border-transparent focus:border-ktx-primary focus:outline-none text-2xl font-bold tracking-tight text-rail-ink placeholder:text-rail-line">
                         <ul id="depStationList" data-for="depStation"
                             class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-rail-line rounded-2xl shadow-lg py-1">
                             {% for station in stations %}
@@ -156,7 +123,7 @@
                         <input type="text" name="arr" id="arrStation" data-testid="search-to"
                                autocomplete="off" placeholder="도착역"
                                value="{{ form_data.arr }}"
-                               class="w-full py-1 bg-transparent border-0 border-b-2 border-transparent focus:border-ktx-primary focus:outline-none text-2xl font-bold tracking-tight text-rail-ink text-right placeholder:text-rail-line">
+                               class="w-full min-h-[44px] lg:min-h-0 py-1 bg-transparent border-0 border-b-2 border-transparent focus:border-ktx-primary focus:outline-none text-2xl font-bold tracking-tight text-rail-ink text-right placeholder:text-rail-line">
                         <ul id="arrStationList" data-for="arrStation"
                             class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-rail-line rounded-2xl shadow-lg py-1 text-left">
                             {% for station in stations %}
@@ -175,11 +142,11 @@
                         <label for="dateInput" class="sr-only">날짜</label>
                         <input type="text" name="date" id="dateInput" data-testid="date-picker" value="{{ form_data.date }}"
                                placeholder="날짜 선택" readonly
-                               class="flex-1 min-w-0 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink cursor-pointer">
+                               class="flex-1 min-w-0 h-11 lg:h-10 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink cursor-pointer">
                         <div class="flex gap-1.5" role="group" aria-label="빠른 날짜">
-                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="0">오늘</button>
-                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="1">내일</button>
-                            <button type="button" class="quick-date h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="2">모레</button>
+                            <button type="button" class="quick-date h-11 lg:h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="0">오늘</button>
+                            <button type="button" class="quick-date h-11 lg:h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="1">내일</button>
+                            <button type="button" class="quick-date h-11 lg:h-10 px-3 rounded-full border border-rail-line bg-white text-sm font-medium text-rail-ink" data-offset="2">모레</button>
                         </div>
                     </div>
                     <div class="h-px bg-rail-line/70"></div>
@@ -187,7 +154,7 @@
                         <svg class="w-5 h-5 text-rail-muted flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                         <label for="timeSelect" class="sr-only">출발 시간</label>
                         <select name="time" id="timeSelect" data-testid="time-picker"
-                                class="flex-1 min-w-0 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink appearance-none cursor-pointer">
+                                class="flex-1 min-w-0 h-11 lg:h-10 py-2 bg-transparent border-0 focus:outline-none text-base font-semibold text-rail-ink appearance-none cursor-pointer">
                             {% for h in range(24) %}
                             {% set hh = "%02d:00"|format(h) %}
                             <option value="{{ hh }}" {% if form_data.time == hh %}selected{% endif %}>{{ "%02d시 이후 출발"|format(h) }}</option>
@@ -227,30 +194,30 @@
 
             <!-- 인원 / 좌석 / 호출 간격: 작은 알약 모양 선택 (390px 폰에서도 한 줄) -->
             <div class="flex flex-wrap gap-1.5 sm:gap-2">
-                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0">
+                <label class="h-11 lg:h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0">
                     <span class="text-rail-muted whitespace-nowrap">인원</span>
                     <select id="passengerCount" data-testid="passenger-count"
-                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer"
+                            class="self-stretch bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer"
                             onchange="updatePassengerModeVisibility()">
                         <option value="1" selected>1명</option>
                         <option value="2">2명</option>
                     </select>
                 </label>
-                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0">
+                <label class="h-11 lg:h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0">
                     <span class="text-rail-muted whitespace-nowrap">좌석</span>
                     <select id="seatOption" data-testid="seat-option"
-                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer">
+                            class="self-stretch bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer">
                         <option value="GENERAL_FIRST">일반 우선</option>
                         <option value="GENERAL_ONLY">일반만</option>
                         <option value="SPECIAL_FIRST">특실 우선</option>
                         <option value="SPECIAL_ONLY">특실만</option>
                     </select>
                 </label>
-                <label class="h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0"
+                <label class="h-11 lg:h-10 pl-2.5 pr-1 rounded-[10px] border border-rail-line bg-white flex items-center gap-0.5 text-[13px] flex-shrink-0"
                        title="코레일에 조회를 보내는 간격. 짧을수록(1초) 빨리 잡지만 차단 위험이 커지고, 길수록(3초) 안전합니다.">
                     <span class="text-rail-muted whitespace-nowrap">간격</span>
                     <select id="callInterval" data-testid="call-interval"
-                            class="bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer">
+                            class="self-stretch bg-transparent border-0 focus:outline-none font-semibold text-rail-ink text-sm pr-0.5 cursor-pointer">
                         <option value="1">1초</option>
                         <option value="1.5">1.5초</option>
                         <option value="2" selected>2초</option>
@@ -259,7 +226,7 @@
                     </select>
                 </label>
                 <select id="passengerMode" data-testid="passenger-mode"
-                        class="hidden h-10 px-3 rounded-[10px] border border-rail-line bg-white font-semibold text-rail-ink text-sm">
+                        class="hidden h-11 lg:h-10 px-3 rounded-[10px] border border-rail-line bg-white font-semibold text-rail-ink text-sm">
                     <option value="together" selected>2명 함께 예약</option>
                     <option value="sequential">1명씩 순차 예약 (취소표 노림)</option>
                 </select>
@@ -271,7 +238,7 @@
         <!-- Train Table (Desktop) -->
         <div class="hidden lg:block overflow-x-auto max-h-[600px] overflow-y-auto">
             <table class="min-w-full">
-                <thead class="bg-[#FAF8F5] sticky top-0 z-10 border-b border-[#EFEBE5]">
+                <thead class="bg-rail-subtle sticky top-0 z-10 border-b border-rail-lineSoft">
                     <tr>
                         <th class="px-6 py-3 text-left text-[13px] font-semibold text-rail-muted">열차</th>
                         <th class="px-6 py-3 text-left text-[13px] font-semibold text-rail-muted">시간</th>
@@ -279,9 +246,9 @@
                         <th class="px-6 py-3 text-center text-[13px] font-semibold text-rail-muted">일반실</th>
                     </tr>
                 </thead>
-                <tbody id="trainTableBody" class="bg-white divide-y divide-[#EFEBE5]">
+                <tbody id="trainTableBody" class="bg-white divide-y divide-rail-lineSoft">
                     {% for train in trains %}
-                    <tr class="train-row cursor-pointer transition-colors duration-150 hover:bg-[#FAF8F5]"
+                    <tr class="train-row cursor-pointer transition-colors duration-150 hover:bg-rail-subtle"
                         data-index="{{ train.index }}"
                         data-time="{{ train.dep_time }}"
                         data-testid="train-row-{{ train.index }}"
@@ -300,7 +267,7 @@
                                 </div>
                                 <div class="w-20 flex flex-col items-center gap-0.5">
                                     <span class="text-xs text-rail-muted whitespace-nowrap">{{ train.duration_formatted }}</span>
-                                    <span class="w-full h-px bg-[#D6D0C8]"></span>
+                                    <span class="w-full h-px bg-rail-lineStrong"></span>
                                 </div>
                                 <div class="text-center">
                                     <div class="text-xl font-bold tracking-tight text-rail-ink">{{ train.arr_time_formatted }}</div>
@@ -370,7 +337,7 @@
     </div>
     <!-- 다른 사람이 매크로를 쓰는 중일 때 (서버는 한 번에 한 명만) -->
     <p id="busyNotice" data-testid="busy-notice"
-       class="hidden w-full text-sm text-[#7A4200] bg-[#FDF1DD] rounded-xl px-3 py-2"></p>
+       class="hidden w-full text-sm text-rail-warnInk bg-rail-warnSoft rounded-xl px-3 py-2"></p>
 
     <!-- 아래 고정: "N편 선택 · 예약 시작 →" (실행 중이면 "바꿔서 시작 →") -->
     <div class="action-bar action-bar-float" id="searchActions" data-testid="search-actions">
@@ -427,7 +394,7 @@
             <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#0B6B3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
             <div>
                 <p class="text-[15px] font-bold text-rail-ok">자동결제까지 끝났어요</p>
-                <p class="text-[13px] text-[#245B3D]">등록한 카드로 결제했어요. 따로 할 일은 없어요.</p>
+                <p class="text-[13px] text-rail-okInk">등록한 카드로 결제했어요. 따로 할 일은 없어요.</p>
             </div>
         </div>
         <div id="payFailed" role="alert" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-dangerSoft border border-rail-danger">
@@ -438,15 +405,15 @@
                 <p class="pay-guide text-[13px] leading-relaxed text-rail-ink mt-1 font-semibold [word-break:keep-all]"></p>
             </div>
         </div>
-        <div id="payPending" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-[#FDF1DD]">
+        <div id="payPending" class="hidden mt-4 flex gap-3 items-start p-3.5 rounded-2xl bg-rail-warnSoft">
             <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#8A4B00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
             <div>
-                <p class="text-[15px] font-bold text-[#7A4200]">결제가 남았어요</p>
-                <p class="pay-guide text-[13px] leading-relaxed text-[#6B4A1E] [word-break:keep-all]"></p>
+                <p class="text-[15px] font-bold text-rail-warnInk">결제가 남았어요</p>
+                <p class="pay-guide text-[13px] leading-relaxed text-rail-warnBody [word-break:keep-all]"></p>
             </div>
         </div>
         <div class="mt-3 flex justify-end">
-            <button type="button" id="ackBtn" data-testid="ack-button" class="h-10 px-3 rounded-lg border border-rail-line text-sm hover:bg-rail-ground transition-colors">알림음 끄기</button>
+            <button type="button" id="ackBtn" data-testid="ack-button" class="h-11 lg:h-10 px-3 rounded-lg border border-rail-line text-sm hover:bg-rail-ground transition-colors">알림음 끄기</button>
         </div>
     </section>
 
@@ -456,9 +423,9 @@
             <!-- 실행 중 (상태 폴링이 채운다) -->
             <section id="macroHero" data-testid="macro-hero" class="hidden bg-rail-ink text-white rounded-[22px] p-5 lg:p-6 flex flex-col gap-3 lg:gap-4 lg:min-h-[340px]" aria-live="polite">
                 <div class="flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-[#4ADE80] shadow-[0_0_0_4px_rgba(74,222,128,0.25)] animate-pulse"></span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-rail-okGlow shadow-[0_0_0_4px_rgba(74,222,128,0.25)] animate-pulse"></span>
                     <span class="text-sm font-semibold">좌석 찾는 중</span>
-                    <span id="heroElapsed" class="text-[13px] text-[#C9C2B8] tabular"></span>
+                    <span id="heroElapsed" class="text-[13px] text-rail-onDarkMuted tabular"></span>
                     <span class="flex-1"></span>
                     <!-- 폰: 중단은 카드 위쪽 -->
                     <button type="button" id="heroStopBtn" data-testid="hero-stop"
@@ -469,11 +436,11 @@
                 </div>
                 <div class="flex items-end gap-2.5">
                     <span id="heroAttempt" class="text-[52px] lg:text-[64px] leading-none font-bold tracking-tight tabular">0</span>
-                    <span class="text-[15px] text-[#C9C2B8] pb-1.5 lg:pb-2">번째 조회</span>
+                    <span class="text-[15px] text-rail-onDarkMuted pb-1.5 lg:pb-2">번째 조회</span>
                 </div>
-                <p id="heroCurrent" class="text-sm lg:text-[15px] text-[#E8E2D9] min-h-[1.25rem] tabular"></p>
-                <p id="heroResumed" class="hidden text-[13px] leading-relaxed text-[#FDE68A]"></p>
-                <p class="text-[13px] leading-relaxed text-[#C9C2B8]">앱을 닫거나 다른 탭으로 가도 계속 찾아요. 끝나면 알림으로 알려드리고 여기서 결과 보기가 열려요.</p>
+                <p id="heroCurrent" class="text-sm lg:text-[15px] text-rail-onDark min-h-[1.25rem] tabular"></p>
+                <p id="heroResumed" class="hidden text-[13px] leading-relaxed text-rail-warnGlow"></p>
+                <p class="text-[13px] leading-relaxed text-rail-onDarkMuted">앱을 닫거나 다른 탭으로 가도 계속 찾아요. 끝나면 알림으로 알려드리고 여기서 결과 보기가 열려요.</p>
                 <div class="hidden lg:block flex-1"></div>
                 <!-- PC: 중단은 카드 아래쪽 (같은 동작) -->
                 <button type="button" data-stop-macro data-testid="hero-stop-desktop"
@@ -488,26 +455,26 @@
                 <div class="flex items-center gap-2">
                     <span id="runFinishedIcon" class="w-[22px] h-[22px] rounded-full flex items-center justify-center" aria-hidden="true"></span>
                     <span class="text-sm font-semibold">매크로가 끝났어요</span>
-                    <span id="runFinishedTime" class="ml-auto text-[13px] text-[#C9C2B8] tabular"></span>
+                    <span id="runFinishedTime" class="ml-auto text-[13px] text-rail-onDarkMuted tabular"></span>
                 </div>
                 <div class="flex items-end gap-2.5 flex-wrap">
                     <span id="runFinishedCount" class="text-[52px] lg:text-[64px] leading-none font-bold tracking-tight tabular"></span>
-                    <span id="runFinishedText" class="text-[15px] text-[#C9C2B8] pb-1.5 lg:pb-2"></span>
+                    <span id="runFinishedText" class="text-[15px] text-rail-onDarkMuted pb-1.5 lg:pb-2"></span>
                 </div>
-                <p id="runFinishedDetail" class="text-sm lg:text-[15px] text-[#E8E2D9] tabular"></p>
-                <p class="text-[13px] leading-relaxed text-[#C9C2B8]">결제 상태는 다음 단계 결과에서 확인하세요. 기록 탭으로 저절로 넘어가지 않아요.</p>
+                <p id="runFinishedDetail" class="text-sm lg:text-[15px] text-rail-onDark tabular"></p>
+                <p class="text-[13px] leading-relaxed text-rail-onDarkMuted">결제 상태는 다음 단계 결과에서 확인하세요. 기록 탭으로 저절로 넘어가지 않아요.</p>
             </section>
         </div>
 
         <div class="flex flex-col gap-3 min-w-0">
             <section id="heroTargetsCard" class="hidden bg-white border border-rail-line rounded-2xl">
                 <p id="heroTargetsTitle" class="px-4 lg:px-[18px] pt-3 pb-1 text-[13px] font-semibold text-rail-muted">대상 열차</p>
-                <ul id="heroTargets" class="divide-y divide-[#EFEBE5] mx-4 lg:mx-[18px]"></ul>
+                <ul id="heroTargets" class="divide-y divide-rail-lineSoft mx-4 lg:mx-[18px]"></ul>
             </section>
             <section data-testid="log-panel" class="flex-1 bg-white border border-rail-line rounded-2xl px-4 lg:px-[18px] py-3 flex flex-col gap-1 min-w-0">
                 <p class="text-[13px] font-semibold text-rail-muted pb-0.5">최근 기록</p>
                 <div id="logContainer" data-testid="log-stream-container"
-                     class="log-container h-56 lg:h-[260px] overflow-y-auto text-xs leading-relaxed text-[#4A443E] break-words">
+                     class="log-container h-56 lg:h-[260px] overflow-y-auto text-xs leading-relaxed text-rail-inkSoft break-words">
                     <div class="text-rail-muted">대기 중...</div>
                 </div>
             </section>
@@ -516,7 +483,7 @@
 
     <!-- 비어 있음 (아무것도 돈 적 없을 때) -->
     <section id="runEmpty" data-testid="run-empty" class="hidden flex-col items-center justify-center gap-3.5 text-center px-4 py-16 lg:py-24">
-        <span class="w-[72px] h-[72px] rounded-full bg-[#EDE9E3] flex items-center justify-center text-rail-muted"><span class="w-8 h-8">{{ ic_run() }}</span></span>
+        <span class="w-[72px] h-[72px] rounded-full bg-rail-sunken flex items-center justify-center text-rail-muted"><span class="w-8 h-8">{{ ic_run() }}</span></span>
         <h2 class="mt-1 text-xl font-bold tracking-tight">돌고 있는 매크로가 없어요</h2>
         <p class="text-sm leading-relaxed text-rail-muted max-w-[280px]">1단계 조회에서 열차를 고르고 예약 시작을 누르면 여기서 진행 상황을 볼 수 있어요.</p>
     </section>
@@ -546,7 +513,7 @@
         <div data-slot="result" class="min-w-0"></div>
         <section id="runSummary" data-testid="run-summary" class="hidden bg-white border border-rail-line rounded-2xl px-4 lg:px-5 pt-2.5 pb-1.5">
             <h3 class="text-[13px] font-semibold text-rail-muted mb-0.5">이번 실행</h3>
-            <dl id="runSummaryRows" class="divide-y divide-[#EFEBE5]"></dl>
+            <dl id="runSummaryRows" class="divide-y divide-rail-lineSoft"></dl>
         </section>
     </div>
     <p class="mx-1 text-xs leading-relaxed text-rail-muted">이 결과는 기록 탭에도 남아요. 자동으로 넘어가지 않으니 필요할 때 기록 보기를 누르세요.</p>
@@ -613,7 +580,7 @@
     {% if server_mode %}
     <!-- Web Push Card (서버 모드) -->
     <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden" data-testid="push-card">
-        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-rail-subtle transition-colors"
              onclick="document.getElementById('pushBody').classList.toggle('hidden'); document.getElementById('pushChevron').classList.toggle('rotate-180');">
             <div class="flex items-center gap-3 min-w-0">
                 <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
@@ -626,7 +593,7 @@
             </div>
             <div class="flex items-center gap-3 flex-shrink-0">
                 <div class="flex items-center gap-2">
-                    <span id="pushStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="pushStatusDot" class="w-2.5 h-2.5 rounded-full bg-rail-lineStrong"></span>
                     <span id="pushStatusText" class="text-sm text-rail-muted">확인 중...</span>
                 </div>
                 <svg id="pushChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -636,7 +603,7 @@
         </div>
         <div id="pushBody" class="hidden border-t border-rail-line">
             <div class="p-4 sm:p-5 space-y-4">
-                <p id="pushHint" class="hidden text-sm text-[#7A4200] bg-[#FDF1DD] rounded-xl px-3 py-2"></p>
+                <p id="pushHint" class="hidden text-sm text-rail-warnInk bg-rail-warnSoft rounded-xl px-3 py-2"></p>
                 <div class="flex flex-wrap items-center gap-2">
                     <button type="button" id="pushEnableBtn" onclick="enablePush()"
                             class="hidden h-11 px-5 rounded-xl bg-ktx-primary text-white text-sm font-semibold hover:bg-ktx-secondary transition-colors">
@@ -663,7 +630,7 @@
     <!-- Telegram Settings Card (always visible) -->
     <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Header / Toggle -->
-        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-rail-subtle transition-colors"
              onclick="document.getElementById('tgBody').classList.toggle('hidden'); document.getElementById('tgChevron').classList.toggle('rotate-180');">
             <div class="flex items-center gap-3 min-w-0">
                 <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
@@ -671,12 +638,12 @@
                 </div>
                 <div class="min-w-0">
                     <h3 class="text-base font-bold text-rail-ink">텔레그램 알림</h3>
-                    <p class="text-xs text-rail-muted">예약 성공 알림 · 원격 제어 (/stop /status /reserve)</p>
+                    <p class="text-xs text-rail-muted">예약 성공 알림 · 원격 제어 <span class="whitespace-nowrap">(/stop /status /reserve)</span></p>
                 </div>
             </div>
             <div class="flex items-center gap-3 flex-shrink-0">
                 <div id="tgStatus" class="flex items-center gap-2">
-                    <span id="tgStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="tgStatusDot" class="w-2.5 h-2.5 rounded-full bg-rail-lineStrong"></span>
                     <span id="tgStatusText" class="text-sm text-rail-muted">미연결</span>
                 </div>
                 <svg id="tgChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -760,7 +727,7 @@
                             <p class="font-semibold mb-2">봇 명령어</p>
                             <div class="bg-white rounded-xl overflow-hidden border border-rail-line">
                                 <table class="w-full text-sm">
-                                    <tbody class="divide-y divide-[#EFEBE5]">
+                                    <tbody class="divide-y divide-rail-lineSoft">
                                         <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/start</td><td class="px-3 py-2 text-rail-muted">봇 연결 및 Chat ID 자동 등록</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/reserve</td><td class="px-3 py-2 text-rail-muted">텔레그램에서 열차 검색 및 예약 시작<br><span class="text-xs">예: /reserve 수서 부산 2026-03-01 06:00</span></td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-ktx-primary font-semibold">/stop</td><td class="px-3 py-2 text-rail-muted">실행 중인 매크로 원격 중단</td></tr>
@@ -775,10 +742,10 @@
                         </div>
                         <div>
                             <p class="font-semibold mb-2">/reserve 사용 예시</p>
-                            <div class="bg-rail-ink text-[#E8E2D9] rounded-xl p-3 font-mono text-xs space-y-1">
+                            <div class="bg-rail-ink text-rail-onDark rounded-xl p-3 font-mono text-xs space-y-1">
                                 <p>/reserve 수서 부산 2026-03-01 06:00</p>
-                                <p class="text-[#8A8279]">→ 열차 목록이 표시되면 번호를 선택</p>
-                                <p class="text-[#8A8279]">→ 예: "1,3,5" 입력 시 해당 열차 예약 시작</p>
+                                <p class="text-rail-muted2">→ 열차 목록이 표시되면 번호를 선택</p>
+                                <p class="text-rail-muted2">→ 예: "1,3,5" 입력 시 해당 열차 예약 시작</p>
                             </div>
                         </div>
                     </div>
@@ -792,7 +759,7 @@
     <!-- Card Auto-Payment Settings Card (always visible) -->
     <div class="bg-white rounded-[20px] border border-rail-line overflow-hidden">
         <!-- Header / Toggle -->
-        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-colors"
+        <div class="px-4 sm:px-5 py-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-rail-subtle transition-colors"
              onclick="document.getElementById('cardBody').classList.toggle('hidden'); document.getElementById('cardChevron').classList.toggle('rotate-180');">
             <div class="flex items-center gap-3 min-w-0">
                 <div class="w-10 h-10 rounded-full bg-rail-ground flex items-center justify-center flex-shrink-0">
@@ -800,12 +767,12 @@
                 </div>
                 <div class="min-w-0">
                     <h3 class="text-base font-bold text-rail-ink">카드 자동결제</h3>
-                    <p class="text-xs text-rail-muted">예매 성공 시 등록된 카드로 즉시 결제</p>
+                    <p class="text-xs text-rail-muted">예매 성공 시 등록된 카드로 <span class="whitespace-nowrap">즉시 결제</span></p>
                 </div>
             </div>
             <div class="flex items-center gap-3 flex-shrink-0">
                 <div id="cardStatus" class="flex items-center gap-2">
-                    <span id="cardStatusDot" class="w-2.5 h-2.5 rounded-full bg-[#D6D0C8]"></span>
+                    <span id="cardStatusDot" class="w-2.5 h-2.5 rounded-full bg-rail-lineStrong"></span>
                     <span id="cardStatusText" class="text-sm text-rail-muted">미등록</span>
                 </div>
                 <svg id="cardChevron" class="w-5 h-5 text-rail-muted transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -859,7 +826,7 @@
 
                 <div class="flex flex-wrap items-center gap-2">
                     <label class="inline-flex items-center gap-2 mr-2 min-h-[44px]">
-                        <input type="checkbox" id="cardAutoPay" checked class="w-4 h-4 rounded accent-[#1E4FD8]">
+                        <input type="checkbox" id="cardAutoPay" checked class="w-4 h-4 rounded accent-ktx-primary">
                         <span class="text-sm text-rail-ink">예매 성공 시 자동으로 결제</span>
                     </label>
                     <button type="button" id="cardSaveBtn" onclick="saveCardSettings()"
@@ -892,18 +859,18 @@
                          class="flex p-[3px] rounded-xl bg-rail-offSoft gap-0.5 self-start sm:self-auto">
                         {% for v in ['1', '1.5', '2', '2.5', '3'] %}
                         <button type="button" role="radio" aria-checked="false" data-value="{{ v }}"
-                                class="interval-opt h-9 min-w-[44px] px-2 rounded-[9px] text-[13px] text-rail-muted font-medium">{{ v }}초</button>
+                                class="interval-opt h-11 lg:h-9 min-w-[44px] px-2 rounded-[9px] text-[13px] text-rail-muted font-medium">{{ v }}초</button>
                         {% endfor %}
                     </div>
                 </div>
-                <div class="py-2 border-t border-[#EFEBE5] flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <div class="py-2 border-t border-rail-lineSoft flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <span class="text-[15px] font-medium mr-auto">성공하면 알림음</span>
                     <label class="inline-flex items-center gap-1.5 min-h-[44px]">
-                        <input type="radio" name="sound_option" value="once" checked data-testid="sound-option-once" class="accent-[#1E4FD8]">
+                        <input type="radio" name="sound_option" value="once" checked data-testid="sound-option-once" class="accent-ktx-primary">
                         <span>1번</span>
                     </label>
                     <label class="inline-flex items-center gap-1.5 min-h-[44px]">
-                        <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat" class="accent-[#1E4FD8]">
+                        <input type="radio" name="sound_option" value="repeat" data-testid="sound-option-repeat" class="accent-ktx-primary">
                         <span>10초 반복</span>
                     </label>
                 </div>
@@ -919,7 +886,7 @@
                     <form action="{{ url_for('auth.logout') }}" method="POST">
                         <input type="hidden" name="logout_all" value="true">
                         <button type="submit" data-testid="logout-button"
-                                class="h-10 px-3.5 rounded-[10px] border border-rail-dangerLine bg-white text-sm font-semibold text-rail-dangerDark">로그아웃</button>
+                                class="h-11 lg:h-10 px-3.5 rounded-[10px] border border-rail-dangerLine bg-white text-sm font-semibold text-rail-dangerDark">로그아웃</button>
                     </form>
                 </div>
             </section>
@@ -1260,7 +1227,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // ... (row creation logic same as before) ...
             // Desktop Row
             const row = document.createElement('tr');
-            row.className = 'train-row cursor-pointer transition-colors duration-150 hover:bg-[#FAF8F5]';
+            row.className = 'train-row cursor-pointer transition-colors duration-150 hover:bg-rail-subtle';
             row.dataset.index = train.index;
             row.dataset.time = train.dep_time;
             row.onclick = function() { toggleTrainSelection(this); };
@@ -1281,7 +1248,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="w-20 flex flex-col items-center gap-0.5">
                             <span class="text-xs text-rail-muted whitespace-nowrap">${esc(train.duration_formatted)}</span>
-                            <span class="w-full h-px bg-[#D6D0C8]"></span>
+                            <span class="w-full h-px bg-rail-lineStrong"></span>
                         </div>
                         <div class="text-center">
                             <div class="text-xl font-bold tracking-tight text-rail-ink">${esc(train.arr_time_formatted)}</div>
@@ -1440,7 +1407,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const html = states.map((st, i) => {
             const n = i + 1;
             const dot = (i === 1 && app.running && st !== 'current')
-                ? '<span class="w-[7px] h-[7px] rounded-full bg-[#16A34A]" aria-label="실행 중"></span>' : '';
+                ? '<span class="w-[7px] h-[7px] rounded-full bg-rail-okDot" aria-label="실행 중"></span>' : '';
             let item;
             if (st === 'current') {
                 item = `<span aria-current="step" class="h-8 px-1.5 rounded-[10px] flex items-center gap-1.5 whitespace-nowrap text-[13px] bg-rail-accentSoft text-ktx-primary font-bold">` +
@@ -1452,8 +1419,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 item = `<a href="${hrefs[i]}" aria-label="${n}단계 ${names[i]}${app.running && i === 1 ? ' (실행 중)' : ''} 보기" class="h-11 -my-0.5 px-1.5 rounded-[10px] flex items-center gap-1.5 whitespace-nowrap text-[13px] text-rail-ink font-semibold">` +
                     `<span class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold tabular border-[1.5px] border-rail-ink">${n}</span>${names[i]}${dot}</a>`;
             } else {
-                item = `<span aria-disabled="true" class="h-11 -my-0.5 px-1.5 rounded-[10px] flex items-center gap-1.5 whitespace-nowrap text-[13px] text-[#9A938A] font-medium">` +
-                    `<span class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold tabular border-[1.5px] border-dashed border-[#CFC9C1]">${n}</span>${names[i]}</span>`;
+                item = `<span aria-disabled="true" class="h-11 -my-0.5 px-1.5 rounded-[10px] flex items-center gap-1.5 whitespace-nowrap text-[13px] text-rail-muted3 font-medium">` +
+                    `<span class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold tabular border-[1.5px] border-dashed border-rail-lineMid">${n}</span>${names[i]}</span>`;
             }
             const line = i < 2
                 ? `<span aria-hidden="true" class="flex-1 min-w-[10px] h-0.5 rounded-sm ${st === 'done' ? 'bg-rail-ink' : 'bg-rail-line'}"></span>` : '';
@@ -1532,7 +1499,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('[data-tab-dot]').forEach(dot => {
             const show = running || app.unseenResult;
             dot.classList.toggle('hidden', !show);
-            dot.classList.toggle('bg-[#16A34A]', running);
+            dot.classList.toggle('bg-rail-okDot', running);
             dot.classList.toggle('bg-ktx-primary', !running && app.unseenResult);
             dot.setAttribute('aria-label', running ? '실행 중' : '새 결과');
         });
@@ -1606,10 +1573,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const FINISHED_VIEWS = {
-        success: { color: 'bg-[#16A34A]', svg: '<path d="M5 12l5 5 9-10"/>', count: '번째 조회에서 좌석을 잡았어요', none: '좌석을 잡았어요' },
+        success: { color: 'bg-rail-okDot', svg: '<path d="M5 12l5 5 9-10"/>', count: '번째 조회에서 좌석을 잡았어요', none: '좌석을 잡았어요' },
         stopped: { color: 'bg-rail-muted', svg: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>', count: '번 조회하고 멈췄어요', none: '매크로를 멈췄어요' },
-        gave_up: { color: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>', count: '번 조회 뒤 로그인이 계속 실패했어요', none: '로그인이 계속 실패해서 멈췄어요' },
-        crash: { color: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>', count: '번 조회 뒤 오류로 멈췄어요', none: '오류로 멈췄어요' },
+        gave_up: { color: 'bg-rail-warn', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>', count: '번 조회 뒤 로그인이 계속 실패했어요', none: '로그인이 계속 실패해서 멈췄어요' },
+        crash: { color: 'bg-rail-warn', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>', count: '번 조회 뒤 오류로 멈췄어요', none: '오류로 멈췄어요' },
     };
     function renderRunFinished(result, snap) {
         const v = FINISHED_VIEWS[result.reason] || FINISHED_VIEWS.stopped;
@@ -1622,7 +1589,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('runFinishedCount').classList.toggle('hidden', !n);
         const text = document.getElementById('runFinishedText');
         text.textContent = n ? v.count : v.none;
-        text.className = n ? 'text-[15px] text-[#C9C2B8] pb-1.5 lg:pb-2' : 'text-2xl font-bold tracking-tight';
+        text.className = n ? 'text-[15px] text-rail-onDarkMuted pb-1.5 lg:pb-2' : 'text-2xl font-bold tracking-tight';
         document.getElementById('runFinishedDetail').textContent =
             result.reason === 'success' ? (result.reserved || '') : (snap ? routeLabel(snap.info) : '');
     }
@@ -1696,7 +1663,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (took) count.push(took);
         }
         if (result.reason === 'stopped') count.push('직접 중단');
-        if (count.length) rows.push(['조회', count.join(' · ')]);
+        // 조각 목록으로 넘겨 조각 안에서는 줄을 바꾸지 않는다 ("07:23 ·" 처럼 줄 끝에 점만 남지 않게)
+        if (count.length) rows.push(['조회', count]);
         const box = document.getElementById('runSummaryRows');
         box.innerHTML = '';
         rows.forEach(([k, val]) => {
@@ -1707,7 +1675,18 @@ document.addEventListener('DOMContentLoaded', function() {
             dt.textContent = k;
             const dd = document.createElement('dd');
             dd.className = 'flex-1 min-w-0 text-sm font-semibold tabular whitespace-pre-line';
-            dd.textContent = val;
+            if (Array.isArray(val)) {
+                // 둘째 조각부터 "· 조각" 을 한 덩어리로: 줄이 바뀌면 점이 다음 줄 맨 앞에 붙어 간다
+                val.forEach((part, i) => {
+                    if (i) dd.append(' ');
+                    const span = document.createElement('span');
+                    span.className = 'whitespace-nowrap';
+                    span.textContent = (i ? '· ' : '') + part;
+                    dd.appendChild(span);
+                });
+            } else {
+                dd.textContent = val;
+            }
             row.append(dt, dd);
             box.appendChild(row);
         });
@@ -1787,10 +1766,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // 로그는 진행 화면에 (최대 500줄)
     function log(message, type = 'info') {
         const colors = {
-            'info': 'text-[#4A443E]',
+            'info': 'text-rail-inkSoft',
             'success': 'text-rail-ok font-semibold',
             'error': 'text-ktx-primary',
-            'warning': 'text-[#7A4200]'
+            'warning': 'text-rail-warnInk'
         };
         const m = String(message || '').match(/시도 #(\d+)/);
         if (m) app.logAttempt = Math.max(app.logAttempt, Number(m[1]));
@@ -2061,8 +2040,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const RESULT_VIEWS = {
         success: { title: '예약했어요', icon: 'bg-rail-ok', svg: '<path d="M5 12l5 5 9-10"/>' },
         stopped: { title: '매크로를 멈췄어요', icon: 'bg-rail-muted', svg: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>' },
-        gave_up: { title: '로그인이 계속 실패해서 멈췄어요', icon: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
-        crash: { title: '오류로 멈췄어요', icon: 'bg-[#B45309]', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
+        gave_up: { title: '로그인이 계속 실패해서 멈췄어요', icon: 'bg-rail-warn', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
+        crash: { title: '오류로 멈췄어요', icon: 'bg-rail-warn', svg: '<path d="M12 8v5"/><path d="M12 16.5h.01"/>' },
     };
 
     // 결제 안내 3가지 (성공 배너의 payDone / payFailed / payPending 과 같은 모양)
@@ -2070,13 +2049,13 @@ document.addEventListener('DOMContentLoaded', function() {
         `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
     const NOTE_VIEWS = {
         paid: body => ({ body, title: '자동결제까지 끝났어요', box: 'bg-rail-okSoft',
-            titleClass: 'text-rail-ok', bodyClass: 'text-[#245B3D]',
+            titleClass: 'text-rail-ok', bodyClass: 'text-rail-okInk',
             icon: noteSvg('#0B6B3A', '<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/>') }),
         failed: body => ({ body, title: '자동결제에 실패했어요', box: 'bg-rail-dangerSoft border border-rail-danger', alert: true,
             titleClass: 'text-rail-dangerDark', bodyClass: 'text-rail-ink font-semibold',
             icon: noteSvg('#C8102E', '<path d="M12 3l10 18H2z"/><path d="M12 10v4"/><path d="M12 17.5h.01"/>') }),
-        pending: body => ({ body, title: '결제가 남았어요', box: 'bg-[#FDF1DD]',
-            titleClass: 'text-[#7A4200]', bodyClass: 'text-[#6B4A1E]',
+        pending: body => ({ body, title: '결제가 남았어요', box: 'bg-rail-warnSoft',
+            titleClass: 'text-rail-warnInk', bodyClass: 'text-rail-warnBody',
             icon: noteSvg('#8A4B00', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>') }),
     };
 
@@ -2345,7 +2324,7 @@ function setPushUI(state, text, hint) {
     const hintEl = document.getElementById('pushHint');
     if (!dot) return;
     const on = state === 'on';
-    dot.className = 'w-2.5 h-2.5 rounded-full ' + (on ? 'bg-rail-ok' : state === 'blocked' ? 'bg-ktx-primary' : 'bg-[#D6D0C8]');
+    dot.className = 'w-2.5 h-2.5 rounded-full ' + (on ? 'bg-rail-ok' : state === 'blocked' ? 'bg-ktx-primary' : 'bg-rail-lineStrong');
     label.textContent = text;
     label.className = 'text-sm ' + (on ? 'text-rail-ok font-medium' : 'text-rail-muted');
     hintEl.textContent = hint || '';
@@ -2541,14 +2520,14 @@ function updateTelegramUI(status) {
             }
         }
     } else if (status.configured) {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#B45309]';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rail-warn';
         text.textContent = '설정됨 (폴링 중단)';
-        text.className = 'text-sm text-[#7A4200]';
+        text.className = 'text-sm text-rail-warnInk';
         testBtn?.classList.remove('hidden');
         disconnectBtn?.classList.remove('hidden');
     } else {
         hidePairing();
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#D6D0C8]';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rail-lineStrong';
         text.textContent = '미연결';
         text.className = 'text-sm text-rail-muted';
         testBtn?.classList.add('hidden');
@@ -2768,7 +2747,7 @@ function updateCardUI(status) {
         if (installmentSelect && status.installment !== undefined) installmentSelect.value = String(status.installment);
         if (autoPayCheckbox) autoPayCheckbox.checked = !!status.auto_pay;
     } else {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-[#D6D0C8]';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rail-lineStrong';
         text.textContent = '미등록';
         text.className = 'text-sm text-rail-muted';
     }

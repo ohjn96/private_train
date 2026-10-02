@@ -25,8 +25,15 @@ VIEWPORTS = {
     'mobile': dict(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True),
     'desktop': dict(viewport={'width': 1280, 'height': 900}, device_scale_factor=1),
 }
-# 팔레트: 화면의 tailwind.config 색 + 아래 기본색 (흰색·검정·선택 표시)
+# 팔레트: tailwind.config.js 의 색 + 아래 기본색 (흰색·검정·선택 표시)
 PALETTE_BASE = {'#ffffff', '#000000'}
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+
+def config_palette():
+    with open(os.path.join(ROOT, 'tailwind.config.js'), encoding='utf-8') as f:
+        return {c.lower() for c in re.findall(r"'(#[0-9A-Fa-f]{6})'", f.read())}
+
 
 AUDIT_JS = r'''() => {
   const vw = window.innerWidth;
@@ -41,9 +48,6 @@ AUDIT_JS = r'''() => {
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity !== 0;
   };
-  const palette = [];
-  const walk = o => { for (const v of Object.values(o || {})) typeof v === 'string' ? palette.push(v.toLowerCase()) : walk(v); };
-  try { walk(tailwind.config.theme.extend.colors); } catch (e) {}
   const small = [], colors = {}, emoji = [], overflow = [], brokenWords = [];
   const emojiRe = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{2705}\u{274C}]/u;
   for (const el of document.querySelectorAll('body *')) {
@@ -84,7 +88,7 @@ AUDIT_JS = r'''() => {
       if (n.nodeType === 3 && emojiRe.test(n.textContent)) emoji.push(`${name}: ${n.textContent.trim().slice(0, 40)}`);
     }
   }
-  return {palette, scrollWidth: document.documentElement.scrollWidth, innerWidth: vw, small, colors, emoji, brokenWords, overflow: overflow.slice(0, 20)};
+  return {scrollWidth: document.documentElement.scrollWidth, innerWidth: vw, small, colors, emoji, brokenWords, overflow: overflow.slice(0, 20)};
 }'''
 
 
@@ -111,7 +115,7 @@ def main():
                 path = os.path.join(args.out, f'{vp_name}_{name}.png')
                 page.screenshot(path=path, full_page=full)
                 audit = page.evaluate(AUDIT_JS)
-                palette = PALETTE_BASE | set(audit['palette'])
+                palette = PALETTE_BASE | config_palette()
                 off = {c: els for c, els in audit['colors'].items() if c not in palette}
                 real_errors = [e for e in errors if not re.search(r'fonts\.(googleapis|gstatic)|ERR_|Failed to load resource', e[1])]
                 warn_errors = [e for e in errors if e not in real_errors]

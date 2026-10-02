@@ -253,7 +253,19 @@ git clone https://github.com/ohjn96/private_train.git && cd private_train
 ## 요구사항
 
 - **Python**: 3.12+ (실행 파일만 쓸 거면 불필요)
-- **Node.js**: 18+ (Tailwind CSS 재빌드용, 선택사항)
+- **Node.js**: 선택 (화면 CSS 재빌드용. 없으면 `scripts/build_css.sh` 가 Tailwind 단독 실행 파일을 받아 씁니다)
+
+### 화면 CSS 다시 만들기
+
+화면 CSS 는 실행 중에 만들지 않고, Tailwind CSS **3.4.17** 로 미리 만든 `webui/static/css/app.css` 를
+저장소에 같이 넣습니다 (오프라인·폰 앱에서도 그대로 보이게). 템플릿의 클래스, `tailwind.config.js`,
+`webui/static/css/input.css` 를 바꿨다면 다시 만들어 `app.css` 도 같이 커밋하세요.
+
+```bash
+scripts/build_css.sh    # npx 가 있으면 npx tailwindcss@3.4.17, 없으면 단독 실행 파일을 받아 씀
+```
+
+글꼴(IBM Plex Sans KR·Mono)도 `webui/static/fonts` 에 같이 싣습니다 (`webui/static/css/fonts.css`).
 
 ---
 
