@@ -50,11 +50,15 @@ def _write_secret_key() -> str:
     return key
 
 
-def create_app(config_name: str = 'default', server_mode: bool | None = None) -> Flask:
+def create_app(config_name: str = 'default', server_mode: bool | None = None,
+               license_gate: bool = False) -> Flask:
     """Create and configure the Flask application.
 
     server_mode: 여러 명이 같이 쓰는 서버(`python -m server`)로 띄울 때 True.
     None 이면 SERVER_MODE 환경변수를 본다. 데스크톱(exe)은 늘 False.
+    license_gate: 라이선스 검사(원격 정책: 전체 ON / 허용한 것만 / 전체 OFF)를 건다.
+    배포하는 데스크톱 exe 만 켠다. 폰 앱(iOS 에 서명 검증 라이브러리가 없다)과
+    직접 운영하는 서버는 끈다.
     """
     app = Flask(__name__,
                 template_folder='templates',
@@ -98,6 +102,14 @@ def create_app(config_name: str = 'default', server_mode: bool | None = None) ->
     app.register_blueprint(reservation.bp)
     app.register_blueprint(telegram.bp)
     app.register_blueprint(pwa.bp)
+
+    app.config['LICENSE_GATE'] = license_gate
+    if license_gate:
+        # 블루프린트 등록 뒤에 걸어야 엔드포인트 이름이 잡힌다
+        from licensing import guard
+        from webui.routes import license as license_routes
+        app.register_blueprint(license_routes.bp)
+        guard.register(app)
 
     return app
 

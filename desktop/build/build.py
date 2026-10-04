@@ -111,6 +111,21 @@ def get_pyinstaller_cmd(config: dict) -> list[str]:
     return cmd
 
 
+def bake_license_policy() -> None:
+    """오프라인 기본값의 seq 를 배포 저장소의 현재 정책에 맞춘다 (모드는 유지)."""
+    sys.path.insert(0, str(ROOT_DIR / 'scripts'))
+    try:
+        from bake_policy import sync
+    except ImportError as exc:
+        print(f"경고: 라이선스 정책을 박지 못했습니다 ({exc}). 빌드는 계속합니다.")
+        return
+    mode, seq = sync()
+    print(f"오프라인 기본값: {mode} (seq {seq})")
+    if mode == "open":
+        print("  이 exe 는 인터넷을 막고 첫 실행하면 라이선스 검사를 건너뜁니다.")
+        print("  잠그려면: python scripts/bake_policy.py --mode licensed")
+
+
 def build(app_name: str = 'unified'):
     """Run the build process."""
     if app_name not in BUILD_CONFIG:
@@ -119,6 +134,10 @@ def build(app_name: str = 'unified'):
         sys.exit(1)
 
     config = BUILD_CONFIG[app_name]
+
+    # 빌드 시점의 라이선스 정책을 exe 에 박는다. 이게 없으면 인터넷을 막고
+    # 첫 실행하는 것만으로 라이선스 검사를 건너뛸 수 있다.
+    bake_license_policy()
 
     print(f"=" * 50)
     print(f"Building {config['name']}...")

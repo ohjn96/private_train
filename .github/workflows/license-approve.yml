@@ -1,0 +1,216 @@
+name: 라이선스 승인
+
+# 공개 배포 저장소(train-reservation)의 요청 이슈에서 넘어온 명령을 처리한다.
+# 공개 쪽 relay.yml 이 repository_dispatch 로 이 워크플로를 깨운다.
+#
+#   /approve         30일 발급 (기본)
+#   /approve 90      90일 발급
+#   /autorenew 30    만료 3일 전마다 30일씩 자동 연장
+#   /autorenew off   자동 갱신 끄기
+#   /revoke          이 PC 의 라이선스 차단
+#   /deny            거절하고 닫기
+#   /policy licensed 라이선스 검사 켜기 (open / licensed / blocked)
+#
+# 판단과 서명은 전부 여기(비공개)에서 한다. 공개 저장소에는 결과만 밀어 넣는다.
+on:
+  repository_dispatch:
+    types: [license]
+
+permissions:
+  contents: read     # 산출물은 배포 저장소에 쓴다
+
+env:
+  DIST_REPO: ohjn96/train-reservation
+  LICENSE_DIST_DIR: dist
+
+concurrency:
+  group: license-write
+  cancel-in-progress: false
+
+jobs:
+  handle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 배포 저장소 체크아웃
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.DIST_REPO }}
+          token: ${{ secrets.DIST_RELEASE_TOKEN }}
+          path: dist
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: 의존성 설치
+        run: pip install --quiet pycryptodome==3.20.0
+
+      - name: 명령 해석
+        id: parse
+        env:
+          # 남이 쓴 문자열이므로 환경변수로만 넘기고 셸에 끼워넣지 않는다
+          EVENT_NAME: ${{ github.event.client_payload.event_name }}
+          COMMENT_BODY: ${{ github.event.client_payload.comment_body }}
+          ISSUE_BODY: ${{ github.event.client_payload.issue_body }}
+          AUTHOR_ASSOCIATION: ${{ github.event.client_payload.author_association }}
+        run: python scripts/ci_approve.py
+
+      - name: 머신 ID 를 못 찾았을 때
+        if: steps.parse.outputs.action == 'error'
+        env:
+          GH_TOKEN: ${{ secrets.DIST_RELEASE_TOKEN }}
+          MESSAGE: ${{ steps.parse.outputs.message }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+        run: gh issue comment "$ISSUE_NUMBER" --repo "$DIST_REPO" --body "$MESSAGE"
+
+      - name: 서명 개인키 준비
+        if: >
+          steps.parse.outputs.action == 'approve' ||
+          steps.parse.outputs.action == 'revoke' ||
+          steps.parse.outputs.action == 'policy'
+        env:
+          SIGNING_KEY: ${{ secrets.LICENSE_SIGNING_KEY }}
+        run: |
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::LICENSE_SIGNING_KEY 시크릿이 설정되어 있지 않습니다."
+            exit 1
+          fi
+          mkdir -p "$HOME/.config/private_train"
+          printf '%s\n' "$SIGNING_KEY" > "$HOME/.config/private_train/license_signing_key.pem"
+          chmod 600 "$HOME/.config/private_train/license_signing_key.pem"
+
+      - name: 라이선스 발급
+        if: steps.parse.outputs.action == 'approve'
+        env:
+          MACHINE_ID: ${{ steps.parse.outputs.machine_id }}
+          DAYS: ${{ steps.parse.outputs.days }}
+          REQUESTER: ${{ github.event.client_payload.requester }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+        run: |
+          python scripts/license_admin.py issue \
+            --machine-id "$MACHINE_ID" --days "$DAYS" \
+            --name "$REQUESTER" --note "issue#$ISSUE_NUMBER" --publish
+
+      - name: 자동 갱신 설정
+        if: steps.parse.outputs.action == 'autorenew'
+        env:
+          MACHINE_ID: ${{ steps.parse.outputs.machine_id }}
+          DAYS: ${{ steps.parse.outputs.days }}
+        run: |
+          if [ "$DAYS" = "0" ]; then
+            python scripts/license_admin.py autorenew --machine-id "$MACHINE_ID" --off
+          else
+            python scripts/license_admin.py autorenew --machine-id "$MACHINE_ID" --days "$DAYS"
+          fi
+
+      - name: 검사 정책 변경
+        if: steps.parse.outputs.action == 'policy'
+        env:
+          MODE: ${{ steps.parse.outputs.mode }}
+        run: python scripts/license_admin.py policy --mode "$MODE"
+
+      - name: 라이선스 철회
+        if: steps.parse.outputs.action == 'revoke'
+        env:
+          MACHINE_ID: ${{ steps.parse.outputs.machine_id }}
+        run: |
+          python scripts/license_admin.py revoke --machine-id "$MACHINE_ID"
+          python scripts/license_admin.py unpublish --machine-id "$MACHINE_ID" || true
+
+      - name: 배포 저장소에 커밋 & 푸시
+        if: >
+          steps.parse.outputs.action != 'none' &&
+          steps.parse.outputs.action != 'error' &&
+          steps.parse.outputs.action != 'deny'
+        working-directory: dist
+        env:
+          MACHINE_ID: ${{ steps.parse.outputs.machine_id }}
+          ACTION: ${{ steps.parse.outputs.action }}
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          # 한 번에 주면 둘 중 하나만 없어도 git 이 통째로 실패하므로 따로 준다
+          if [ -d licenses ];            then git add licenses;            fi
+          if [ -f revoked.json ];        then git add revoked.json;        fi
+          if [ -f license-policy.json ]; then git add license-policy.json; fi
+          if git diff --cached --quiet; then
+            echo "바뀐 게 없습니다."
+            exit 0
+          fi
+          git commit -m "$ACTION ${MACHINE_ID:-정책}"
+          git push || (git pull --rebase && git push)
+
+      - name: 승인 결과 알리기
+        if: steps.parse.outputs.action == 'approve'
+        env:
+          GH_TOKEN: ${{ secrets.DIST_RELEASE_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+          MACHINE_ID: ${{ steps.parse.outputs.machine_id }}
+          DAYS: ${{ steps.parse.outputs.days }}
+          AUTO: ${{ steps.parse.outputs.auto }}
+        run: |
+          if [ "$AUTO" = "true" ]; then
+            PREFIX="저장소 권한자라 자동 승인되었습니다."
+          else
+            PREFIX="승인되었습니다."
+          fi
+          gh issue comment "$ISSUE_NUMBER" --repo "$DIST_REPO" --body "$PREFIX (머신 \`$MACHINE_ID\`, $DAYS일)
+
+          앱의 **라이선스 화면을 켜두면 자동으로 활성화**됩니다.
+          GitHub CDN 캐시 때문에 최대 5분쯤 걸릴 수 있습니다.
+          화면을 닫았다면 앱을 다시 실행한 뒤 [지금 확인하기] 를 누르세요.
+
+          이 라이선스는 위 머신에서만 동작하며, 다른 PC 로 옮겨 쓸 수 없습니다."
+          gh issue close "$ISSUE_NUMBER" --repo "$DIST_REPO"
+
+      - name: 자동 갱신 결과 알리기
+        if: steps.parse.outputs.action == 'autorenew'
+        env:
+          GH_TOKEN: ${{ secrets.DIST_RELEASE_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+          MACHINE_ID: ${{ steps.parse.outputs.machine_id }}
+          DAYS: ${{ steps.parse.outputs.days }}
+        run: |
+          if [ "$DAYS" = "0" ]; then
+            BODY="머신 \`$MACHINE_ID\` 의 자동 갱신을 껐습니다. 만료되면 다시 알림이 옵니다."
+          else
+            BODY="머신 \`$MACHINE_ID\` 를 **자동 갱신**으로 설정했습니다. (만료 3일 전에 ${DAYS}일씩 연장)
+
+          앞으로 이 머신은 따로 승인하지 않아도 계속 쓸 수 있습니다.
+          중단하려면 \`/autorenew off\`, 차단하려면 \`/revoke\` 입니다."
+          fi
+          gh issue comment "$ISSUE_NUMBER" --repo "$DIST_REPO" --body "$BODY"
+          gh issue close "$ISSUE_NUMBER" --repo "$DIST_REPO"
+
+      - name: 정책 변경 결과 알리기
+        if: steps.parse.outputs.action == 'policy'
+        env:
+          GH_TOKEN: ${{ secrets.DIST_RELEASE_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+          MODE: ${{ steps.parse.outputs.mode }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$DIST_REPO" --body "라이선스 검사를 \`$MODE\` 로 바꿨습니다.
+
+          앱은 6시간마다, 그리고 로그인할 때마다 확인합니다.
+          CDN 캐시 때문에 반영까지 최대 5분 걸립니다."
+
+      - name: 철회 결과 알리기
+        if: steps.parse.outputs.action == 'revoke'
+        env:
+          GH_TOKEN: ${{ secrets.DIST_RELEASE_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+          MACHINE_ID: ${{ steps.parse.outputs.machine_id }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$DIST_REPO" --body "머신 \`$MACHINE_ID\` 의 라이선스를 철회했습니다. 반영까지 최대 24시간 걸립니다."
+          gh issue close "$ISSUE_NUMBER" --repo "$DIST_REPO"
+
+      - name: 거절 처리
+        if: steps.parse.outputs.action == 'deny'
+        env:
+          GH_TOKEN: ${{ secrets.DIST_RELEASE_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$DIST_REPO" --body "이번 요청은 발급되지 않았습니다."
+          gh issue close "$ISSUE_NUMBER" --repo "$DIST_REPO" --reason "not planned"

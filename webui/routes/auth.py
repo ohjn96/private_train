@@ -24,6 +24,13 @@ def login():
     provider = PROVIDER
 
     if request.method == "POST":
+        # 로그인은 어차피 인터넷이 필요한 시점이라 여기서 원격 스위치를 새로 확인한다.
+        # 평소엔 캐시(6시간)로 돌아가므로, 전체 OFF·허용 해제가 늦어도 다음 로그인에 걸린다.
+        if current_app.config.get("LICENSE_GATE"):
+            import licensing
+            if not licensing.current_status(force_policy=True).valid:
+                return redirect(url_for("license.page"))
+
         # IP 마다 1분에 10번까지 (성공·실패 모두 센다). 남의 코레일 계정 비밀번호를
         # 여기서 대입해 보지 못하게. 성공으로 초기화하면 내 계정으로 끼워 넣어 우회할 수 있다.
         throttle = current_app.extensions.get("login_throttle")

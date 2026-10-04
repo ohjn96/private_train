@@ -44,6 +44,7 @@ EXIT_OK = 0
 EXIT_CONFIG = 1
 EXIT_LOGIN = 2
 EXIT_NO_TRAIN = 3
+EXIT_LICENSE = 4
 
 LOG_ICONS = {'success': '✅', 'error': '❌', 'warning': '⚠️', 'stopped': '⏹️'}
 
@@ -428,6 +429,20 @@ def run_standby(telegram: TelegramService, stop: threading.Event) -> int:
     return EXIT_OK
 
 
+def check_license() -> str | None:
+    """라이선스 검사(원격 정책). 막혔으면 사유, 통과면 None.
+
+    로그인 직전이라 어차피 인터넷이 필요한 시점이므로 원격 스위치를 바로 확인한다.
+    """
+    import licensing
+    status = licensing.current_status(force_policy=True)
+    if status.valid:
+        return None
+    if status.code == 'blocked':
+        return status.message
+    return f"{status.message}\n   머신 ID: {licensing.machine_id()} (GUI 로 실행하면 요청 화면이 열립니다)"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -451,6 +466,11 @@ def main(argv: list[str] | None = None) -> int:
         # 텔레그램 /reserve 로 시작한 매크로에도 적용되도록 게이트 자체를 바꾼다
         korail_api.set_interval(clamp_call_interval(args.interval))
     log(f"호출 간격: {korail_api.min_interval:g}초")
+
+    reason = check_license()
+    if reason:
+        print(f"!! {reason}", file=sys.stderr)
+        return EXIT_LICENSE
 
     service = KorailService()
     log(f"코레일 로그인: {mask(args.user_id)}")

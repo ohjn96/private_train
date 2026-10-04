@@ -501,6 +501,14 @@ PyInstaller 옵션은 `desktop/build/build.py` 한 곳에만 있고, `build.ps1`
 | ✅ 허용 | 개인적·비상업적 목적의 학습, 실행, 수정 |
 | ❌ 금지 | 재배포 (소스·수정본·exe 모두), 상업적 이용, 제3자 대상 서비스 제공 |
 
+### 라이선스 검사 (배포 exe)
+
+배포하는 데스크톱 exe 는 원격 스위치로 사용을 통제합니다: **전체 ON / 허용한 것만 / 전체 OFF**.
+Actions 의 "라이선스 검사 켜고 끄기" 버튼이나 이슈 댓글 `/policy on|allow|off` 로 바꿉니다.
+
+- 운영 방법: [docs/LICENSING.md](docs/LICENSING.md)
+- 서명 키 (무엇이고, 어디 두고, 잃어버리면 어떻게 하나): [docs/SIGNING_KEY.md](docs/SIGNING_KEY.md)
+
 ### 제3자 구성요소
 
 `korail2/` 는 BSD 라이선스(© 2014 Taehoon Kim)이며 위 조건이 적용되지 않습니다.

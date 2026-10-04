@@ -142,7 +142,8 @@ def pause_before_exit() -> None:
         pass
 
 
-app = create_app()
+# 배포하는 exe 이므로 라이선스 검사(원격 정책)를 건다
+app = create_app(license_gate=True)
 
 
 def wants_headless(argv: list[str]) -> bool:
