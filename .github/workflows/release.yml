@@ -29,17 +29,20 @@ jobs:
           python-version: '3.12'
           cache: pip
 
-      - name: VERSION 과 태그 일치 확인
+      - name: 버전 정하기 (태그가 있으면 태그가 기준)
         shell: pwsh
         run: |
-          $version = (Get-Content VERSION -Raw).Trim()
-          echo "VERSION=$version" >> $env:GITHUB_ENV
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
-            $tag = $env:GITHUB_REF_NAME -replace '^v', ''
-            if ($tag -ne $version) {
-              throw "태그($tag) 와 VERSION 파일($version) 이 다릅니다. VERSION 을 먼저 올려주세요."
+            $version = $env:GITHUB_REF_NAME -replace '^v', ''
+            if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$') {
+              throw "태그 형식이 이상합니다: $env:GITHUB_REF_NAME (예: v3.0.0, v3.0.0-beta.4)"
             }
+            # 빌드가 읽는 VERSION 파일을 태그 값으로 맞춘다 (러너 안에서만)
+            Set-Content -Path VERSION -Value $version -NoNewline -Encoding utf8NoBOM
+          } else {
+            $version = (Get-Content VERSION -Raw).Trim()
           }
+          echo "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: 의존성 설치
         run: |
@@ -103,17 +106,20 @@ jobs:
           python-version: '3.12'
           cache: pip
 
-      - name: VERSION 과 태그 일치 확인
+      - name: 버전 정하기 (태그가 있으면 태그가 기준)
         run: |
-          version="$(tr -d '[:space:]' < VERSION)"
-          echo "VERSION=$version" >> "$GITHUB_ENV"
           if [ "$GITHUB_REF_TYPE" = 'tag' ]; then
-            tag="${GITHUB_REF_NAME#v}"
-            if [ "$tag" != "$version" ]; then
-              echo "태그($tag) 와 VERSION 파일($version) 이 다릅니다. VERSION 을 먼저 올려주세요." >&2
+            version="${GITHUB_REF_NAME#v}"
+            if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+              echo "태그 형식이 이상합니다: $GITHUB_REF_NAME (예: v3.0.0, v3.0.0-beta.4)" >&2
               exit 1
             fi
+            # 빌드가 읽는 VERSION 파일을 태그 값으로 맞춘다 (러너 안에서만)
+            echo "$version" > VERSION
+          else
+            version="$(tr -d '[:space:]' < VERSION)"
           fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: 의존성 설치
         run: |

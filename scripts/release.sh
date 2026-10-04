@@ -10,8 +10,9 @@ if [[ -z "$VERSION" ]]; then
     echo "현재 버전: $(cat VERSION)" >&2
     exit 1
 fi
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "!! 버전 형식은 X.Y.Z 여야 합니다 (입력: $VERSION)" >&2
+VERSION="${VERSION#v}"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+    echo "!! 버전 형식은 X.Y.Z 또는 X.Y.Z-beta.N 이어야 합니다 (입력: $VERSION)" >&2
     exit 1
 fi
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -34,4 +35,4 @@ git push origin "v$VERSION"
 echo ""
 echo "✅ v$VERSION 태그를 푸시했습니다."
 echo "   GitHub Actions 가 Windows exe + macOS(arm64) 바이너리를 빌드해 Release 에 첨부합니다:"
-echo "   https://github.com/ohjn96/private_train/actions"
+echo "   https://github.com/ohjn96/train_macro/actions"

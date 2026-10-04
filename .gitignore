@@ -58,3 +58,6 @@ screenshots/
 # 라이선스 서명 개인키·발급 대장 (절대 커밋 금지)
 *.pem
 issued.jsonl
+
+# 예전 루트 PyInstaller 산출물
+/build/
