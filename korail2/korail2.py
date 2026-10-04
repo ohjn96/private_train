@@ -11,6 +11,10 @@ import requests
 import itertools
 import sys
 import base64
+import hashlib
+import hmac
+import os
+import struct
 import time
 import random
 import string
@@ -29,7 +33,9 @@ except ImportError:
     import json
 
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
-PHONE_NUMBER_REGEX = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
+PHONE_NUMBER_REGEX = re.compile(r"01[016789]-\d{3,4}-\d{4}")
+#: 하이픈 없는 휴대폰 번호도 txtInputFlg=4 로 보내야 회원번호로 잘못 조회되지 않는다.
+HYPHENLESS_PHONE_REGEX = re.compile(r"01[016789]\d{7,8}")
 
 SCHEME = "https"
 KORAIL_HOST = "smart.letskorail.com"
@@ -61,7 +67,47 @@ KORAIL_PAY = "%s.payment.ReservationPayment" % KORAIL_MOBILE
 
 KORAIL_CODE = "%s.common.code.do" % KORAIL_MOBILE
 
-DEFAULT_USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 13; SM-S928N Build/UP1A.231005.007)"
+#: 앱 7.0.8 의 공통 User-Agent. 기기 정보는 DynaPath 토큰(os=·dm=)에만 싣는다.
+DEFAULT_USER_AGENT = "korailtalk"
+
+#: 앱이 보내는 HTTP 헤더만 남긴다. requests 기본값(Accept: */* 등)이 섞이지 않게 통째로 바꾼다.
+DEFAULT_HEADERS = {
+    "User-Agent": DEFAULT_USER_AGENT,
+    "Connection": "Keep-Alive",
+    "Accept-Encoding": "gzip",
+}
+
+#: API 의 Version 과 별개인 공식 앱 표시 버전 (로그인 폼의 AppVersion).
+APP_DISPLAY_VERSION = "7.0.8"
+
+# 코레일 7.0.8 APK 의 공개 서명 인증서 DER (개인 키 아님).
+# SHA-256: 38ff229cb34c7dda8e28220a2d750cceec28db661a36d95ad92d82f6d3c618f9
+_SIGNING_CERTIFICATE = bytes.fromhex(
+    "3082019b30820104a00302010202044cfa0d54300d06092a864886f70d01010505003011310f300d060355040313066b6f7261696c"
+    "3020170d3130313230343039343334385a180f33303130303430363039343334385a3011310f300d060355040313066b6f7261696c"
+    "30819f300d06092a864886f70d010101050003818d0030818902818100c3aa266fdb468cc4e9146fc299b776c683b99baae7fd231472"
+    "0ce3c9b8d245b89ddd194c0140bf22001da468c601663d17a9646259c04cdda8e1a7af1e3c0f464bbd86ed316504a2f8cac9b3031d"
+    "09f931d669bc5d53a8265f5272da75e1d31147902c89eff86553186ee8afc82d7cbefac3d864c351c8f9ede027aed488ab890203010001"
+    "300d06092a864886f70d0101050500038181008b9b751dc8ee0a85b63f8ed8026d3d5b501e2cdc1905c27c69ad1af8e511a003dfe2b0"
+    "1fd81b94ccce0b0d6951e6df864efda0406485fd56f49d2e22819c0d63cce9286481c3844c454ed34c5ce70a55bc62f69af5f753792"
+    "e61227d8c397a20f42414ebc61773daa1c65c8bba0d7a2f7b7dcbdb92ed1c8d98a0f5eabe3076f2"
+)
+
+
+def generate_android_id():
+    """16자리 소문자 16진수 합성 SSAID 를 만든다.
+
+    Android 14 SettingsProvider.generateSsaidLocked 처럼 (4바이트 길이 + 인증서 DER) 을
+    임의 32바이트 키로 HMAC-SHA256 한 앞 64비트. 모든 사용자가 같은 고정 ID 를 쓰지 않게 한다.
+    """
+    message = struct.pack(">I", len(_SIGNING_CERTIFICATE)) + _SIGNING_CERTIFICATE
+    return hmac.new(os.urandom(32), message, hashlib.sha256).hexdigest()[:16]
+
+
+def validate_android_id(value):
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{16}", value) is None:
+        raise ValueError("android_id 는 16자리 소문자 16진수 문자열이어야 합니다")
+    return value
 
 DYNAPATH_PATHS = [
     "/classes/com.korail.mobile.certification.TicketReservation",
@@ -77,6 +123,7 @@ class DynaPathMasterEngine:
     APP_ID = "com.korail.talk"
     AS_VALUE = "%5B38ff229cb34c7dda8e28220a2d750cce%5D"
     DEVICE_MODEL = "SM-S928N"
+    OS_VERSION = "14"
     OS_TYPE = "Android"
     SDK_VERSION = "v1"
 
@@ -167,7 +214,7 @@ class DynaPathMasterEngine:
     def generate_token(self, device_id, ts, rand):
         plaintext = (f"ai={self.APP_ID}&di={device_id}&as={self.AS_VALUE}&"
                      f"su=false&dbg=false&emu=false&hk=false&it={self.app_start_ts}&"
-                     f"ts={ts}&rt=0&os=13&dm={self.DEVICE_MODEL}&st={self.OS_TYPE}&sv={self.SDK_VERSION}")
+                     f"ts={ts}&rt=0&os={self.OS_VERSION}&dm={self.DEVICE_MODEL}&st={self.OS_TYPE}&sv={self.SDK_VERSION}")
         dyn_key = f"v1+{rand}+{ts}"
         key_enc = self.encode_normal_be(dyn_key, self.TABLE, self.I8, self.I9, self.I10)
         big_key = self.make_key(dyn_key)
@@ -711,9 +758,8 @@ class Korail(object):
     _session = None
 
     _device = 'AD'
-    _version = '250601002'
+    _version = '250722001'
     _sid_key = b"2485dd54d9deaa36"
-    _device_id = "558a4f02041657ea"
     _key = 'korail1234567890'
 
     _idx = None
@@ -722,10 +768,14 @@ class Korail(object):
     name = None
     email = None
 
-    def __init__(self, korail_id, korail_pw, auto_login=True, want_feedback=False):
+    def __init__(self, korail_id, korail_pw, auto_login=True, want_feedback=False, android_id=None):
         self._session = _TimeoutSession()
-        self._session.headers.update({'User-Agent': DEFAULT_USER_AGENT})
+        self._session.headers.clear()
+        self._session.headers.update(DEFAULT_HEADERS)
         self._engine = DynaPathMasterEngine()
+        #: DynaPath 토큰의 di= 값. 모든 사용자가 같은 고정 ID 를 쓰지 않도록 인스턴스마다
+        #: 새로 만든다. 같은 기기로 보이게 하려면 저장해 둔 값을 android_id 로 넘긴다.
+        self.android_id = generate_android_id() if android_id is None else validate_android_id(android_id)
         self.korail_id = korail_id
         self.korail_pw = korail_pw
         self.want_feedback = want_feedback
@@ -741,15 +791,17 @@ class Korail(object):
         encrypted = cbc_encrypt(self._sid_key, self._sid_key, pad(plaintext, 16))
         return base64.b64encode(encrypted).decode('utf-8') + "\n"
 
-    def _get_auth_headers_and_sid(self, url):
+    def _get_auth_headers_and_sid(self, url, include_sid=True):
         headers = {}
         sid = None
         if any(path in url for path in DYNAPATH_PATHS):
             ts = int(time.time() * 1000)
-            rand = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-            token = self._engine.generate_token(self._device_id, ts, rand)
+            # 앱의 논스는 영소문자·영대문자·숫자 62자 중 4자
+            rand = ''.join(random.choices(string.ascii_letters + string.digits, k=4))
+            token = self._engine.generate_token(self.android_id, ts, rand)
             headers['x-dynapath-m-token'] = token
-            sid = self._generate_sid(ts)
+            if include_sid:
+                sid = self._generate_sid(ts)
         return headers, sid
 
     def __enc_password(self, password):
@@ -769,7 +821,10 @@ class Korail(object):
             iv = key[:16].encode(encoding='utf-8', errors='strict')
             padded_data = pad(password.encode("utf-8"), BLOCK_SIZE)
 
-            return base64.b64encode(base64.b64encode(cbc_encrypt(encrypt_key, iv, padded_data))).decode("utf-8")
+            # 안쪽은 NO_WRAP, 바깥쪽은 URL_SAFE (NO_WRAP 없음 → 76자마다, 마지막 줄에도 LF)
+            inner = base64.b64encode(cbc_encrypt(encrypt_key, iv, padded_data))
+            outer = base64.urlsafe_b64encode(inner).decode("ascii")
+            return "".join(outer[i:i + 76] + "\n" for i in range(0, len(outer), 76))
         else:
             return False
 
@@ -778,7 +833,7 @@ class Korail(object):
         """Login to Korail server.
 :param korail_id : `Korail membership number` or `phone number` or `email`
     membership   : xxxxxxxx (8 digits)
-    phone number : xxx-xxxx-xxxx
+    phone number : xxx-xxxx-xxxx or xxxxxxxxxxx
     email        : xxx@xxx.xxx
 :param korail_pw : Korail account korail_pw
 :param auto_login=True :
@@ -814,26 +869,32 @@ When you want change ID using existing object,
 
         if EMAIL_REGEX.match(korail_id):
             txt_input_flg = '5'
-        elif PHONE_NUMBER_REGEX.match(korail_id):
+        elif PHONE_NUMBER_REGEX.fullmatch(korail_id) or HYPHENLESS_PHONE_REGEX.fullmatch(korail_id):
             txt_input_flg = '4'
         else:
             txt_input_flg = '2'
 
+        # 앱 7.0.8 은 휴대폰 번호를 하이픈 없이 보낸다
+        member_no = korail_id.replace('-', '') if txt_input_flg == '4' else korail_id
+
         url = KORAIL_LOGIN
-        headers, sid = self._get_auth_headers_and_sid(url)
+        # 앱 7.0.8 은 로그인에 DynaPath 헤더만 싣고 Sid 는 보내지 않는다
+        headers, _ = self._get_auth_headers_and_sid(url, include_sid=False)
+        encrypted_pw = self.__enc_password(korail_pw)
         data = {
             'Device': self._device,
             'Version': self._version,
+            'AppVersion': APP_DISPLAY_VERSION,
+            'Key': Korail._key,  # 로그인 후 덮어쓴 세션 Key 가 아니라 앱 고정 API 키
             # 2 : for membership number,
             # 4 : for phone number,
             # 5 : for email,
             'txtInputFlg': txt_input_flg,
-            'txtMemberNo': korail_id,
-            'txtPwd': self.__enc_password(korail_pw),
+            'txtMemberNo': member_no,
+            'txtPwd': encrypted_pw,
+            'checkValidPw': 'Y',
             'idx': self._idx
         }
-        if sid:
-            data['Sid'] = sid
 
         r = self._session.post(url, data=data, headers=headers)
         j = self._json(r)
@@ -867,11 +928,18 @@ When you want change ID using existing object,
     def _json(self, r):
         """응답을 JSON 으로 읽는다. 막힌 것 같은 응답은 KorailBlockedError 로 올린다."""
         status = getattr(r, 'status_code', 200)
-        if status in (403, 429):
-            raise KorailBlockedError("HTTP %s" % status, str(status), status=status)
         try:
             j = json.loads(r.text)
         except ValueError:
+            j = None
+        if status in (403, 429) or (status >= 400 and not (isinstance(j, dict) and 'strResult' in j)):
+            # 403 이용제한은 {"code": "-2000", "message": "..."} 를 싣고 온다. 그 사유를 그대로
+            # 실어야 비밀번호 오류·결과 없음과 헷갈리지 않는다.
+            body = j if isinstance(j, dict) else {}
+            message = body.get('message')
+            raise KorailBlockedError("HTTP %s: %s" % (status, message) if message else "HTTP %s" % status,
+                                     body.get('code') or str(status), status=status)
+        if j is None:
             # 점검·차단 안내 HTML 등
             raise KorailBlockedError("JSON 이 아닌 응답 (HTTP %s)" % status, 'NOT_JSON', status=status)
         if not isinstance(j, dict):
