@@ -41,14 +41,20 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5
 
-      - name: VERSION 과 태그 일치 확인
+      - name: 버전 정하기 (태그가 있으면 태그가 기준)
         run: |
-          VERSION=$(tr -d '[:space:]' < VERSION)
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
-            echo "태그(${GITHUB_REF_NAME#v}) 와 VERSION 파일($VERSION) 이 다릅니다." >&2
-            exit 1
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+              echo "태그 형식이 이상합니다: $GITHUB_REF_NAME (예: v3.0.0, v3.0.0-beta.4)" >&2
+              exit 1
+            fi
+            # 빌드가 읽는 VERSION 파일을 태그 값으로 맞춘다 (러너 안에서만)
+            echo "$VERSION" > VERSION
+          else
+            VERSION=$(tr -d '[:space:]' < VERSION)
           fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: 서명 키 준비
         env:
