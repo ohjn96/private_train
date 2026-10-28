@@ -16,7 +16,7 @@ import time
 import urllib.error
 import urllib.request
 
-from licensing import config, store
+from licensing import config, net, store
 from licensing.token import LicenseError, parse
 
 # 철회 목록도 라이선스 토큰과 같은 형식으로 서명한다.
@@ -36,7 +36,7 @@ def _parse_list(token: str, public_key) -> set[str]:
 def _fetch(url: str) -> str | None:
     try:
         request = urllib.request.Request(url, headers={'User-Agent': 'TrainReservation'})
-        with urllib.request.urlopen(request, timeout=config.REVOCATION_TIMEOUT) as response:
+        with net.urlopen(request, timeout=config.REVOCATION_TIMEOUT) as response:
             body = response.read(64 * 1024).decode('utf-8')
     except (urllib.error.URLError, OSError, UnicodeDecodeError, ValueError):
         return None

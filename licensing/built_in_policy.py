@@ -13,6 +13,6 @@
 """
 
 # license-policy.json 이 없던 시점에 빌드하면 'open' 이 된다.
-BUILT_IN_MODE = "licensed"
-BUILT_IN_SEQ = 2
+BUILT_IN_MODE = "open"
+BUILT_IN_SEQ = 3
 BUILT_IN_MESSAGE = ""

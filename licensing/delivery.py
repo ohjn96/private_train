@@ -12,7 +12,7 @@ from __future__ import annotations
 import urllib.error
 import urllib.request
 
-from licensing import config
+from licensing import config, net
 
 MAX_BYTES = 8 * 1024
 
@@ -22,7 +22,7 @@ def fetch_issued_token(machine_id: str) -> str | None:
     url = config.DELIVERY_URL.format(machine_id=machine_id)
     try:
         request = urllib.request.Request(url, headers={'User-Agent': 'TrainReservation'})
-        with urllib.request.urlopen(request, timeout=config.DELIVERY_TIMEOUT) as response:
+        with net.urlopen(request, timeout=config.DELIVERY_TIMEOUT) as response:
             body = response.read(MAX_BYTES).decode('utf-8')
     except (urllib.error.URLError, OSError, UnicodeDecodeError, ValueError):
         return None

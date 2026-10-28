@@ -25,7 +25,7 @@ import time
 import urllib.error
 import urllib.request
 
-from licensing import config, store
+from licensing import config, net, store
 from licensing.token import LicenseError, parse
 
 POLICY_ID = 'policy'
@@ -98,7 +98,7 @@ def built_in() -> Policy:
 def _fetch(url: str) -> str | None:
     try:
         request = urllib.request.Request(url, headers={'User-Agent': 'TrainReservation'})
-        with urllib.request.urlopen(request, timeout=config.POLICY_TIMEOUT) as response:
+        with net.urlopen(request, timeout=config.POLICY_TIMEOUT) as response:
             body = response.read(64 * 1024).decode('utf-8')
     except (urllib.error.URLError, OSError, UnicodeDecodeError, ValueError):
         return None

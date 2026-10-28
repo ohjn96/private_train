@@ -49,7 +49,7 @@ DELIVERY_TIMEOUT = 5.0
 #   raw.githubusercontent.com 은 CDN 캐시가 약 5분이라 반영에 그만큼 걸린다.
 # ---------------------------------------------------------------------------
 POLICY_URL = os.environ.get('LICENSE_POLICY_URL', f'{DIST_RAW}/license-policy.json')
-POLICY_TIMEOUT = 3.0
+POLICY_TIMEOUT = 8.0
 POLICY_TTL = 6 * 3600     # 초. 이 주기로 스위치를 다시 확인한다
 
 # ---------------------------------------------------------------------------
