@@ -16,7 +16,7 @@ import hmac
 import os
 import struct
 import time
-import random
+import secrets
 import string
 from functools import reduce
 
@@ -67,7 +67,7 @@ KORAIL_PAY = "%s.payment.ReservationPayment" % KORAIL_MOBILE
 
 KORAIL_CODE = "%s.common.code.do" % KORAIL_MOBILE
 
-#: 앱 7.0.8 의 공통 User-Agent. 기기 정보는 DynaPath 토큰(os=·dm=)에만 싣는다.
+#: 앱 공통 User-Agent (기기 정보 없음).
 DEFAULT_USER_AGENT = "korailtalk"
 
 #: 앱이 보내는 HTTP 헤더만 남긴다. requests 기본값(Accept: */* 등)이 섞이지 않게 통째로 바꾼다.
@@ -78,7 +78,8 @@ DEFAULT_HEADERS = {
 }
 
 #: API 의 Version 과 별개인 공식 앱 표시 버전 (로그인 폼의 AppVersion).
-APP_DISPLAY_VERSION = "7.0.8"
+#: 서버가 이 값으로 최신 버전을 강제하므로 오래된 값은 -8204 로 거절된다.
+APP_DISPLAY_VERSION = "7.0.10"
 
 # 코레일 7.0.8 APK 의 공개 서명 인증서 DER (개인 키 아님).
 # SHA-256: 38ff229cb34c7dda8e28220a2d750cceec28db661a36d95ad92d82f6d3c618f9
@@ -119,108 +120,32 @@ DYNAPATH_PATHS = [
 ]
 
 
+#: 7.0.10(SDK 2.0.1) x-dynapath-m-token 의 버전 프리픽스. 서버는 이 프리픽스만 검사한다
+#: (실서버 관측: '201'+임의 문자도 200, 7.0.8 의 bEeEP…(v1) 위조는 403 -1406).
+DYNAPATH_TOKEN_PREFIX = "201"
+
+#: 토큰 본문 영숫자 집합 [0-9A-Za-z]
+_DYNAPATH_ALPHABET = string.digits + string.ascii_uppercase + string.ascii_lowercase
+
+#: 7.0.10 실측 토큰 길이. 요청 바인딩이 실리는 로그인만 더 길다.
+_DYNAPATH_PLAIN_LENGTH = 222
+_DYNAPATH_LOGIN_LENGTH = 324
+
+_DYNAPATH_LOGIN_PATH = "/classes/com.korail.mobile.login.Login"
+
+
 class DynaPathMasterEngine:
-    APP_ID = "com.korail.talk"
-    AS_VALUE = "%5B38ff229cb34c7dda8e28220a2d750cce%5D"
-    DEVICE_MODEL = "SM-S928N"
-    OS_VERSION = "14"
-    OS_TYPE = "Android"
-    SDK_VERSION = "v1"
+    """7.0.10 DynaPath 토큰 생성기.
 
-    def __init__(self):
-        self.TABLE = "3FE9jgRD4KdCyuawklqGJYmvfMn15P7US8XbxeLQtWT6OicBAopINs2Vh0HZrz"
-        self.I8, self.I9, self.I10 = 161, 30, 2
-        self.app_start_ts = str(int(time.time() * 1000))
+    7.0.10 토큰은 네이티브 libdp_ffi_android.so 에서만 만들어지고 알고리즘은 복원되지
+    않았다. 서버가 프리픽스만 보는 동안에만 유효한 '201' + 임의 영숫자 본문을 낸다
+    (pykorail v0.5.0 #136). 토큰에 기기 정보는 실리지 않는다.
+    """
 
-    def string2xA1s(self, data_str):
-        result = []
-        i = 0
-        while i < len(data_str):
-            cp = ord(data_str[i])
-            i += 1
-            if cp < 128: result.append(cp)
-            elif cp < 2048:
-                result.append(128 | ((cp >> 7) & 15))
-                result.append(cp & 127)
-            elif cp >= 262144:
-                result.append(160)
-                result.append((cp >> 14) & 127)
-                result.append((cp >> 7) & 127)
-                result.append(cp & 127)
-            elif (63488 & cp) != 55296:
-                result.append(((cp >> 14) & 15) | 144)
-                result.append((cp >> 7) & 127)
-                result.append(cp & 127)
-        return result
-
-    def make_key(self, key_str):
-        big_int_add = 0
-        for char in key_str:
-            cp = ord(char)
-            i9_bit = 32768
-            for _ in range(16):
-                if (i9_bit & cp) != 0: break
-                i9_bit >>= 1
-            big_int_add = (big_int_add * (i9_bit << 1)) + cp
-        return big_int_add
-
-    def _internal_i(self, base_table, remainder, encode_size, current_sb):
-        j8_count = 0
-        for k in range(len(base_table)):
-            char = base_table[k]
-            if char not in current_sb:
-                if j8_count == remainder: return char
-                j8_count += 1
-        return ' '
-
-    def make_encode_table(self, num, encode_size, base_table):
-        sb = ""
-        temp_num = num
-        for i in range(encode_size):
-            j8_divisor = encode_size - i
-            remainder = temp_num % j8_divisor
-            char = self._internal_i(base_table, remainder, len(base_table), sb)
-            sb += char
-            temp_num //= j8_divisor
-        return sb
-
-    def encode_normal_be(self, data_str, table, i8=161, i9=30, i10=2):
-        list_data = self.string2xA1s(data_str)
-        sb, i_arr = [], [0] * (i10 + 1)
-        idx, size = 0, len(list_data) % i10
-        size2 = len(list_data) - size
-        while idx < size2:
-            val = 0
-            for _ in range(i10):
-                val = (val * i8) + list_data[idx]
-                idx += 1
-            for i in range(i10 + 1):
-                i_arr[i] = val % i9
-                val //= i9
-            for i in range(i10, -1, -1): sb.append(table[i_arr[i]])
-        if size > 0:
-            val = 0
-            for _ in range(size):
-                val = (val * i8) + list_data[idx]
-                idx += 1
-            for i in range(size + 1):
-                i_arr[i] = val % i9
-                val //= i9
-            while size >= 0:
-                sb.append(table[i_arr[size]])
-                size -= 1
-        return "".join(sb)
-
-    def generate_token(self, device_id, ts, rand):
-        plaintext = (f"ai={self.APP_ID}&di={device_id}&as={self.AS_VALUE}&"
-                     f"su=false&dbg=false&emu=false&hk=false&it={self.app_start_ts}&"
-                     f"ts={ts}&rt=0&os={self.OS_VERSION}&dm={self.DEVICE_MODEL}&st={self.OS_TYPE}&sv={self.SDK_VERSION}")
-        dyn_key = f"v1+{rand}+{ts}"
-        key_enc = self.encode_normal_be(dyn_key, self.TABLE, self.I8, self.I9, self.I10)
-        big_key = self.make_key(dyn_key)
-        custom_table = self.make_encode_table(big_key, self.I9, self.TABLE)
-        body_enc = self.encode_normal_be(plaintext, custom_table, self.I8, self.I9, self.I10)
-        return f"bEeEP{self.TABLE[len(key_enc)]}{key_enc}{body_enc}"
+    def generate_token(self, request_bound=False):
+        length = _DYNAPATH_LOGIN_LENGTH if request_bound else _DYNAPATH_PLAIN_LENGTH
+        width = length - len(DYNAPATH_TOKEN_PREFIX)
+        return DYNAPATH_TOKEN_PREFIX + "".join(secrets.choice(_DYNAPATH_ALPHABET) for _ in range(width))
 
 
 def _get_utf8(data, key, default=None):
@@ -773,8 +698,8 @@ class Korail(object):
         self._session.headers.clear()
         self._session.headers.update(DEFAULT_HEADERS)
         self._engine = DynaPathMasterEngine()
-        #: DynaPath 토큰의 di= 값. 모든 사용자가 같은 고정 ID 를 쓰지 않도록 인스턴스마다
-        #: 새로 만든다. 같은 기기로 보이게 하려면 저장해 둔 값을 android_id 로 넘긴다.
+        #: 기기 ID. 7.0.10 토큰에는 실리지 않지만 저장·복원 계약을 위해 유지한다.
+        #: 같은 기기로 보이게 하려면 저장해 둔 값을 android_id 로 넘긴다.
         self.android_id = generate_android_id() if android_id is None else validate_android_id(android_id)
         self.korail_id = korail_id
         self.korail_pw = korail_pw
@@ -796,9 +721,7 @@ class Korail(object):
         sid = None
         if any(path in url for path in DYNAPATH_PATHS):
             ts = int(time.time() * 1000)
-            # 앱의 논스는 영소문자·영대문자·숫자 62자 중 4자
-            rand = ''.join(random.choices(string.ascii_letters + string.digits, k=4))
-            token = self._engine.generate_token(self.android_id, ts, rand)
+            token = self._engine.generate_token(request_bound=_DYNAPATH_LOGIN_PATH in url)
             headers['x-dynapath-m-token'] = token
             if include_sid:
                 sid = self._generate_sid(ts)
