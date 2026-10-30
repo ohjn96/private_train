@@ -56,6 +56,41 @@ BLOCK_NOTIFY_AFTER = 3
 
 DEPARTED_MESSAGE = "선택한 열차가 모두 출발해서 멈췄어요."
 
+#: 코레일 조회 한 번에 오는 열차 수 (실서버 관측 10편). 고른 열차가 이 안에 다 들어야
+#: 시도마다 호출 1번으로 모든 열차를 호출 간격마다 확인한다. 쪽이 늘면 확인 주기도 그만큼 는다.
+SEARCH_PAGE_SIZE = 10
+
+
+def _dep_time(train) -> str:
+    return train["dep_time"] if isinstance(train, dict) else train.dep_time
+
+
+def one_page_end(trains: list, selected: list) -> str | None:
+    """가장 이른 고른 열차부터 조회 한 번(SEARCH_PAGE_SIZE 편)에 들어오는 마지막 출발 시각.
+
+    trains 는 고른 열차가 나온 조회 결과 전체(시각 순, 빈칸 없이 이어진 목록), selected 는 그중 고른 것.
+    dict 든 TrainInfo 든 dep_time 만 본다. 한 쪽이 다 안 차면 None (어디까지 골라도 된다).
+    """
+    if not selected:
+        return None
+    first = min(_dep_time(t) for t in selected)
+    window = [t for t in trains if _dep_time(t) >= first]
+    if len(window) <= SEARCH_PAGE_SIZE:
+        return None
+    return _dep_time(window[SEARCH_PAGE_SIZE - 1])
+
+
+def one_page_error(trains: list, selected: list) -> str | None:
+    """고른 열차가 조회 한 번에 다 안 들어오면 안내 문구 (`one_page_end` 참고)."""
+    end = one_page_end(trains, selected)
+    if end is None or max(_dep_time(t) for t in selected) <= end:
+        return None
+    first = min(_dep_time(t) for t in selected)
+    return (
+        f"한 번 조회(열차 {SEARCH_PAGE_SIZE}편)에 들어오는 범위에서만 고를 수 있어요. "
+        f"{first[:2]}:{first[2:4]} 열차와 함께라면 {end[:2]}:{end[2:4]} 출발까지 고를 수 있어요."
+    )
+
 #: 강제 로그아웃 간격을 재는 시계 (테스트가 바꿔 끼운다)
 _clock = time.monotonic
 

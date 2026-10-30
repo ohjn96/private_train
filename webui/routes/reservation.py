@@ -30,6 +30,7 @@ from core.reservation import (  # noqa: F401  (attempt_payment 는 예전 경로
     NotifyingReporter,
     attempt_payment,
     is_login_error,
+    one_page_error,
     run_reservation,
 )
 
@@ -161,6 +162,9 @@ def _setup_telegram_callbacks():
             trains = kwargs.get("trains", [])
             train_indices = kwargs.get("train_indices", [])
             selected_trains = [trains[i] for i in train_indices]
+            span_error = one_page_error(trains, selected_trains)
+            if span_error:
+                return {"success": False, "message": span_error}
 
             dep = kwargs.get("dep", "")
             arr = kwargs.get("arr", "")
@@ -440,6 +444,9 @@ def start_reservation():
     ]
     if not selected_trains:
         return jsonify({"success": False, "message": "선택된 열차가 없습니다."})
+    span_error = one_page_error(trains_data, selected_trains)
+    if span_error:
+        return jsonify({"success": False, "message": span_error})
 
     # Convert seat option
     seat_option_map = {

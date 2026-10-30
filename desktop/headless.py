@@ -31,6 +31,7 @@ from datetime import datetime, timedelta
 from webui.services.base_service import SeatOption, TrainInfo
 from webui.services.korail_service import KorailService
 from core.rate_limit import clamp_call_interval, korail_api
+from core.reservation import SEARCH_PAGE_SIZE, one_page_end
 from webui.services.telegram_service import TelegramService
 from webui.version import get_version
 
@@ -373,6 +374,14 @@ def run_oneshot(
             for train in trains:
                 print(f"     {format_train(train)}", file=sys.stderr)
         return EXIT_NO_TRAIN
+
+    # 조회 한 번에 들어오는 데까지만 노린다 (쪽이 늘면 열차마다 확인 주기가 그만큼 늘어난다)
+    page_end = one_page_end(trains, targets)
+    if page_end is not None and any(t.dep_time > page_end for t in targets):
+        dropped = [t for t in targets if t.dep_time > page_end]
+        targets = [t for t in targets if t.dep_time <= page_end]
+        log(f"조회 한 번({SEARCH_PAGE_SIZE}편)에 들어오는 {page_end[:2]}:{page_end[2:4]} 출발까지만 노립니다. "
+            f"{len(dropped)}편 제외 (--to 나 --trains 로 좁힐 수 있어요)")
 
     log(f"대상 열차 {len(targets)}편:")
     for train in targets:

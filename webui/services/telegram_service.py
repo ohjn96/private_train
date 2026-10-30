@@ -15,6 +15,8 @@ from typing import Optional, Callable
 
 import requests
 
+from core.reservation import one_page_error
+
 logger = logging.getLogger(__name__)
 
 #: 봇 토큰이 들어간 API 주소(https://api.telegram.org/bot123:ABC.../getMe). requests 예외 문구와
@@ -921,6 +923,11 @@ class TelegramService:
             return
 
         selected_trains = [trains[i] for i in selected_indices]
+
+        span_error = one_page_error(trains, selected_trains)
+        if span_error:
+            self.send_message(f"⚠️ {span_error}\n다시 골라 주세요. 취소: <code>/cancel</code>")
+            return
 
         # Prevent concurrent macro execution (race condition between search and selection)
         if self._macro_running:

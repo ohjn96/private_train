@@ -289,3 +289,28 @@ class StopBeforeThreadStartsTest(unittest.TestCase):
                                              SeatOption.GENERAL_FIRST, None)
         self.assertEqual(len(service._client.kinds('search')), 0)
         self.assertFalse(tg._macro_running)
+
+
+class OnePageLimitTest(unittest.TestCase):
+    """고른 열차는 조회 한 번(10편)에 들어와야 한다."""
+
+    def setUp(self):
+        from core.reservation import one_page_end, one_page_error
+        self.end, self.error = one_page_end, one_page_error
+        self.trains = [{'dep_time': '%02d%02d00' % (6 + i * 10 // 60, i * 10 % 60)} for i in range(30)]
+
+    def test_within_one_page_is_fine(self):
+        self.assertIsNone(self.error(self.trains, [self.trains[0], self.trains[9]]))
+        self.assertIsNone(self.error(self.trains, [self.trains[15], self.trains[24]]))
+
+    def test_past_one_page_says_how_far(self):
+        msg = self.error(self.trains, [self.trains[0], self.trains[10]])
+        self.assertIsNotNone(msg)
+        self.assertIn('07:30', msg)  # 06:00 부터 10번째 = 07:30
+
+    def test_end_is_counted_from_the_earliest_pick(self):
+        self.assertEqual(self.end(self.trains, [self.trains[12]]), self.trains[21]['dep_time'])
+
+    def test_short_list_has_no_end(self):
+        self.assertIsNone(self.end(self.trains[:8], [self.trains[0]]))
+        self.assertIsNone(self.error(self.trains[:8], [self.trains[0], self.trains[7]]))

@@ -245,6 +245,18 @@ class RunTest(unittest.TestCase):
         self.assertIsNone(card)
         self.assertEqual(loop.call_args.kwargs, {'passenger_count': 1, 'sequential': False})
 
+    def test_trims_targets_to_one_search_page(self):
+        """시간 범위가 넓어도 조회 한 번(10편)에 들어오는 열차까지만 노린다."""
+        self.service.search.return_value = [
+            make_train(str(200 + i), '%02d%02d00' % (8 + i * 10 // 60, i * 10 % 60)) for i in range(15)
+        ]
+        with mock.patch('webui.routes.reservation.run_reservation_loop') as loop:
+            code, output = self.run_main(BASE_ARGS + ['--from', '08:00', '--to', '11:00'])
+        self.assertEqual(code, headless.EXIT_OK)
+        trains = loop.call_args.args[2]
+        self.assertEqual([t['train_number'] for t in trains], [str(200 + i) for i in range(10)])
+        self.assertIn('5편 제외', output)
+
     def test_sequential_only_applies_to_multiple_seats(self):
         with mock.patch('webui.routes.reservation.run_reservation_loop') as loop:
             self.run_main(BASE_ARGS + ['--from', '08:00', '--sequential'])
