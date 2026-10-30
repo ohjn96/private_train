@@ -253,8 +253,43 @@ class MultiTrainReservationTest(unittest.TestCase):
         reserves = svc._client.kinds('reserve')
         self.assertEqual(len(reserves), 1, '좌석 있는 열차 하나만 예약해야 한다')
         self.assertEqual(reserves[0][1], trains[10].train_no)
-        # 가장 늦은 선택 열차(20번)까지 덮으려면 3페이지, 시도는 한 번에 끝난다
-        self.assertEqual(len(svc._client.kinds('search')), 3)
+        # 10번이 든 2쪽에서 바로 예약하고 끝난다. 20번이 든 3쪽은 부르지 않는다
+        self.assertEqual(len(svc._client.kinds('search')), 2)
+
+    def test_reserves_from_the_page_it_was_seen_on(self):
+        """1쪽에서 본 좌석은 뒤쪽을 받기 전에 바로 예약한다."""
+        trains = [FakeTrain(i, has_seat=(i == 0)) for i in range(40)]
+        svc = make_service(trains, reserve_fails=True)
+        selected = [as_selected(trains[i], n) for n, i in enumerate((0, 20))]
+        with FastRateLimit(0.3):
+            run_macro(svc, selected, timeout=0.5)
+
+        kinds = [c[0] for c in svc._client.calls]
+        self.assertEqual(kinds[:2], ['search', 'reserve'], '1쪽 받자마자 예약해야 한다')
+
+    def test_skips_pages_without_selected_trains(self):
+        """고른 열차 사이에 낀 쪽은 부르지 않는다 (0번·30번이면 4쪽이 아니라 2쪽)."""
+        trains = [FakeTrain(i) for i in range(40)]
+        svc = make_service(trains)
+        selected = [as_selected(trains[i], n) for n, i in enumerate((0, 30))]
+        with FastRateLimit(0.3):
+            run_macro(svc, selected, timeout=0.45)
+
+        starts = [c[1] for c in svc._client.kinds('search')][:2]
+        self.assertEqual(starts, [trains[0].dep_time, trains[30].dep_time])
+
+    def test_same_minute_train_pushed_to_next_page_is_found(self):
+        """쪽 마지막과 같은 분에 떠나는 고른 열차가 다음 쪽으로 밀려도 놓치지 않는다."""
+        trains = [FakeTrain(i) for i in range(10)]
+        twin = FakeTrain(9, has_seat=True)
+        twin.train_no = '999'
+        trains.append(twin)
+        svc = make_service(trains)
+        selected = [as_selected(trains[0], 0), as_selected(twin, 1)]
+        with FastRateLimit():
+            run_macro(svc, selected, timeout=2)
+
+        self.assertEqual([r[1] for r in svc._client.kinds('reserve')], ['999'])
 
     def test_two_passengers_together_is_one_call(self):
         trains = [FakeTrain(0, has_seat=True), FakeTrain(1)]

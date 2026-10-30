@@ -306,6 +306,48 @@ def _check_reserved(service, train, exclude: set) -> tuple[object | None, bool]:
     return found, True
 
 
+def _scan_candidates(service, candidates: list, should_stop: Callable[[], bool]):
+    """후보 열차를 한 쪽씩 조회하면서, 받은 쪽에 든 후보를 곧바로 (후보, 조회 결과) 로 내준다.
+
+    다 받은 뒤에 대조하면 1쪽에서 본 좌석을 나머지 쪽을 받는 동안(쪽마다 호출 간격) 묵혀
+    두게 된다. 그래서 쪽을 받을 때마다 바로 내주고, 부르는 쪽이 예약하고 멈추면(break)
+    남은 쪽은 아예 부르지 않는다.
+
+    다음 쪽은 앞 쪽 끝이 아니라 아직 못 본 후보 중 가장 이른 시각부터 부른다. 고른 열차
+    사이에 낀, 고르지 않은 열차만 있는 쪽은 건너뛴다. 조회 결과에 없으면 None 을 내준다.
+    """
+    first = candidates[0]
+    pending = list(candidates)
+    while pending and not should_stop():
+        start = min(t["dep_time"] for t in pending)
+        page = service.search(
+            dep=first["dep_station"],
+            arr=first["arr_station"],
+            date=first["dep_date"],
+            time=start,
+            include_no_seats=True,
+        )
+        last = page[-1] if page else None
+        rolled_over = last is not None and getattr(last, "dep_date", first["dep_date"]) != first["dep_date"]
+        rest = []
+        for info in pending:
+            match = next(
+                (t for t in page
+                 if t.train_number == info["train_number"] and t.dep_time == info["dep_time"]),
+                None,
+            )
+            # 마지막 열차와 같은 분이면 다음 쪽으로 밀렸을 수 있으니 한 번 더 본다
+            if match is None and last is not None and not rolled_over and info["dep_time"] >= last.dep_time:
+                rest.append(info)
+                continue
+            yield info, match
+        if len(rest) == len(pending):  # 안전장치: 진전이 없으면 못 찾은 것으로 친다
+            for info in rest:
+                yield info, None
+            return
+        pending = rest
+
+
 def _run(
     service, selected_trains, seat_option, card, reporter, should_stop, recover,
     provider, passenger_count, sequential, pay,
@@ -324,10 +366,9 @@ def _run(
 
     tg.clear_logs()
     # 선택한 열차는 모두 같은 구간/날짜다 (한 번의 검색 결과에서 고른 것들이므로).
-    # 그래서 조회는 시도마다 딱 한 번, 가장 이른 열차 시각부터 가장 늦은 열차 시각까지
-    # 한 번에 훑고, 개별 열차는 그 결과 안에서 메모리로 대조한다.
+    # 그래서 조회는 시도마다 고른 열차가 든 쪽만 이른 시각부터 한 쪽씩 부르고, 개별 열차는
+    # 받은 쪽 안에서 메모리로 대조한다 (_scan_candidates).
     earliest_train = min(selected_trains, key=lambda t: t["dep_time"])
-    latest_train = max(selected_trains, key=lambda t: t["dep_time"])
     trains_summary = ", ".join(
         f"{t['train_name']}({t['dep_time'][:2]}:{t['dep_time'][2:4]})"
         for t in selected_trains
@@ -489,22 +530,14 @@ def _run(
             tg.set_macro_state(True, {"current_train": None, "current_time": None})
             tg.push_log("log", f"[{timestamp}] 시도 #{attempt}: 열차 정보 조회 중...")
 
-            # 선택한 열차 중 가장 늦은 것까지 포함될 때까지만 페이지를 넘긴다.
+            # 한 쪽 받을 때마다 그 안의 후보를 바로 대조·예약한다 (_scan_candidates).
             # (열차를 하나만 골랐거나 열차가 고정됐으면 API 호출 1번으로 끝난다)
-            search_from = locked_train or earliest_train
-            search_until = (locked_train or latest_train)["dep_time"]
-            fresh_trains = service.search(
-                dep=earliest_train["dep_station"],
-                arr=earliest_train["arr_station"],
-                date=earliest_train["dep_date"],
-                time=search_from["dep_time"],
-                include_no_seats=True,
-                until_time=search_until,
-            )
-            blocked_streak = 0
             candidates = [locked_train] if locked_train else selected_trains
 
-            for candidate_idx, train_info in enumerate(candidates):
+            for candidate_idx, (train_info, matching_train) in enumerate(
+                _scan_candidates(service, candidates, should_stop)
+            ):
+                blocked_streak = 0
                 if should_stop():
                     break
 
@@ -522,15 +555,6 @@ def _run(
                         "current_total": len(candidates),
                     },
                 )
-
-                matching_train = None
-                for t in fresh_trains:
-                    if (
-                        t.train_number == train_info["train_number"]
-                        and t.dep_time == train_info["dep_time"]
-                    ):
-                        matching_train = t
-                        break
 
                 if not matching_train:
                     tg.push_log("log", f"[{timestamp}] {train_name} ({dep_time}): 열차를 찾을 수 없음")
